@@ -37,6 +37,7 @@ New additions (backward-compatible):
 - add_hook() method for hook-based extension
 """
 
+from pathlib import Path
 from typing import Dict, Any, Optional, List, Union, TYPE_CHECKING
 from datetime import datetime
 import logging
@@ -146,8 +147,14 @@ class BaseStrategy(IStrategyCallbacks):
         self.position_sizer = None
         self.risk_manager = None
 
+        # Strategy directory for StrategyLoader-based component resolution.
+        # Replaces the old slot_id-based importlib.import_module approach.
+        self.strategy_dir: Optional[str] = params.get('strategy_dir')
         # Multi-slot context (optional — only set by PortfolioTradingRunner)
-        self.slot_id: Optional[str] = params.get('slot_id')
+        # Derive slot_id from strategy_dir for backward compat (logging, etc.)
+        self.slot_id: Optional[str] = (
+            Path(self.strategy_dir).name if self.strategy_dir else params.get('slot_id')
+        )
         self.strategy_id: Optional[str] = params.get('strategy_id')
         self.indicator_columns: Optional[List[str]] = params.get('indicator_columns')
 
@@ -823,40 +830,32 @@ class BaseStrategy(IStrategyCallbacks):
                     self.log(f"Added SessionAwareComponentHook to {name}", "debug")
 
     def _get_component_class(self, component_name: str):
-        """
-        Get component class by name. Override in derived strategies if needed.
-        """
-        # Determine component package: use slot dir if in portfolio mode,
-        # else default to platform_agnostic
-        if self.slot_id:
-            # e.g. "modules.quant_engine.strategy.al_s1"
-            strategy_package = f"modules.quant_engine.strategy.{self.slot_id}"
-        else:
-            strategy_package = "modules.quant_engine.strategy.platform_agnostic"
+        """Get component class by name using StrategyLoader."""
+        from echolon.quant_engine.strategy.loader import StrategyLoader
 
-        component_paths = [
-            (strategy_package, component_name.replace('_rule', '').replace('position_sizer', 'sizer').replace('risk_manager', 'risk')),
-        ]
+        # Map component_name to file name
+        file_name_map = {
+            'entry_rule': 'entry',
+            'exit_rule': 'exit',
+            'position_sizer': 'sizer',
+            'risk_manager': 'risk',
+        }
+        file_name = file_name_map.get(component_name, component_name)
 
         class_name_map = {
             'entry_rule': 'entry_rule',
             'exit_rule': 'exit_rule',
             'position_sizer': 'position_sizer',
-            'risk_manager': 'risk_manager'
+            'risk_manager': 'risk_manager',
         }
-
         class_name = class_name_map.get(component_name, component_name)
 
-        for module_path, submodule in component_paths:
-            full_path = f"{module_path}.{submodule}"
+        if self.strategy_dir:
+            loader = StrategyLoader(Path(self.strategy_dir))
             try:
-                import importlib
-                module = importlib.import_module(full_path)
-                if hasattr(module, class_name):
-                    return getattr(module, class_name)
-            except ImportError:
-                continue
-
+                return loader.load_class(file_name, class_name)
+            except (FileNotFoundError, AttributeError):
+                return None
         return None
 
     def _extract_component_parameters(self, params: Dict[str, Any]) -> None:

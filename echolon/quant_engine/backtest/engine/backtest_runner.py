@@ -51,8 +51,11 @@ from ...reporting import convert_to_serializable, save_trade_log, save_equity_cu
 from ...data_loader.SHFE_loader import load_backtest_data, load_indicator_metadata, load_best_params
 def _get_default_params():
     """Lazy load DEFAULT_PARAMS from platform_agnostic (single-instrument mode only)."""
-    from ...strategy.platform_agnostic.strategy_params import DEFAULT_PARAMS
-    return DEFAULT_PARAMS
+    from pathlib import Path
+    from echolon.quant_engine.strategy.loader import StrategyLoader
+    from echolon.config.quant_engine import PLATFORM_AGNOSTIC_DIR
+    loader = StrategyLoader(Path(PLATFORM_AGNOSTIC_DIR))
+    return loader.load_attr("strategy_params", "DEFAULT_PARAMS")
 from ...calculate_mfe_mae import enrich_trades_with_mfe_mae
 from ...schemas.backtest_results import BacktestResultsSchemaV4
 from .backtrader_strategy import get_strategy_class
@@ -552,9 +555,8 @@ class BacktestRunner:
             if strategy_code_dir:
                 params_path = str(Path(strategy_code_dir) / "selected_robust_trial.json")
             else:
-                params_path = str(
-                    PROJECT_ROOT / "modules/quant_engine/strategy/platform_agnostic/selected_robust_trial.json"
-                )
+                from echolon.config.quant_engine import BEST_PARAMS_FILE
+                params_path = BEST_PARAMS_FILE
 
         # Load and map parameters using shared utility
         params_data = load_best_params(params_path)
@@ -562,11 +564,9 @@ class BacktestRunner:
 
         # Load DEFAULT_PARAMS from slot dir if custom, else platform_agnostic
         if strategy_code_dir:
-            import importlib as _il
-            _slot_name = Path(strategy_code_dir).name
-            _pkg = f"modules.quant_engine.strategy.{_slot_name}"
-            _mod = _il.import_module(f"{_pkg}.strategy_params")
-            slot_defaults = _mod.DEFAULT_PARAMS
+            from echolon.quant_engine.strategy.loader import StrategyLoader
+            loader = StrategyLoader(Path(strategy_code_dir))
+            slot_defaults = loader.load_attr("strategy_params", "DEFAULT_PARAMS")
         else:
             slot_defaults = _get_default_params()
         strategy_params = cls._map_optuna_params(optuna_params, slot_defaults)

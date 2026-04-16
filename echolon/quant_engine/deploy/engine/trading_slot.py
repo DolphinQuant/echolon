@@ -12,11 +12,9 @@ Lifecycle per daily cycle:
 4. reset_daily_state()     — clear per-day flags for next cycle
 """
 
-import importlib.util
 import json
 import logging
 import os
-import sys
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
@@ -412,25 +410,12 @@ class TradingSlot:
         if not trial_params:
             return {}
 
-        # Load DEFAULT_PARAMS from the slot's strategy code
+        # Load DEFAULT_PARAMS from the slot's strategy code via StrategyLoader
         strategy_code_dir = self.slot_config.strategy_code_dir
-        params_path = os.path.join(strategy_code_dir, "strategy_params.py")
-
-        if os.path.exists(params_path):
-            # Derive the fully-qualified module name so relative imports
-            # (e.g. from ...core.base.parameter_architecture) resolve correctly.
-            # strategy_code_dir is e.g. "modules/quant_engine/strategy/cu_s1"
-            module_name = strategy_code_dir.replace("/", ".").replace("\\", ".") + ".strategy_params"
-            # Strip leading dots if path started with ./
-            module_name = module_name.lstrip(".")
-            spec = importlib.util.spec_from_file_location(module_name, params_path,
-                submodule_search_locations=[])
-            mod = importlib.util.module_from_spec(spec)
-            mod.__package__ = module_name.rsplit(".", 1)[0]
-            import sys
-            sys.modules[module_name] = mod
-            spec.loader.exec_module(mod)
-            default_params = getattr(mod, 'DEFAULT_PARAMS', {})
+        from echolon.quant_engine.strategy.loader import StrategyLoader
+        loader = StrategyLoader(Path(strategy_code_dir))
+        if loader.has_module("strategy_params"):
+            default_params = loader.load_attr("strategy_params", "DEFAULT_PARAMS")
         else:
             default_params = {}
 
@@ -464,34 +449,11 @@ class TradingSlot:
 
     def _import_and_create_strategy(self, strategy_params: Dict[str, Any]) -> None:
         """Dynamically import strategy from strategy_code_dir."""
+        from echolon.quant_engine.strategy.loader import StrategyLoader
+
         strategy_code_dir = self.slot_config.strategy_code_dir
-        strategy_path = os.path.join(strategy_code_dir, "strategy.py")
-
-        if not os.path.exists(strategy_path):
-            raise FileNotFoundError(
-                f"[{self.slot_id}] Strategy file not found: {strategy_path}"
-            )
-
-        # Derive fully-qualified module name so relative imports resolve.
-        # strategy_code_dir is e.g. "modules/quant_engine/strategy/cu_s1"
-        module_name = strategy_code_dir.replace("/", ".").replace("\\", ".").lstrip(".") + ".strategy"
-        package_name = module_name.rsplit(".", 1)[0]
-
-        spec = importlib.util.spec_from_file_location(
-            module_name, strategy_path,
-            submodule_search_locations=[],
-        )
-        mod = importlib.util.module_from_spec(spec)
-        mod.__package__ = package_name
-        sys.modules[module_name] = mod
-        spec.loader.exec_module(mod)
-
-        # Look for strategy_main function
-        strategy_main = getattr(mod, 'strategy_main', None)
-        if strategy_main is None:
-            raise AttributeError(
-                f"[{self.slot_id}] No strategy_main() in {strategy_path}"
-            )
+        loader = StrategyLoader(Path(strategy_code_dir))
+        strategy_main = loader.load_function("strategy", "strategy_main")
 
         # Build indicator column list from loaded market data
         indicator_columns = None
@@ -503,9 +465,10 @@ class TradingSlot:
 
         self.strategy = strategy_main(
             trading_engine=self.engine,
+            strategy_dir=str(strategy_code_dir),
             slot_id=self.slot_config.slot_id,
             strategy_id=self.slot_config.strategy_id,
             indicator_columns=indicator_columns,
             **strategy_params,
         )
-        logger.info(f"[{self.slot_id}] Strategy created from {strategy_path}")
+        logger.info(f"[{self.slot_id}] Strategy created from {strategy_code_dir}")

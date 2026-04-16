@@ -179,39 +179,23 @@ class BacktraderStrategyBridge(bt.Strategy):
         - SessionAwareStrategyHook: For intraday trading (session context)
 
         If strategy_code_dir param is set, loads strategy from that directory
-        via importlib instead of the default platform_agnostic package.
+        via StrategyLoader instead of the default platform_agnostic package.
         """
+        from pathlib import Path
+        from echolon.quant_engine.strategy.loader import StrategyLoader
+        from echolon.config.quant_engine import PLATFORM_AGNOSTIC_DIR
+
         code_dir = self.p.strategy_code_dir
         if code_dir is not None:
-            # Load strategy from custom directory (portfolio slot).
-            # The slot's strategy.py uses relative imports like
-            # "from ...core.base.base_strategy import BaseStrategy"
-            # so it must be loaded as a proper sub-package of
-            # modules.quant_engine.strategy.
-            import importlib
-            from pathlib import Path
-            slot_dir = Path(code_dir)
-            slot_name = slot_dir.name  # e.g. "al_s1"
-            package_name = f"modules.quant_engine.strategy.{slot_name}"
-
-            # Ensure __init__.py exists so Python treats it as a package
-            init_path = slot_dir / "__init__.py"
-            if not init_path.exists():
-                init_path.touch()
-
-            # Import as a proper package so relative imports resolve
-            mod = importlib.import_module(f"{package_name}.strategy")
-            strategy_main = mod.strategy_main
+            loader = StrategyLoader(Path(code_dir))
+            strategy_main = loader.load_function("strategy", "strategy_main")
         else:
-            # Default: load from platform_agnostic package
-            from ...strategy.platform_agnostic.strategy import strategy_main
+            loader = StrategyLoader(Path(PLATFORM_AGNOSTIC_DIR))
+            strategy_main = loader.load_function("strategy", "strategy_main")
 
-        # Create strategy instance with engine.
-        # When using a custom slot dir, inject slot_id so BaseStrategy
-        # resolves components from the slot package instead of platform_agnostic.
-        extra_kwargs = {}
-        if code_dir is not None:
-            extra_kwargs['slot_id'] = Path(code_dir).name
+        # Pass strategy_dir so BaseStrategy resolves components via StrategyLoader.
+        strategy_dir_path = str(code_dir) if code_dir is not None else PLATFORM_AGNOSTIC_DIR
+        extra_kwargs = {'strategy_dir': strategy_dir_path}
 
         self._agnostic_strategy = strategy_main(
             trading_engine=self._engine,

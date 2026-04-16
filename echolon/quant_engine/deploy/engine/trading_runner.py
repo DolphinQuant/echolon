@@ -377,10 +377,16 @@ class TradingRunner:
 
     def _create_strategy(self, strategy_params: Dict[str, Any]):
         """Import and instantiate the platform-agnostic strategy."""
-        from ...strategy.platform_agnostic.strategy import strategy_main
+        from pathlib import Path
+        from echolon.quant_engine.strategy.loader import StrategyLoader
+        from echolon.config.quant_engine import PLATFORM_AGNOSTIC_DIR
+
+        loader = StrategyLoader(Path(PLATFORM_AGNOSTIC_DIR))
+        strategy_main = loader.load_function("strategy", "strategy_main")
 
         self.strategy = strategy_main(
             trading_engine=self.engine,
+            strategy_dir=PLATFORM_AGNOSTIC_DIR,
             **strategy_params,
         )
         self.logger.info("Strategy instance created")
@@ -632,7 +638,12 @@ class TradingRunner:
         Returns:
             Nested strategy parameter dictionary.
         """
-        from ...strategy.platform_agnostic.strategy_params import DEFAULT_PARAMS
+        from pathlib import Path
+        from echolon.quant_engine.strategy.loader import StrategyLoader
+        from echolon.config.quant_engine import PLATFORM_AGNOSTIC_DIR
+
+        loader = StrategyLoader(Path(PLATFORM_AGNOSTIC_DIR))
+        DEFAULT_PARAMS = loader.load_attr("strategy_params", "DEFAULT_PARAMS")
 
         if not trial_params:
             self.logger.warning("No trial parameters -- using defaults")
