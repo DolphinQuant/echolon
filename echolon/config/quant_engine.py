@@ -68,10 +68,9 @@ DEPLOY_CONFIG_DIR = os.path.join(
 BACKTEST_RESULTS_DIR = os.path.join(WORKSPACE_DIR, "current", "backtest")
 STRATEGY_LOG_DIR = BACKTEST_RESULTS_DIR
 
-# Strategy code directory
-PLATFORM_AGNOSTIC_DIR = os.path.join(
-    PROJECT_ROOT, "modules", "quant_engine", "strategy", "platform_agnostic"
-)
+# Strategy code directory — workspace location for generated strategy files.
+# The coding agent writes here; the backtest engine reads via StrategyLoader.
+PLATFORM_AGNOSTIC_DIR = os.path.join(WORKSPACE_DIR, "current", "code")
 
 # Selected robust trial (optimized parameters) - lives with strategy code
 BEST_PARAMS_FILE = os.path.join(PLATFORM_AGNOSTIC_DIR, "selected_robust_trial.json")
