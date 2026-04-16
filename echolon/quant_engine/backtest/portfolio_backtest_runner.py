@@ -6,8 +6,8 @@ Runs BacktestRunner per slot independently, combines equity curves,
 and computes portfolio-level metrics.
 
 Usage:
-    from modules.quant_engine.deploy.config.portfolio_deploy_config import PortfolioDeployConfig
-    from modules.quant_engine.backtest.portfolio_backtest_runner import PortfolioBacktestRunner
+    from echolon.quant_engine.deploy.config.portfolio_deploy_config import PortfolioDeployConfig
+    from echolon.quant_engine.backtest.portfolio_backtest_runner import PortfolioBacktestRunner
 
     config = PortfolioDeployConfig.load("session/portfolio_deploy_config.json")
     runner = PortfolioBacktestRunner(config)
@@ -22,8 +22,8 @@ from typing import Any, Dict, List, Optional
 import numpy as np
 import pandas as pd
 
-from config.markets.factory import MarketFactory
-from config.markets.core.trading_target import TradingTarget
+from echolon.config.markets.factory import MarketFactory
+from echolon.config.markets.core.trading_target import TradingTarget
 from .engine.backtest_runner import BacktestRunner
 from .portfolio_metrics import (
     compute_correlation_matrix,

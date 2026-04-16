@@ -14,7 +14,7 @@ Key differences from BacktestRunner:
 Used by OptunaOptimizer for running many parallel backtests during optimization.
 
 Usage:
-    from config.markets.factory import MarketFactory
+    from echolon.config.markets.factory import MarketFactory
 
     # Get TradingContext (single source of truth)
     ctx = MarketFactory.from_session()
@@ -46,7 +46,7 @@ from .backtrader_strategy import get_strategy_class
 from .enriched_pandas_data import get_cached_data_feed_class
 from .hooks.contract_aware.broker import preload_contract_prices
 from ...logging_utils import setup_backtest_logging
-from config.markets.core.context import TradingContext
+from echolon.config.markets.core.context import TradingContext
 
 if TYPE_CHECKING:
     from ...core.interfaces import IMarketAdapter

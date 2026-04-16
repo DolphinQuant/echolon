@@ -26,7 +26,7 @@ Time zone:
 from datetime import time
 
 # Import from canonical source
-from config.markets.crypto.perpetuals import (
+from echolon.config.markets.crypto.perpetuals import (
     CONTINUOUS_SESSION,
     ALL_SESSIONS,
     TOTAL_TRADING_MINUTES,

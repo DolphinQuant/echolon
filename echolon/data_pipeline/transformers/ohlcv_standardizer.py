@@ -9,9 +9,9 @@ from typing import Optional
 import pandas as pd
 
 from ..schemas.standard_schema import OHLCVSchema
-from modules.quant_engine.market_adapters.shfe.trading_calendar import TradingCalendar
-from config.markets.shfe.phases import get_phase_for_time as get_session_phase
-from config.markets.shfe.sessions import NIGHT as SHFE_NIGHT_SESSION
+from echolon.quant_engine.market_adapters.shfe.trading_calendar import TradingCalendar
+from echolon.config.markets.shfe.phases import get_phase_for_time as get_session_phase
+from echolon.config.markets.shfe.sessions import NIGHT as SHFE_NIGHT_SESSION
 
 logger = logging.getLogger(__name__)
 

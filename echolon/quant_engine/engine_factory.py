@@ -28,7 +28,7 @@ Hook Composition Logic:
     SessionAwareHook: For intraday trading (session context)
 
 Example:
-    from config.markets.factory import MarketFactory
+    from echolon.config.markets.factory import MarketFactory
 
     ctx = MarketFactory.from_session()
     engine = EngineFactory.create_backtest_engine(ctx)
@@ -49,7 +49,7 @@ from .backtest.engine.backtrader_engine import BacktraderEngine
 from .backtest.engine.hooks.contract_aware.hook import ContractAwareHook
 from .backtest.engine.hooks.session_aware import SessionAwareHook
 from .data_loader.contract_data import ContractIndicatorManager
-from config.markets.core.context import TradingContext
+from echolon.config.markets.core.context import TradingContext
 
 if TYPE_CHECKING:
     from .core.interfaces.trading_interfaces import ITradingEngine
@@ -68,7 +68,7 @@ class EngineFactory:
     - Trading engine (backtest or deploy)
 
     Usage:
-        from config.markets.factory import MarketFactory
+        from echolon.config.markets.factory import MarketFactory
 
         ctx = MarketFactory.from_session()
         engine = EngineFactory.create_backtest_engine(ctx)

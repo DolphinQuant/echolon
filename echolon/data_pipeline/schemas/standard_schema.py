@@ -191,7 +191,7 @@ class StandardSchema:
     being consumed by downstream modules.
 
     Usage:
-        >>> from modules.data_pipeline.schemas import StandardSchema
+        >>> from echolon.data_pipeline.schemas import StandardSchema
         >>>
         >>> # Create schema for SHFE daily data
         >>> schema = StandardSchema(market='shfe', frequency='daily')

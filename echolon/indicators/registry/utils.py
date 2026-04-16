@@ -6,7 +6,7 @@ Frequency-based routing for indicator functions.
 Routes to appropriate calculator module based on trading frequency.
 
 Usage:
-    from modules.indicators.registry.utils import get_function, get_indicator_info
+    from echolon.indicators.registry.utils import get_function, get_indicator_info
 
     # For interday (daily bars)
     rsi_func = get_function("RSI", frequency="day")

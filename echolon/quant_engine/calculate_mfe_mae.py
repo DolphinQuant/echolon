@@ -25,8 +25,8 @@ import os
 import logging
 from typing import Dict, List, Optional
 
-from config.quant_engine import MARKET_DATA_DIR, INDICATOR_DIR
-from config.markets.core.context import TradingContext
+from echolon.config.quant_engine import MARKET_DATA_DIR, INDICATOR_DIR
+from echolon.config.markets.core.context import TradingContext
 
 logger = logging.getLogger(__name__)
 
@@ -519,8 +519,8 @@ def calculate_mfe_mae_for_all_trades(
 
 def main():
     """Main function to run MFE/MAE calculation on backtest results."""
-    from config.settings import PROJECT_ROOT
-    from config.markets.factory import MarketFactory
+    from echolon.config.settings import PROJECT_ROOT
+    from echolon.config.markets.factory import MarketFactory
 
     # Setup logging
     logging.basicConfig(

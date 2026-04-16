@@ -37,7 +37,7 @@ from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
 from ...schemas.selected_trial import SelectedTrialSchema
-from config.quant_engine import PLATFORM_AGNOSTIC_DIR
+from echolon.config.quant_engine import PLATFORM_AGNOSTIC_DIR
 
 logger = logging.getLogger(__name__)
 

@@ -5,7 +5,7 @@
 #   is_night_market_open        -- check if night session is open
 #   get_main_contract           -- resolve current main contract code
 
-from modules.data_pipeline.loaders.calendar_loader import (
+from echolon.data_pipeline.loaders.calendar_loader import (
     is_trading_day,
     is_night_market_open,
 )

@@ -14,14 +14,14 @@ This module consolidates all trading components:
 
 Usage:
     # Create engine using factory
-    from modules.quant_engine import EngineFactory, run_backtest
+    from echolon.quant_engine import EngineFactory, run_backtest
 
     # Load config and create backtest engine
     config = EngineFactory.load_config('config.json')
     engine = EngineFactory.create_backtest_engine(config)
 
     # Or run directly
-    from modules.quant_engine.run_backtest import run_backtest
+    from echolon.quant_engine.run_backtest import run_backtest
     results = run_backtest(config_path='config.json')
 """
 

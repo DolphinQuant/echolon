@@ -24,8 +24,8 @@ import json
 from pathlib import Path
 from typing import List, Dict, Tuple
 from dataclasses import dataclass
-from config.settings import WORKSPACE_DIR
-from config.quant_engine import INDICATOR_PERIOD_CAPS, INTRADAY_INDICATOR_PERIOD_CAPS
+from echolon.config.settings import WORKSPACE_DIR
+from echolon.config.quant_engine import INDICATOR_PERIOD_CAPS, INTRADAY_INDICATOR_PERIOD_CAPS
 
 
 @dataclass

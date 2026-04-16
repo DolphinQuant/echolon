@@ -26,9 +26,9 @@ from typing import Dict, Any
 
 import pandas as pd
 
-from config.settings import WORKSPACE_DIR
-from config.quant_engine import PLATFORM_AGNOSTIC_DIR
-from config.markets.core.context import TradingContext
+from echolon.config.settings import WORKSPACE_DIR
+from echolon.config.quant_engine import PLATFORM_AGNOSTIC_DIR
+from echolon.config.markets.core.context import TradingContext
 from .window import WFAWindow, WFAConfig
 from .analyzer import WalkForwardAnalyzer
 from .drs_calculator import compute_drs, DRSConfig
@@ -59,18 +59,18 @@ class WFARunner:
             Dict with final backtest_results.json content including WFA fields.
         """
         # Deferred imports (after cache clearing in orchestrator)
-        from modules.quant_engine.backtest.optimization.optuna_study import OptunaOptimizer
-        from modules.quant_engine.backtest.optimization.select_best_trial import TrialSelector
-        from modules.quant_engine.run_backtest import run_best_trial
-        from modules.quant_engine.engine_factory import EngineFactory
-        from modules.quant_engine.backtest.engine.backtrader_strategy import get_strategy_class
-        from modules.quant_engine.data_loader.SHFE_loader import (
+        from echolon.quant_engine.backtest.optimization.optuna_study import OptunaOptimizer
+        from echolon.quant_engine.backtest.optimization.select_best_trial import TrialSelector
+        from echolon.quant_engine.run_backtest import run_best_trial
+        from echolon.quant_engine.engine_factory import EngineFactory
+        from echolon.quant_engine.backtest.engine.backtrader_strategy import get_strategy_class
+        from echolon.quant_engine.data_loader.SHFE_loader import (
             load_backtest_data, load_indicator_metadata
         )
-        from modules.quant_engine.strategy.platform_agnostic.strategy_params import (
+        from echolon.quant_engine.strategy.platform_agnostic.strategy_params import (
             optuna_search_space, DEFAULT_PARAMS, apply_shared_params, framework
         )
-        from lib.file_operation import clean_backtest_folder
+        from echolon.lib.file_operation import clean_backtest_folder
 
         clean_backtest_folder()
 

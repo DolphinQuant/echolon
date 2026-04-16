@@ -16,8 +16,8 @@ from pathlib import Path
 import pandas as pd
 
 from ..base import BaseExtractor
-from config.settings import PROJECT_ROOT
-from config.markets.factory import MarketFactory
+from echolon.config.settings import PROJECT_ROOT
+from echolon.config.markets.factory import MarketFactory
 
 logger = logging.getLogger(__name__)
 

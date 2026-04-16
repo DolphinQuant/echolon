@@ -5,7 +5,7 @@ OHLCV Data Schema (Legacy Compatibility)
 This module re-exports from standard_schema.py for backwards compatibility.
 For new code, use StandardSchema directly:
 
-    from modules.data_pipeline.schemas import StandardSchema
+    from echolon.data_pipeline.schemas import StandardSchema
 
     schema = StandardSchema(market='shfe', frequency='daily')
     is_valid, errors = schema.validate(df)

@@ -5,7 +5,7 @@ Quant Engine Configuration
 Backtest parameters, optimization settings, and data directories.
 """
 import os
-from config.settings import (
+from echolon.config.settings import (
     WORKSPACE_DIR,
     PROJECT_ROOT,
     MARKET_DATA_DIR as SETTINGS_MARKET_DATA_DIR,

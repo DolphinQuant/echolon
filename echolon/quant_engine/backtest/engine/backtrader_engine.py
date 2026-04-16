@@ -79,7 +79,7 @@ from .analyzers import add_analyzers, extract_analysis_results
 # Hook interface
 from .hooks.base import IEngineHook
 
-from config.markets.core.context import TradingContext
+from echolon.config.markets.core.context import TradingContext
 
 if TYPE_CHECKING:
     from ...data_loader.contract_data import ContractIndicatorManager

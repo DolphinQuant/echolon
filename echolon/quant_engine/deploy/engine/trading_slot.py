@@ -21,8 +21,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Dict, List, Optional
 
-from config.markets.factory import MarketFactory
-from config.markets.core.context import TradingContext
+from echolon.config.markets.factory import MarketFactory
+from echolon.config.markets.core.context import TradingContext
 from ...engine_factory import EngineFactory
 from ...core.base.hooks.forced_exit_strategy_hook import ForcedExitStrategyHook
 from ...core.interfaces.trading_interfaces import Order, OrderStatus
@@ -324,7 +324,7 @@ class TradingSlot:
         Checks per-slot directory first (portfolio mode), falls back to
         per-instrument directory (single-instrument mode).
         """
-        from config.settings import INDICATORS_BACKTEST_DIR
+        from echolon.config.settings import INDICATORS_BACKTEST_DIR
         slot_id = self.slot_config.slot_id
         instrument = self.slot_config.instrument
 

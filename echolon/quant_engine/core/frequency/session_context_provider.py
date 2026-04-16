@@ -34,7 +34,7 @@ from ..interfaces.session_context import (
     SessionContext,
     ISessionContext,
 )
-from config.markets.core.types import SessionPhaseSpec
+from echolon.config.markets.core.types import SessionPhaseSpec
 
 if TYPE_CHECKING:
     from ..interfaces.market_adapter import IMarketAdapter

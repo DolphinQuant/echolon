@@ -11,8 +11,8 @@ from typing import Optional, List
 from datetime import datetime
 from pathlib import Path
 
-from config.quant_engine import MARKET_DATA_DIR
-from modules.quant_engine.market_adapters.shfe.trading_calendar import TradingCalendar
+from echolon.config.quant_engine import MARKET_DATA_DIR
+from echolon.quant_engine.market_adapters.shfe.trading_calendar import TradingCalendar
 
 logger = logging.getLogger(__name__)
 

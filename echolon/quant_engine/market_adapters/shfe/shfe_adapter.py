@@ -33,13 +33,13 @@ from ...core.interfaces.market_adapter import SessionWindow, ContractSpec
 if TYPE_CHECKING:
     from ...core.interfaces.session_context import ISessionContext
 from .shfe_session_provider import SHFESessionProvider
-from config.markets.shfe.sessions import (
+from echolon.config.markets.shfe.sessions import (
     ALL_SESSIONS,
     DAY_SESSIONS,
     SESSIONS as SHFE_SESSIONS,
 )
-from config.markets.shfe.instruments import INSTRUMENTS as SHFE_INSTRUMENTS, NIGHT_SESSION_PRODUCTS
-from config.markets.core.types import InstrumentSpec
+from echolon.config.markets.shfe.instruments import INSTRUMENTS as SHFE_INSTRUMENTS, NIGHT_SESSION_PRODUCTS
+from echolon.config.markets.core.types import InstrumentSpec
 from .trading_calendar import TradingCalendar
 
 # Session aliases for convenience

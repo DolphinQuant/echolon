@@ -239,7 +239,7 @@ class SessionContext:
 # Session Phase Configuration
 # =============================================================================
 # NOTE: SessionPhaseSpec is defined in config/markets/core/types.py
-# Import from there: from config.markets.core.types import SessionPhaseSpec
+# Import from there: from echolon.config.markets.core.types import SessionPhaseSpec
 
 
 # =============================================================================

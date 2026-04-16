@@ -5,7 +5,7 @@ Defines the validated schema for user's trading target configuration.
 This is the single source of truth for state.json structure.
 
 Usage:
-    from config.markets.core.trading_target import TradingTarget
+    from echolon.config.markets.core.trading_target import TradingTarget
 
     # Load and validate state.json
     target = TradingTarget.load()

@@ -25,11 +25,11 @@ from typing import Dict, Optional, TYPE_CHECKING
 from ...core.frequency.session_context_provider import BaseSessionContextProvider
 
 # Import session constants from centralized config (single source of truth)
-from config.markets.core.types import SessionPhaseSpec
-from config.markets.shfe.sessions import SESSIONS as SHFE_SESSIONS
-from config.markets.shfe.phases import PHASES as SHFE_SESSION_PHASES_GRANULAR
-from config.markets.shfe.phases import PHASES_AGGREGATED as SHFE_SESSION_PHASES_AGGREGATED
-from config.markets.shfe.phases import is_aggregated_bar_size_minutes
+from echolon.config.markets.core.types import SessionPhaseSpec
+from echolon.config.markets.shfe.sessions import SESSIONS as SHFE_SESSIONS
+from echolon.config.markets.shfe.phases import PHASES as SHFE_SESSION_PHASES_GRANULAR
+from echolon.config.markets.shfe.phases import PHASES_AGGREGATED as SHFE_SESSION_PHASES_AGGREGATED
+from echolon.config.markets.shfe.phases import is_aggregated_bar_size_minutes
 
 if TYPE_CHECKING:
     from ...core.interfaces.market_adapter import IMarketAdapter

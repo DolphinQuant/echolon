@@ -29,7 +29,7 @@ import pandas as pd
 import requests
 
 from ..base import BaseExtractor
-from config.settings import WORKSPACE_DIR, RAW_DATA_DIR
+from echolon.config.settings import WORKSPACE_DIR, RAW_DATA_DIR
 
 logger = logging.getLogger(__name__)
 

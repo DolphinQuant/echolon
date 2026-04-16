@@ -11,8 +11,8 @@ import logging
 from typing import Optional
 
 from ..base import BaseExtractor
-from config.settings import PROJECT_ROOT
-from config.markets.factory import MarketFactory
+from echolon.config.settings import PROJECT_ROOT
+from echolon.config.markets.factory import MarketFactory
 
 logger = logging.getLogger(__name__)
 
@@ -58,7 +58,7 @@ class SHFEDayExtractor(BaseExtractor):
 
     def _get_default_paths(self) -> dict:
         """Get default input/output paths based on market and asset."""
-        from config.quant_engine import MARKET_DATA_DIR
+        from echolon.config.quant_engine import MARKET_DATA_DIR
 
         dataset_root = os.path.join(PROJECT_ROOT, "data", self.market)
         futures_dir = os.path.join(MARKET_DATA_DIR, self.asset)

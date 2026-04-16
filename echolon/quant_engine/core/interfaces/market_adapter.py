@@ -16,7 +16,7 @@ properly handling market-specific rules like SHFE's contract expiry
 or crypto's 24/7 perpetual trading.
 
 Data classes:
-- SessionWindow: Imported from config.markets.core.types (canonical source)
+- SessionWindow: Imported from echolon.config.markets.core.types (canonical source)
 - ContractSpec: Contract specification (multiplier, tick size, etc.)
 
 Key methods:
@@ -32,7 +32,7 @@ from datetime import date, datetime
 from dataclasses import dataclass
 
 # Import SessionWindow from canonical source
-from config.markets.core.types import SessionWindow
+from echolon.config.markets.core.types import SessionWindow
 
 if TYPE_CHECKING:
     from .session_context import ISessionContext

@@ -17,7 +17,7 @@ Features:
 For optimization (many parallel runs), use OptimizationRunner instead.
 
 Usage:
-    from config.markets.factory import MarketFactory
+    from echolon.config.markets.factory import MarketFactory
 
     # Get TradingContext (single source of truth)
     ctx = MarketFactory.from_session()
@@ -56,14 +56,14 @@ def _get_default_params():
 from ...calculate_mfe_mae import enrich_trades_with_mfe_mae
 from ...schemas.backtest_results import BacktestResultsSchemaV4
 from .backtrader_strategy import get_strategy_class
-from config.settings import PROJECT_ROOT
-from config.quant_engine import (
+from echolon.config.settings import PROJECT_ROOT
+from echolon.config.quant_engine import (
     BACKTEST_START_DATE,
     BACKTEST_END_DATE,
     INDICATOR_DIR,
     MARKET_DATA_DIR,
 )
-from config.markets.core.context import TradingContext
+from echolon.config.markets.core.context import TradingContext
 from ...logging_utils import (
     setup_backtest_logging,
     log_workflow_start,

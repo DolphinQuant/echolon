@@ -23,7 +23,7 @@ from datetime import time
 import pandas as pd
 
 # Import session definitions from single source of truth
-from config.markets.shfe.phases import (
+from echolon.config.markets.shfe.phases import (
     PHASES,
     TRADEABLE_PHASES,
     PHASE_TRADING_MINUTES,

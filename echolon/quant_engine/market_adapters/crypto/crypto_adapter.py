@@ -46,8 +46,8 @@ from .perpetual_rules import (
     is_near_funding,
     estimate_funding_payment,
 )
-from config.markets.crypto.perpetuals import PERPETUALS as CRYPTO_INSTRUMENTS, BARS_PER_DAY
-from config.markets.core.types import InstrumentSpec
+from echolon.config.markets.crypto.perpetuals import PERPETUALS as CRYPTO_INSTRUMENTS, BARS_PER_DAY
+from echolon.config.markets.core.types import InstrumentSpec
 
 
 def instrument_spec_to_contract_spec(spec: InstrumentSpec) -> ContractSpec:

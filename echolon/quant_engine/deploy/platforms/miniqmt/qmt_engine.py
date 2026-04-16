@@ -63,7 +63,7 @@ from ....core.interfaces.market_adapter import IMarketAdapter
 from ....core.interfaces.frequency_context import IFrequencyContext
 from ....core.logging.strategy_logger import CSVStrategyLogger
 
-from config.markets.core.context import TradingContext
+from echolon.config.markets.core.context import TradingContext
 
 if TYPE_CHECKING:
     from .qmt_client import MiniQMTClient

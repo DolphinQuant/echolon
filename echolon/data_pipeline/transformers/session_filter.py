@@ -11,7 +11,7 @@ from typing import List, Optional, Tuple
 import pandas as pd
 
 # Import session definitions from centralized config
-from config.markets.shfe.sessions import ALL_SESSIONS as SHFE_ALL_SESSIONS
+from echolon.config.markets.shfe.sessions import ALL_SESSIONS as SHFE_ALL_SESSIONS
 
 logger = logging.getLogger(__name__)
 

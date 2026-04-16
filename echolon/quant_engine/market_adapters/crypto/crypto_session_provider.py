@@ -28,7 +28,7 @@ from datetime import datetime, time
 from typing import Dict, Optional, TYPE_CHECKING
 
 from ...core.frequency.session_context_provider import BaseSessionContextProvider
-from config.markets.core.types import SessionPhaseSpec
+from echolon.config.markets.core.types import SessionPhaseSpec
 
 if TYPE_CHECKING:
     from ...core.interfaces.market_adapter import IMarketAdapter

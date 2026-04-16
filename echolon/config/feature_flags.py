@@ -5,7 +5,7 @@ This module provides feature flags to enable/disable Skills and Hooks
 functionality for rollback support during the migration.
 
 Usage:
-    from config.feature_flags import FEATURES
+    from echolon.config.feature_flags import FEATURES
 
     if FEATURES['USE_SKILLS']:
         options.setting_sources = ["project"]

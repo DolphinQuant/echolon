@@ -133,7 +133,7 @@ class BacktraderStrategyBridge(bt.Strategy):
         code_dir = self.p.strategy_code_dir
         if code_dir is not None:
             from pathlib import Path
-            from config.quant_engine import INDICATOR_DIR
+            from echolon.config.quant_engine import INDICATOR_DIR
             slot_meta = Path(INDICATOR_DIR) / Path(code_dir).name / "strategy_indicator_metadata.json"
             metadata = load_indicator_metadata(ctx=ctx, metadata_path=str(slot_meta) if slot_meta.exists() else None)
         else:
@@ -425,7 +425,7 @@ class BacktraderStrategyBridge(bt.Strategy):
 # Cache for dynamically created strategy classes (for pickle compatibility)
 _STRATEGY_CLASS_CACHE: Dict[str, Type[bt.Strategy]] = {}
 
-from config.markets.core.context import TradingContext
+from echolon.config.markets.core.context import TradingContext
 
 
 def get_strategy_class(ctx: TradingContext, strategy_code_dir: Optional[str] = None) -> Type[bt.Strategy]:

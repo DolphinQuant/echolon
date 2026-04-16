@@ -18,7 +18,7 @@ Features:
 - Multi-objective optimization support
 
 Usage:
-    from config.markets.factory import MarketFactory
+    from echolon.config.markets.factory import MarketFactory
 
     # Get TradingContext (single source of truth)
     ctx = MarketFactory.from_session()
@@ -60,8 +60,8 @@ from ...logging_utils import (
     log_workflow_success,
     log_workflow_failure,
 )
-from config.quant_engine import INDICATOR_DIR
-from config.markets.core.context import TradingContext
+from echolon.config.quant_engine import INDICATOR_DIR
+from echolon.config.markets.core.context import TradingContext
 
 if TYPE_CHECKING:
     from ...core.interfaces import IMarketAdapter

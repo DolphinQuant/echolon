@@ -5,7 +5,7 @@ This module provides a singleton registry that collects configurations from
 all market-specific modules. Each market module registers itself on import.
 
 Usage:
-    from config.markets.core.registry import MarketRegistry
+    from echolon.config.markets.core.registry import MarketRegistry
 
     # Get specific configurations
     al_spec = MarketRegistry.get_instrument('SHFE', 'al')

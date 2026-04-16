@@ -132,7 +132,7 @@ class DeployConfig:
         Called automatically after load(). Only overrides fields that are
         still empty strings.
         """
-        from config.settings import INDICATORS_BACKTEST_DIR, WORKSPACE_DIR
+        from echolon.config.settings import INDICATORS_BACKTEST_DIR, WORKSPACE_DIR
 
         if not self.indicator_dir:
             self.indicator_dir = str(INDICATORS_BACKTEST_DIR)
@@ -145,7 +145,7 @@ class DeployConfig:
 
         # Resolve trial_params_path from best params file if not set
         if not self.trial_params_path:
-            from config.quant_engine import BEST_PARAMS_FILE
+            from echolon.config.quant_engine import BEST_PARAMS_FILE
             if os.path.exists(BEST_PARAMS_FILE):
                 self.trial_params_path = BEST_PARAMS_FILE
 

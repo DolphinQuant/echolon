@@ -19,7 +19,7 @@ Key Optimization Objectives:
 5. Transition Stability: Regimes should be stable (not flip-flopping)
 
 Usage:
-    from modules.indicators.optimization.interday_regime_optimizer import InterdayRegimeOptimizer
+    from echolon.indicators.optimization.interday_regime_optimizer import InterdayRegimeOptimizer
 
     optimizer = InterdayRegimeOptimizer(data_dir='path/to/contracts')
     best_params, study = optimizer.optimize(n_trials=100)
@@ -43,8 +43,8 @@ import logging
 import json
 from datetime import datetime
 
-from config.quant_engine import INDICATOR_PERIOD_CAPS, BACKTEST_START_DATE
-from config.markets.factory import MarketFactory
+from echolon.config.quant_engine import INDICATOR_PERIOD_CAPS, BACKTEST_START_DATE
+from echolon.config.markets.factory import MarketFactory
 
 logger = logging.getLogger(__name__)
 
@@ -228,8 +228,8 @@ class InterdayRegimeOptimizer:
     #     Loads each selected contract's FULL data (no row-level date filtering)
     #     to preserve indicator lookback warmup and maximize statistical power.
     #     """
-    #     from modules.quant_engine.market_adapters.shfe.contract_rules import _load_main_contract_data
-    #     from config.quant_engine import BACKTEST_END_DATE
+    #     from echolon.quant_engine.market_adapters.shfe.contract_rules import _load_main_contract_data
+    #     from echolon.config.quant_engine import BACKTEST_END_DATE
 
     #     backtest_start = pd.Timestamp(BACKTEST_START_DATE).date()
     #     # backtest_start = pd.Timestamp("2019-01-01").date()

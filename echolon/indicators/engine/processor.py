@@ -21,21 +21,21 @@ import json
 from datetime import datetime
 
 # Data pipeline loaders for standardized data access
-from modules.data_pipeline.loaders.ohlcv_loader import (
+from echolon.data_pipeline.loaders.ohlcv_loader import (
     load_contract_ohlcv,
     get_available_contracts,
 )
 # SHFE contract rules (main contract lookup, expiry date)
-from modules.quant_engine.market_adapters.shfe.contract_rules import get_main_contract, get_expiry_date
-from modules.data_pipeline.loaders.session_availability_loader import (
+from echolon.quant_engine.market_adapters.shfe.contract_rules import get_main_contract, get_expiry_date
+from echolon.data_pipeline.loaders.session_availability_loader import (
     get_session_availability_loader,
 )
 from ..registry.utils import get_indicator_info, get_function
-from modules.market_metrics.utils.indicator_loader import get_analysis_indicator_list
-from modules.quant_engine.types import validate_indicator_list_json
-from config.settings import PROJECT_ROOT, OUTPUT_DIR
-from config.markets.core.context import TradingContext
-from config.quant_engine import MARKET_DATA_DIR, BACKTEST_START_DATE
+from echolon.market_metrics.utils.indicator_loader import get_analysis_indicator_list
+from echolon.quant_engine.types import validate_indicator_list_json
+from echolon.config.settings import PROJECT_ROOT, OUTPUT_DIR
+from echolon.config.markets.core.context import TradingContext
+from echolon.config.quant_engine import MARKET_DATA_DIR, BACKTEST_START_DATE
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -781,7 +781,7 @@ class IndicatorProcessor:
         Returns:
             Dict mapping indicator names to calculated values
         """
-        from modules.indicators.calculators.intraday.indicators import (
+        from echolon.indicators.calculators.intraday.indicators import (
             bar_of_day,
             bars_remaining,
             total_bars_today,

@@ -8,7 +8,7 @@ All functions accept TradingContext (ctx) as the single source of truth
 for market and instrument configuration.
 
 Usage:
-    from config.markets.factory import MarketFactory
+    from echolon.config.markets.factory import MarketFactory
 
     ctx = MarketFactory.from_session()
     indicators, calendar = load_backtest_data(ctx)
@@ -21,9 +21,9 @@ import json
 import logging
 from typing import Dict, Any, Optional
 
-from config.quant_engine import INDICATOR_DIR, MARKET_DATA_DIR
-from config.markets.factory import MarketFactory
-from config.markets.core.context import TradingContext
+from echolon.config.quant_engine import INDICATOR_DIR, MARKET_DATA_DIR
+from echolon.config.markets.factory import MarketFactory
+from echolon.config.markets.core.context import TradingContext
 
 logger = logging.getLogger(__name__)
 

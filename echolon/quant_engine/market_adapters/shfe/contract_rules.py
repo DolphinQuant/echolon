@@ -29,7 +29,7 @@ from pathlib import Path
 
 import pandas as pd
 
-from config.settings import RAW_DATA_DIR
+from echolon.config.settings import RAW_DATA_DIR
 from .trading_calendar import TradingCalendar, get_last_trading_day_of_month
 
 # Cache for main contract data to avoid repeated file reads

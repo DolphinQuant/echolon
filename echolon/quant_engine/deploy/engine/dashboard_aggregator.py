@@ -17,7 +17,7 @@ import os
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
-from config.markets.factory import MarketFactory
+from echolon.config.markets.factory import MarketFactory
 from ..config.portfolio_deploy_config import PortfolioDeployConfig, SlotConfig
 from .dashboard_data_generator import generate_dashboard_data
 

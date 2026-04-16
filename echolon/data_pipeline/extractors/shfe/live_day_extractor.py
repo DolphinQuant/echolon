@@ -24,8 +24,8 @@ from typing import Dict, List, Optional, Set
 import pandas as pd
 
 from ..base import BaseExtractor
-from config.markets.factory import MarketFactory
-from config.settings import PROJECT_ROOT
+from echolon.config.markets.factory import MarketFactory
+from echolon.config.settings import PROJECT_ROOT
 
 logger = logging.getLogger(__name__)
 
@@ -446,7 +446,7 @@ class SHFELiveDayExtractor(BaseExtractor):
         present_str = self.present_date.strftime('%Y%m%d')
 
         try:
-            from modules.data_pipeline.loaders.calendar_loader import (
+            from echolon.data_pipeline.loaders.calendar_loader import (
                 load_trading_calendar,
             )
             calendar_df = load_trading_calendar(self.market, self.asset)

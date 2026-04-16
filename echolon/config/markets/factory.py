@@ -5,7 +5,7 @@ This is the primary entry point for obtaining market configuration.
 It reads session/state.json and returns a fully configured TradingContext.
 
 Usage:
-    from config.markets.factory import MarketFactory
+    from echolon.config.markets.factory import MarketFactory
 
     # Create from session state (most common)
     ctx = MarketFactory.from_session()
@@ -27,10 +27,10 @@ import json
 from pathlib import Path
 from typing import Optional
 
-from config.markets.core.context import TradingContext
-from config.markets.core.types import MarketConfig, InstrumentSpec
-from config.markets.core.trading_target import TradingTarget, TradingTargetConfigSchema
-from config.settings import SESSION_DIR, OUTPUT_DIR
+from echolon.config.markets.core.context import TradingContext
+from echolon.config.markets.core.types import MarketConfig, InstrumentSpec
+from echolon.config.markets.core.trading_target import TradingTarget, TradingTargetConfigSchema
+from echolon.config.settings import SESSION_DIR, OUTPUT_DIR
 
 
 class MarketFactory:
@@ -214,10 +214,10 @@ class MarketFactory:
     def _load_market(cls, market_code: str) -> None:
         """Load market configuration module."""
         if market_code == 'SHFE':
-            from config.markets.shfe.config import CONFIG
+            from echolon.config.markets.shfe.config import CONFIG
             cls._market_configs['SHFE'] = CONFIG
         elif market_code == 'CRYPTO':
-            from config.markets.crypto.config import CONFIG
+            from echolon.config.markets.crypto.config import CONFIG
             cls._market_configs['CRYPTO'] = CONFIG
         # Add more markets here as needed
 
@@ -237,7 +237,7 @@ class MarketFactory:
             Tuple of (encode_fn, decode_fn) with bar_size baked in
         """
         if market_code == 'SHFE':
-            from config.markets.shfe.phases import encode_phase, decode_phase
+            from echolon.config.markets.shfe.phases import encode_phase, decode_phase
             # Create bar_size-aware functions
             return (
                 lambda phase_str: encode_phase(phase_str, bar_size),

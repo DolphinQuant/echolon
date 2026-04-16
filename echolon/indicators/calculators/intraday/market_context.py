@@ -42,7 +42,7 @@ import talib
 from typing import Dict, Optional
 import logging
 
-from config.markets.shfe.phases import (
+from echolon.config.markets.shfe.phases import (
     get_phase_for_time as get_session_phase,
     get_tradeable_phases,
     is_aggregated_bar_size,

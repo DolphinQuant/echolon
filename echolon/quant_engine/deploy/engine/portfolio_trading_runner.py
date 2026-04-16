@@ -48,15 +48,15 @@ from ...core.interfaces.trading_interfaces import Order, OrderIntent, OrderStatu
 from .capital_slot import CapitalSlot
 from .trading_slot import TradingSlot
 from .portfolio_risk_overlay import PortfolioRiskOverlay
-from modules.data_pipeline.loaders.calendar_loader import (
+from echolon.data_pipeline.loaders.calendar_loader import (
     get_trading_dates,
     is_trading_day,
     is_night_market_open,
 )
-from config.settings import MARKET_DATA_DIR
-from modules.data_pipeline.run_pipeline import run_data_pipeline
-from modules.indicators.run_indicators import run_indicator_calculation
-from config.markets.factory import MarketFactory
+from echolon.config.settings import MARKET_DATA_DIR
+from echolon.data_pipeline.run_pipeline import run_data_pipeline
+from echolon.indicators.run_indicators import run_indicator_calculation
+from echolon.config.markets.factory import MarketFactory
 
 import logging
 
@@ -500,7 +500,7 @@ class PortfolioTradingRunner:
         per instrument.
         """
         import json as _json
-        from modules.indicators.utils.merge_indicators import load_indicator_list
+        from echolon.indicators.utils.merge_indicators import load_indicator_list
         from ..platforms.miniqmt.xtdc_client import XtdcClient
 
         # Connect XtdcClient once for all instruments
@@ -559,7 +559,7 @@ class PortfolioTradingRunner:
                 regime_params = regime_data.get('params', regime_data)
 
             # Output to per-slot indicator directory
-            from config.settings import INDICATORS_BACKTEST_DIR
+            from echolon.config.settings import INDICATORS_BACKTEST_DIR
             slot_indicator_dir = os.path.join(INDICATORS_BACKTEST_DIR, sc.slot_id)
 
             self.log.info(f"Indicators: {sc.slot_id} -> {slot_indicator_dir}")
@@ -1234,7 +1234,7 @@ class PortfolioTradingRunner:
         available. Mirrors TradingRunner._ensure_trading_calendar() but
         iterates all unique (market, instrument) pairs from enabled slots.
         """
-        from modules.data_pipeline.extractors.shfe.live_day_extractor import SHFELiveDayExtractor
+        from echolon.data_pipeline.extractors.shfe.live_day_extractor import SHFELiveDayExtractor
 
         seen = set()
         for sc in self.config.get_enabled_slots():

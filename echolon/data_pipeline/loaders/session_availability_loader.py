@@ -24,8 +24,8 @@ from typing import Dict, Optional
 
 import pandas as pd
 
-from config.settings import MARKET_DATA_DIR
-from config.markets.shfe.phases import (
+from echolon.config.settings import MARKET_DATA_DIR
+from echolon.config.markets.shfe.phases import (
     get_phase_trading_bars,
     get_tradeable_phases,
     is_aggregated_bar_size,

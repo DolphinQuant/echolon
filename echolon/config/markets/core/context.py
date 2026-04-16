@@ -6,7 +6,7 @@ needed by trading modules. It's created by MarketFactory from session state
 and passed to modules via dependency injection.
 
 Usage:
-    from config.markets.factory import MarketFactory
+    from echolon.config.markets.factory import MarketFactory
 
     # Create context from session state
     ctx = MarketFactory.from_session()
@@ -164,11 +164,11 @@ class TradingContext:
 
         # Get from market-specific constants
         if self.market_code == 'SHFE':
-            from config.markets.shfe.constants import BARS_PER_DAY, BARS_PER_DAY_NO_NIGHT
+            from echolon.config.markets.shfe.constants import BARS_PER_DAY, BARS_PER_DAY_NO_NIGHT
             bars_map = BARS_PER_DAY if self.has_night_session else BARS_PER_DAY_NO_NIGHT
             return bars_map.get(self.bar_size)
         elif self.market_code == 'CRYPTO':
-            from config.markets.crypto.perpetuals import BARS_PER_DAY
+            from echolon.config.markets.crypto.perpetuals import BARS_PER_DAY
             return BARS_PER_DAY.get(self.bar_size, 288)
 
         return 1  # Default for unknown markets
@@ -177,7 +177,7 @@ class TradingContext:
     def trading_minutes_per_day(self) -> int:
         """Total trading minutes per day."""
         if self.market_code == 'SHFE':
-            from config.markets.shfe.constants import TOTAL_TRADING_MINUTES, DAY_TRADING_MINUTES
+            from echolon.config.markets.shfe.constants import TOTAL_TRADING_MINUTES, DAY_TRADING_MINUTES
             return TOTAL_TRADING_MINUTES if self.has_night_session else DAY_TRADING_MINUTES
         elif self.market_code == 'CRYPTO':
             return 24 * 60  # 1440 minutes
@@ -376,7 +376,7 @@ class TradingContext:
             Expected number of bars in that session
         """
         if self.market_code == 'SHFE':
-            from config.markets.shfe.constants import get_session_bars
+            from echolon.config.markets.shfe.constants import get_session_bars
             return get_session_bars(self.bar_size, session_phase, self.has_night_session)
         elif self.market_code == 'CRYPTO':
             # Crypto has 24h continuous - divide by 3 for "sessions"
@@ -513,7 +513,7 @@ class TradingContext:
             False for 5m/15m bars (uses night, morning, afternoon)
         """
         if self.market_code == 'SHFE' and self.is_intraday:
-            from config.markets.shfe.phases import is_aggregated_bar_size
+            from echolon.config.markets.shfe.phases import is_aggregated_bar_size
             return is_aggregated_bar_size(self.bar_size)
         return False
 
@@ -527,7 +527,7 @@ class TradingContext:
             ['night_session', 'day_session'] for 30m/1h
         """
         if self.market_code == 'SHFE' and self.is_intraday:
-            from config.markets.shfe.phases import get_tradeable_phases
+            from echolon.config.markets.shfe.phases import get_tradeable_phases
             return get_tradeable_phases(self.bar_size)
         # Default: return all trading phase names
         return [p.name for p in self.trading_phases]
@@ -543,7 +543,7 @@ class TradingContext:
             Expected number of bars in that phase
         """
         if self.market_code == 'SHFE':
-            from config.markets.shfe.phases import get_phase_trading_bars
+            from echolon.config.markets.shfe.phases import get_phase_trading_bars
             return get_phase_trading_bars(
                 phase, self.bar_size_minutes, bar_size=self.bar_size
             )
@@ -561,7 +561,7 @@ class TradingContext:
             Number of buffer bars
         """
         if self.market_code == 'SHFE':
-            from config.markets.shfe.phases import get_phase_buffer_bars
+            from echolon.config.markets.shfe.phases import get_phase_buffer_bars
             return get_phase_buffer_bars(
                 phase, buffer_type, self.bar_size_minutes, bar_size=self.bar_size
             )
@@ -578,7 +578,7 @@ class TradingContext:
             Phase name appropriate for current bar size, or None
         """
         if self.market_code == 'SHFE':
-            from config.markets.shfe.phases import get_phase_for_time
+            from echolon.config.markets.shfe.phases import get_phase_for_time
             return get_phase_for_time(t, bar_size=self.bar_size)
         return self.get_phase_for_time(t)
 
@@ -591,6 +591,6 @@ class TradingContext:
             Description of granular vs aggregated session design
         """
         if self.market_code == 'SHFE' and self.is_intraday:
-            from config.markets.shfe.phases import get_design_paradigm_description
+            from echolon.config.markets.shfe.phases import get_design_paradigm_description
             return get_design_paradigm_description(self.bar_size)
         return "Standard session-based design"
