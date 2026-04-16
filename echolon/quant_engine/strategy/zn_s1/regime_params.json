@@ -1,0 +1,40 @@
+{
+  "params": {
+    "fast_ma_period": 20,
+    "slow_ma_period": 37,
+    "adx_period": 10,
+    "adx_trend_threshold": 19.685274752253655,
+    "atr_period": 48,
+    "vol_lookback": 95,
+    "vol_high_percentile": 65.73169650675918,
+    "min_regime_bars": 5,
+    "chop_period": 13,
+    "chop_threshold": 52.96521314455492
+  },
+  "score": 0.9348934773813626,
+  "validation_passed": true,
+  "metrics": {
+    "trending_up_return": 0.15360474026525345,
+    "trending_down_return": -0.14899508880675444,
+    "ranging_return": 0.01725879363957814,
+    "volatile_return": 0.048222690349425584,
+    "return_separation": 0.3025998290720079,
+    "segment_up_return": 2.3163284303337703,
+    "segment_down_return": -2.440532533152818,
+    "direction_alignment_score": 0.7545454545454545,
+    "volatility_coherence_score": 1.0,
+    "trending_up_pct": 19.71320257128729,
+    "trending_down_pct": 15.89335750782924,
+    "ranging_pct": 54.48739080270315,
+    "volatile_pct": 9.90604911818032,
+    "balance_score": 0.9551260919729685,
+    "transition_stability": 0.9544667875391462,
+    "avg_regime_duration": 19.42994395516413,
+    "n_bars": 24268,
+    "n_segments": 1249,
+    "composite_score": 0.9348934773813626
+  },
+  "optimized_at": "2026-03-25T10:40:00.948673",
+  "n_trials": 400,
+  "futures": "zinc"
+}

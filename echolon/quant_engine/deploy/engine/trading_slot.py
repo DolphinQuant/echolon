@@ -1,0 +1,511 @@
+"""
+Trading Slot
+============
+
+Per-instrument/strategy wrapper that encapsulates everything needed to
+run one strategy in the multi-slot portfolio.
+
+Lifecycle per daily cycle:
+1. initialize(present_date) — build engine, load data, restore state
+2. execute_bar()           — mark-to-market then strategy.on_bar()
+3. save_state()            — atomic persist (strategy + VP + capital)
+4. reset_daily_state()     — clear per-day flags for next cycle
+"""
+
+import importlib.util
+import json
+import logging
+import os
+import sys
+from datetime import datetime
+from pathlib import Path
+from typing import Any, Dict, List, Optional
+
+from config.markets.factory import MarketFactory
+from config.markets.core.context import TradingContext
+from ...engine_factory import EngineFactory
+from ...core.base.hooks.forced_exit_strategy_hook import ForcedExitStrategyHook
+from ...core.interfaces.trading_interfaces import Order, OrderStatus
+from ..config.portfolio_deploy_config import SlotConfig
+from ..data_pipeline import get_main_contract
+from .capital_slot import CapitalSlot
+from .slot_aware_portfolio import SlotAwarePortfolio
+
+logger = logging.getLogger(__name__)
+
+
+class TradingSlot:
+    """
+    Per-slot wrapper for one instrument/strategy combination.
+
+    Holds: SlotConfig, TradingContext, QMTEngine (deferred), CapitalSlot,
+    SlotAwarePortfolio, strategy instance, and state file path.
+    """
+
+    def __init__(self, slot_config: SlotConfig, deploy_data_dir: str):
+        self.slot_config = slot_config
+        self.deploy_data_dir = deploy_data_dir
+
+        # Populated during initialize()
+        self.ctx: Optional[TradingContext] = None
+        self.engine = None
+        self.strategy = None
+        self.capital_slot: Optional[CapitalSlot] = None
+        self.portfolio: Optional[SlotAwarePortfolio] = None
+        self.trading_contract: Optional[str] = None
+
+        # State
+        self._state_path: Optional[str] = None
+        self.is_errored: bool = False
+        self.error_message: str = ""
+        self.todays_processed_fills: List[Dict[str, Any]] = []
+
+    @property
+    def slot_id(self) -> str:
+        return self.slot_config.slot_id
+
+    # =========================================================================
+    # Initialize
+    # =========================================================================
+
+    def initialize(self, present_date: datetime, calendar_path: Optional[str] = None) -> None:
+        """
+        Full initialization for a trading day.
+
+        Steps:
+        1. Create TradingContext from SlotConfig
+        2. Create QMTEngine via EngineFactory (deferred_execution=True)
+        3. Resolve main contract, set_trading_contract
+        4. Load indicators, set_current_bar(today)
+        5. Validate required indicators exist
+        6. Load state file (handle cold start)
+        7. Create CapitalSlot, SlotAwarePortfolio, restore VP
+        8. Replace engine._portfolio with SlotAwarePortfolio
+        9. Dynamic import strategy from strategy_code_dir
+        10. Add ForcedExitStrategyHook
+        11. strategy.on_start(), strategy.restore_state()
+        """
+        sc = self.slot_config
+        slot_id = sc.slot_id
+
+        # Step 1: Create TradingContext
+        self.ctx = MarketFactory.create(
+            market=sc.market,
+            instrument=sc.instrument_code,
+            frequency=sc.frequency,
+            bar_size=sc.bar_size,
+        )
+        logger.info(f"[{slot_id}] TradingContext created: {sc.market}/{sc.instrument_code}/{sc.bar_size}")
+
+        # Step 2: Create QMTEngine (deferred)
+        self.engine = EngineFactory.create_deploy_engine(
+            ctx=self.ctx,
+            calendar_path=calendar_path,
+            client=None,  # Client set later by runner
+            platform="miniqmt",
+        )
+        # Enable deferred execution on the order manager
+        order_mgr = self.engine.get_order_manager()
+        order_mgr._deferred_execution = True
+        logger.info(f"[{slot_id}] QMTEngine created (deferred execution)")
+
+        # Step 3: Resolve main contract
+        self.trading_contract = get_main_contract(present_date, symbol=sc.instrument_code)
+        self.engine.set_trading_contract(self.trading_contract)
+        logger.info(f"[{slot_id}] Main contract: {self.trading_contract}")
+
+        # Step 4: Load indicators
+        indicators_path = self._get_indicators_path()
+        self.engine.load_data(indicators_path)
+        market_data = self.engine.get_market_data()
+        today_dt = datetime.combine(present_date.date(), datetime.min.time())
+        market_data.set_current_bar(today_dt)
+        logger.info(f"[{slot_id}] Indicators loaded, bar set to {today_dt.date()}")
+
+        # Step 5: Validate required indicators
+        self._validate_indicators()
+
+        # Step 6: Load state
+        self._state_path = os.path.join(
+            self.deploy_data_dir, slot_id, "strategy_state.json"
+        )
+        state_data = self._load_state_file()
+
+        # Step 6.5: If position exists on a different contract than today's
+        # main contract, override the trading contract to the position's
+        # contract so exit orders go to the correct contract.
+        position_symbol = state_data.get('position_symbol', '')
+        position_size = state_data.get('position_size', 0)
+        if position_symbol and position_size != 0 and position_symbol != self.trading_contract:
+            logger.warning(
+                f"[{slot_id}] Contract mismatch: position on {position_symbol} "
+                f"but main contract is {self.trading_contract}. "
+                f"Overriding trading contract to {position_symbol} for exit."
+            )
+            self.trading_contract = position_symbol
+            self.engine.set_trading_contract(position_symbol)
+
+        # Step 7: Create CapitalSlot and SlotAwarePortfolio
+        capital_data = state_data.get('custom', {}).get('capital', None)
+        if capital_data:
+            self.capital_slot = CapitalSlot.from_dict(capital_data)
+        else:
+            self.capital_slot = CapitalSlot(
+                slot_id=slot_id,
+                initial_capital=sc.initial_capital,
+            )
+
+        self.portfolio = SlotAwarePortfolio(
+            market_data=market_data,
+            capital_slot=self.capital_slot,
+            multiplier=int(self.ctx.multiplier),
+            margin_rate=self.ctx.margin_rate,
+        )
+        self.portfolio.restore_state(state_data)
+
+        # Step 8: Replace engine portfolio (and order manager's reference)
+        self.engine._portfolio = self.portfolio
+        self.engine._order_manager._portfolio = self.portfolio
+        logger.info(f"[{slot_id}] Portfolio replaced with SlotAwarePortfolio")
+
+        # Step 9: Dynamic import strategy
+        strategy_params = self._load_and_map_trial_params()
+        self._import_and_create_strategy(strategy_params)
+
+        # Step 10: Add ForcedExitStrategyHook
+        hook = ForcedExitStrategyHook(
+            market_adapter=self.engine.get_market_adapter()
+        )
+        self.strategy.add_hook(hook)
+
+        # Step 11: Start and restore
+        self.strategy.on_start()
+        self.strategy.restore_state(self._state_path)
+
+        logger.info(f"[{slot_id}] Initialization complete")
+
+    # =========================================================================
+    # Execute
+    # =========================================================================
+
+    def execute_bar(self) -> None:
+        """Execute one bar: mark-to-market then strategy.on_bar()."""
+        current_price = self.engine.get_market_data().get_current_price()
+        self.portfolio.update_mark_to_market(current_price)
+        self.strategy.on_bar()
+
+    # =========================================================================
+    # Pending orders
+    # =========================================================================
+
+    def get_pending_orders(self) -> List[Order]:
+        """Get all pending/deferred orders from this slot's order manager."""
+        return self.engine.get_order_manager().get_pending_orders()
+
+    # =========================================================================
+    # State persistence
+    # =========================================================================
+
+    def save_state(self) -> None:
+        """Atomic save: strategy state + VP + capital in one JSON."""
+        if self._state_path is None:
+            return
+
+        # Save strategy state first
+        self.strategy.save_state(self._state_path)
+
+        # Now load, augment with VP + capital, re-save
+        with open(self._state_path, 'r') as f:
+            state_data = json.load(f)
+
+        # Sync bars_in_position from exit rule component (authoritative source),
+        # but only if there's an active position.
+        has_position = self.portfolio and self.portfolio.get_position() and self.portfolio.get_position().size > 0
+        if has_position:
+            components = state_data.get('custom', {}).get('components', {})
+            exit_state = components.get('exit_rule', {})
+            if 'bars_in_position' in exit_state:
+                state_data['bars_in_position'] = exit_state['bars_in_position']
+        else:
+            # No position — ensure top-level is 0 and reset exit component
+            # if it still has stale per-trade state (e.g., should_exit was
+            # never called this cycle because strategy skipped exit eval).
+            state_data['bars_in_position'] = 0
+            if self.strategy and hasattr(self.strategy, 'exit_rule'):
+                self.strategy.exit_rule._reset_state()
+                # Re-serialize reset state into state_data. strategy.save_state()
+                # already wrote the stale version before _reset_state() was called.
+                if 'custom' in state_data and 'components' in state_data['custom']:
+                    state_data['custom']['components']['exit_rule'] = (
+                        self.strategy.exit_rule.get_state()
+                    )
+
+        # Sync daily_pnl and last_trading_date
+        state_data['daily_pnl'] = (
+            self.capital_slot.realized_pnl + self.portfolio.get_unrealized_pnl()
+        )
+        state_data['last_trading_date'] = datetime.now().date().isoformat()
+
+        # Merge VP state
+        vp_state = self.portfolio.save_state()
+        state_data.update(vp_state)
+
+        # Merge capital into custom
+        if 'custom' not in state_data:
+            state_data['custom'] = {}
+        state_data['custom']['capital'] = self.capital_slot.save_dict()
+
+        # Atomic write
+        tmp_path = self._state_path + '.tmp'
+        os.makedirs(os.path.dirname(self._state_path), exist_ok=True)
+        with open(tmp_path, 'w') as f:
+            json.dump(state_data, f, indent=2, default=str)
+        os.replace(tmp_path, self._state_path)
+
+        logger.info(f"[{self.slot_id}] State saved")
+
+    # =========================================================================
+    # Fill notification (called by PortfolioTradingRunner after async fill)
+    # =========================================================================
+
+    def notify_fill(self, symbol: str, side: str, size: float,
+                    price: float, bar_count: int) -> None:
+        """Update top-level StrategyState fields after an async fill.
+
+        The state manager fields (position_entry_datetime, bars_in_position,
+        daily_trades_count, last_trade_bar) are not updated by the strategy's
+        on_bar() flow. This method bridges the gap so save_state() persists
+        accurate data.
+        """
+        if self._state_path is None:
+            return
+        from ...core.base.state_manager import StateManager
+        sm = StateManager(state_path=self._state_path)
+        sm.load_state()
+
+        if side in ("LONG", "SHORT"):
+            # Entry fill
+            sm.update_position(symbol, size, side, price, datetime.now())
+        elif side == "FLAT":
+            # Exit fill
+            sm.clear_position()
+            # Reset exit rule component so stale stop/TP/bars don't persist
+            if self.strategy and hasattr(self.strategy, 'exit_rule'):
+                self.strategy.exit_rule._reset_state()
+
+        sm.update_daily_stats()
+        state = sm.get_state()
+        state.last_trade_bar = bar_count
+        sm.save_state()
+
+    # =========================================================================
+    # Daily reset
+    # =========================================================================
+
+    def reset_daily_state(self) -> None:
+        """Clear per-day flags for next cycle."""
+        self.is_errored = False
+        self.error_message = ""
+        self.todays_processed_fills.clear()
+
+    def mark_error(self, msg: str) -> None:
+        """Mark this slot as errored for the current cycle."""
+        self.is_errored = True
+        self.error_message = msg
+        logger.error(f"[{self.slot_id}] SLOT ERROR: {msg}")
+
+    # =========================================================================
+    # Internal helpers
+    # =========================================================================
+
+    def _get_indicators_path(self) -> str:
+        """Get path to the strategy indicators CSV.
+
+        Checks per-slot directory first (portfolio mode), falls back to
+        per-instrument directory (single-instrument mode).
+        """
+        from config.settings import INDICATORS_BACKTEST_DIR
+        slot_id = self.slot_config.slot_id
+        instrument = self.slot_config.instrument
+
+        # Per-slot path (written by PortfolioTradingRunner phase 0)
+        slot_path = os.path.join(INDICATORS_BACKTEST_DIR, slot_id, "strategy_indicators.csv")
+        if os.path.exists(slot_path):
+            return slot_path
+
+        # Fallback: per-instrument path (single-instrument mode)
+        return os.path.join(INDICATORS_BACKTEST_DIR, instrument, "strategy_indicators.csv")
+
+    def _validate_indicators(self) -> None:
+        """Validate that required indicators exist in the CSV.
+
+        The strategy_indicator_list.json has the structure:
+        {
+            "indicators_with_lookback": {"aroonosc": [15, 17], ...},
+            "indicators_without_lookback": ["ad", ...],
+            "indicators_with_special_params": ["market_regime", ...]
+        }
+
+        Extract actual indicator names from all categories and check
+        that each has at least one matching column in the CSV.
+        """
+        indicator_list_path = os.path.join(
+            self.slot_config.strategy_code_dir, "strategy_indicator_list.json"
+        )
+        if not os.path.exists(indicator_list_path):
+            logger.warning(f"[{self.slot_id}] No indicator list file, skipping validation")
+            return
+
+        with open(indicator_list_path, 'r') as f:
+            indicator_list = json.load(f)
+
+        # Extract indicator names from the categorized structure
+        indicator_names = set()
+        with_lookback = indicator_list.get('indicators_with_lookback', {})
+        if isinstance(with_lookback, dict):
+            indicator_names.update(with_lookback.keys())
+        without_lookback = indicator_list.get('indicators_without_lookback', [])
+        if isinstance(without_lookback, list):
+            indicator_names.update(without_lookback)
+        with_special = indicator_list.get('indicators_with_special_params', [])
+        if isinstance(with_special, list):
+            indicator_names.update(with_special)
+
+        if not indicator_names:
+            logger.warning(f"[{self.slot_id}] No indicator names found in config, skipping validation")
+            return
+
+        # Check that each indicator has at least one matching column.
+        # Indicators with lookback produce columns like "aroonosc_15",
+        # "aroonosc_16" etc., so we check for prefix match, not exact.
+        market_data = self.engine.get_market_data()
+        columns = [c.lower() for c in market_data._df.columns] if market_data._df is not None else []
+        missing = []
+        for name in sorted(indicator_names):
+            name_lower = name.lower()
+            # Exact match OR prefix match (e.g. "atr" matches "atr_10")
+            found = any(c == name_lower or c.startswith(name_lower + "_") for c in columns)
+            if not found:
+                missing.append(name)
+
+        if missing:
+            logger.warning(f"[{self.slot_id}] Missing indicators in CSV: {missing}")
+
+    def _load_state_file(self) -> Dict[str, Any]:
+        """Load state file, return empty dict for cold start."""
+        if self._state_path and os.path.exists(self._state_path):
+            with open(self._state_path, 'r') as f:
+                return json.load(f)
+        return {}
+
+    def _load_and_map_trial_params(self) -> Dict[str, Any]:
+        """Load trial params and map to strategy structure."""
+        trial_path = self.slot_config.trial_params_path
+        if not trial_path or not os.path.exists(trial_path):
+            logger.info(f"[{self.slot_id}] No trial params, using defaults")
+            return {}
+
+        with open(trial_path, 'r') as f:
+            config_data = json.load(f)
+
+        trial_params = config_data.get('params', {})
+        if not trial_params:
+            return {}
+
+        # Load DEFAULT_PARAMS from the slot's strategy code
+        strategy_code_dir = self.slot_config.strategy_code_dir
+        params_path = os.path.join(strategy_code_dir, "strategy_params.py")
+
+        if os.path.exists(params_path):
+            # Derive the fully-qualified module name so relative imports
+            # (e.g. from ...core.base.parameter_architecture) resolve correctly.
+            # strategy_code_dir is e.g. "modules/quant_engine/strategy/cu_s1"
+            module_name = strategy_code_dir.replace("/", ".").replace("\\", ".") + ".strategy_params"
+            # Strip leading dots if path started with ./
+            module_name = module_name.lstrip(".")
+            spec = importlib.util.spec_from_file_location(module_name, params_path,
+                submodule_search_locations=[])
+            mod = importlib.util.module_from_spec(spec)
+            mod.__package__ = module_name.rsplit(".", 1)[0]
+            import sys
+            sys.modules[module_name] = mod
+            spec.loader.exec_module(mod)
+            default_params = getattr(mod, 'DEFAULT_PARAMS', {})
+        else:
+            default_params = {}
+
+        # Start from defaults
+        strategy_params = {}
+        for key, value in default_params.items():
+            strategy_params[key] = value.copy() if isinstance(value, dict) else value
+
+        # Map prefixed trial params to component dicts
+        prefix_map = {
+            "entry_": "entry_params",
+            "exit_": "exit_params",
+            "risk_": "risk_params",
+            "sizer_": "sizer_params",
+            "size_": "sizer_params",
+        }
+
+        for param_name, param_value in trial_params.items():
+            mapped = False
+            for prefix, component_key in prefix_map.items():
+                if param_name.startswith(prefix):
+                    local_name = param_name[len(prefix):]
+                    if component_key in strategy_params:
+                        strategy_params[component_key][local_name] = param_value
+                        mapped = True
+                        break
+            if not mapped and param_name in strategy_params:
+                strategy_params[param_name] = param_value
+
+        return strategy_params
+
+    def _import_and_create_strategy(self, strategy_params: Dict[str, Any]) -> None:
+        """Dynamically import strategy from strategy_code_dir."""
+        strategy_code_dir = self.slot_config.strategy_code_dir
+        strategy_path = os.path.join(strategy_code_dir, "strategy.py")
+
+        if not os.path.exists(strategy_path):
+            raise FileNotFoundError(
+                f"[{self.slot_id}] Strategy file not found: {strategy_path}"
+            )
+
+        # Derive fully-qualified module name so relative imports resolve.
+        # strategy_code_dir is e.g. "modules/quant_engine/strategy/cu_s1"
+        module_name = strategy_code_dir.replace("/", ".").replace("\\", ".").lstrip(".") + ".strategy"
+        package_name = module_name.rsplit(".", 1)[0]
+
+        spec = importlib.util.spec_from_file_location(
+            module_name, strategy_path,
+            submodule_search_locations=[],
+        )
+        mod = importlib.util.module_from_spec(spec)
+        mod.__package__ = package_name
+        sys.modules[module_name] = mod
+        spec.loader.exec_module(mod)
+
+        # Look for strategy_main function
+        strategy_main = getattr(mod, 'strategy_main', None)
+        if strategy_main is None:
+            raise AttributeError(
+                f"[{self.slot_id}] No strategy_main() in {strategy_path}"
+            )
+
+        # Build indicator column list from loaded market data
+        indicator_columns = None
+        md = self.engine.get_market_data()
+        if hasattr(md, '_df') and md._df is not None:
+            skip = {'datetime', 'date', 'trading_date', 'open', 'high', 'low',
+                    'close', 'volume', 'contract', 'contract_expiry'}
+            indicator_columns = [c for c in md._df.columns if c not in skip]
+
+        self.strategy = strategy_main(
+            trading_engine=self.engine,
+            slot_id=self.slot_config.slot_id,
+            strategy_id=self.slot_config.strategy_id,
+            indicator_columns=indicator_columns,
+            **strategy_params,
+        )
+        logger.info(f"[{self.slot_id}] Strategy created from {strategy_path}")

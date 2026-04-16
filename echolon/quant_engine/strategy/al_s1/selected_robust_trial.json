@@ -1,0 +1,350 @@
+{
+  "trial_number": 167,
+  "selection_reason": "Highest risk-adjusted return from most robust cluster",
+  "cluster_id": 1,
+  "cluster_robustness_score": 1.0145962127215957,
+  "parameter_stability_score": 0.5287106293909377,
+  "metrics": {
+    "sharpe_ratio": 1.2887280694004557,
+    "annual_return": 19.953079632238552,
+    "max_drawdown_pct": -12.194183828120876
+  },
+  "params": {
+    "entry_atr_14_period": 19,
+    "entry_ppo_trending_down_short_threshold": 0.3929865191684734,
+    "exit_atr_period": 14,
+    "exit_trending_down_long_max_bars": 2.079577789998624,
+    "exit_trending_down_long_stop_mult": 1.5264430352155496,
+    "exit_trending_down_long_target_mult": 1.985722702953632,
+    "exit_trending_down_short_stop_mult": 2.0385611755375304,
+    "exit_trending_down_short_target_mult": 1.6899668075277423,
+    "sizer_marginal_rounding_threshold": 0.603283113985705,
+    "sizer_max_position_lots": 5.146926279560876,
+    "sizer_risk_per_trade_pct": 2.4335157265729963,
+    "sizer_volatile_regime_size_floor": 3.097909547998173,
+    "entry_aroonosc_period": 16,
+    "entry_trix_period": 15,
+    "entry_mfi_14_period": 14,
+    "entry_tema_period": 20,
+    "entry_entry_ppo_trending_down_short_threshold": 0.45,
+    "entry_aroonosc_long_threshold": 12.0,
+    "entry_entry_trix_trending_up_short_threshold": 0.0295774542666676,
+    "entry_entry_atr_trending_down_long_threshold": 100.0,
+    "entry_entry_mfi_trending_down_long_threshold": 38.0,
+    "entry_macd_histogram_ranging_long_threshold": 0.1685,
+    "entry_entry_tema_ranging_short_threshold": 19250.38045813741,
+    "entry_entry_macd_histogram_volatile_long_threshold": -0.3565222105032799,
+    "entry_entry_ad_short_threshold": 0.0,
+    "entry_ppo_fast_period": 12,
+    "entry_ppo_slow_period": 26,
+    "exit_exit_atr_period": 17,
+    "exit_exit_trending_down_long_stop_mult": 1.251777572010964,
+    "exit_exit_trending_down_long_target_mult": 1.407768360532882,
+    "exit_exit_trending_down_long_max_bars": 2.577295803990868,
+    "exit_exit_trending_down_short_stop_mult": 1.571,
+    "exit_exit_trending_down_short_target_mult": 2.5,
+    "exit_exit_trending_up_long_stop_mult": 1.571,
+    "exit_exit_trending_up_long_target_mult": 3.207,
+    "exit_exit_trending_up_short_stop_mult": 1.2,
+    "exit_exit_trending_up_short_target_mult": 1.5,
+    "exit_exit_trending_up_short_max_bars": 3.0,
+    "exit_exit_ranging_long_stop_mult": 0.919,
+    "exit_exit_ranging_long_target_mult": 1.098,
+    "exit_exit_ranging_long_max_bars": 4.8,
+    "exit_exit_ranging_short_stop_mult": 0.9,
+    "exit_exit_ranging_short_target_mult": 1.1,
+    "exit_exit_ranging_short_max_bars": 5.0,
+    "exit_exit_volatile_long_stop_mult": 2.5,
+    "exit_exit_volatile_long_target_mult": 1.8,
+    "exit_exit_volatile_long_max_bars": 4.0,
+    "exit_exit_volatile_short_stop_mult": 2.948,
+    "exit_exit_volatile_short_target_mult": 1.77,
+    "exit_exit_volatile_short_max_bars": 3.83,
+    "risk_max_drawdown_pct": 15.0,
+    "risk_max_concurrent_positions": 1,
+    "sizer_exit_atr_period": 17,
+    "sizer_exit_trending_up_long_stop_mult": 1.571,
+    "sizer_exit_trending_up_short_stop_mult": 1.2,
+    "sizer_exit_trending_down_long_stop_mult": 1.251777572010964,
+    "sizer_exit_trending_down_short_stop_mult": 1.571,
+    "sizer_exit_ranging_long_stop_mult": 0.919,
+    "sizer_exit_ranging_short_stop_mult": 0.9,
+    "sizer_exit_volatile_long_stop_mult": 2.5,
+    "sizer_exit_volatile_short_stop_mult": 2.948,
+    "sizer_contract_multiplier": 5,
+    "sizer_initial_capital": 200000.0
+  },
+  "param_classifications": {
+    "aroonosc_period": {
+      "status": "FIXED",
+      "default": 16,
+      "component": "entry"
+    },
+    "trix_period": {
+      "status": "FIXED",
+      "default": 15,
+      "component": "entry"
+    },
+    "atr_14_period": {
+      "status": "INT",
+      "default": 14,
+      "component": "entry",
+      "min": 10,
+      "max": 20
+    },
+    "mfi_14_period": {
+      "status": "FIXED",
+      "default": 14,
+      "component": "entry"
+    },
+    "tema_period": {
+      "status": "FIXED",
+      "default": 20,
+      "component": "entry"
+    },
+    "entry_ppo_trending_down_short_threshold": {
+      "status": "FLOAT",
+      "default": 0.45,
+      "component": "entry",
+      "min": 0.3,
+      "max": 0.6
+    },
+    "aroonosc_long_threshold": {
+      "status": "FIXED",
+      "default": 12.0,
+      "component": "entry"
+    },
+    "entry_trix_trending_up_short_threshold": {
+      "status": "FIXED",
+      "default": 0.0295774542666676,
+      "component": "entry"
+    },
+    "entry_atr_trending_down_long_threshold": {
+      "status": "FIXED",
+      "default": 100.0,
+      "component": "entry"
+    },
+    "entry_mfi_trending_down_long_threshold": {
+      "status": "FIXED",
+      "default": 38.0,
+      "component": "entry"
+    },
+    "macd_histogram_ranging_long_threshold": {
+      "status": "FIXED",
+      "default": 0.1685,
+      "component": "entry"
+    },
+    "entry_tema_ranging_short_threshold": {
+      "status": "FIXED",
+      "default": 19250.38045813741,
+      "component": "entry"
+    },
+    "entry_macd_histogram_volatile_long_threshold": {
+      "status": "FIXED",
+      "default": -0.3565222105032799,
+      "component": "entry"
+    },
+    "entry_ad_short_threshold": {
+      "status": "FIXED",
+      "default": 0.0,
+      "component": "entry"
+    },
+    "ppo_fast_period": {
+      "status": "FIXED",
+      "default": 12,
+      "component": "entry"
+    },
+    "ppo_slow_period": {
+      "status": "FIXED",
+      "default": 26,
+      "component": "entry"
+    },
+    "exit_atr_period": {
+      "status": "INT",
+      "default": 17,
+      "component": "sizer",
+      "min": 10,
+      "max": 30
+    },
+    "exit_trending_down_long_stop_mult": {
+      "status": "FLOAT",
+      "default": 1.251777572010964,
+      "component": "sizer",
+      "min": 1.0,
+      "max": 2.5
+    },
+    "exit_trending_down_long_target_mult": {
+      "status": "FLOAT",
+      "default": 1.407768360532882,
+      "component": "exit",
+      "min": 1.0,
+      "max": 2.5
+    },
+    "exit_trending_down_long_max_bars": {
+      "status": "FLOAT",
+      "default": 2.577295803990868,
+      "component": "exit",
+      "min": 2.0,
+      "max": 6.0
+    },
+    "exit_trending_down_short_stop_mult": {
+      "status": "FLOAT",
+      "default": 1.571,
+      "component": "sizer",
+      "min": 1.0,
+      "max": 2.5
+    },
+    "exit_trending_down_short_target_mult": {
+      "status": "FLOAT",
+      "default": 2.5,
+      "component": "exit",
+      "min": 1.0,
+      "max": 2.5
+    },
+    "exit_trending_up_long_stop_mult": {
+      "status": "FLOAT",
+      "default": 1.571,
+      "component": "sizer",
+      "min": 1.571,
+      "max": 1.571
+    },
+    "exit_trending_up_long_target_mult": {
+      "status": "FIXED",
+      "default": 3.207,
+      "component": "exit"
+    },
+    "exit_trending_up_short_stop_mult": {
+      "status": "FLOAT",
+      "default": 1.2,
+      "component": "sizer",
+      "min": 1.2,
+      "max": 1.2
+    },
+    "exit_trending_up_short_target_mult": {
+      "status": "FIXED",
+      "default": 1.5,
+      "component": "exit"
+    },
+    "exit_trending_up_short_max_bars": {
+      "status": "FIXED",
+      "default": 3.0,
+      "component": "exit"
+    },
+    "exit_ranging_long_stop_mult": {
+      "status": "FLOAT",
+      "default": 0.919,
+      "component": "sizer",
+      "min": 0.919,
+      "max": 0.919
+    },
+    "exit_ranging_long_target_mult": {
+      "status": "FIXED",
+      "default": 1.098,
+      "component": "exit"
+    },
+    "exit_ranging_long_max_bars": {
+      "status": "FIXED",
+      "default": 4.8,
+      "component": "exit"
+    },
+    "exit_ranging_short_stop_mult": {
+      "status": "FLOAT",
+      "default": 0.9,
+      "component": "sizer",
+      "min": 0.9,
+      "max": 0.9
+    },
+    "exit_ranging_short_target_mult": {
+      "status": "FIXED",
+      "default": 1.1,
+      "component": "exit"
+    },
+    "exit_ranging_short_max_bars": {
+      "status": "FIXED",
+      "default": 5.0,
+      "component": "exit"
+    },
+    "exit_volatile_long_stop_mult": {
+      "status": "FLOAT",
+      "default": 2.5,
+      "component": "sizer",
+      "min": 2.5,
+      "max": 2.5
+    },
+    "exit_volatile_long_target_mult": {
+      "status": "FIXED",
+      "default": 1.8,
+      "component": "exit"
+    },
+    "exit_volatile_long_max_bars": {
+      "status": "FIXED",
+      "default": 4.0,
+      "component": "exit"
+    },
+    "exit_volatile_short_stop_mult": {
+      "status": "FLOAT",
+      "default": 2.948,
+      "component": "sizer",
+      "min": 2.948,
+      "max": 2.948
+    },
+    "exit_volatile_short_target_mult": {
+      "status": "FIXED",
+      "default": 1.77,
+      "component": "exit"
+    },
+    "exit_volatile_short_max_bars": {
+      "status": "FIXED",
+      "default": 3.83,
+      "component": "exit"
+    },
+    "max_drawdown_pct": {
+      "status": "FIXED",
+      "default": 15.0,
+      "component": "risk"
+    },
+    "max_concurrent_positions": {
+      "status": "FIXED",
+      "default": 1,
+      "component": "risk"
+    },
+    "risk_per_trade_pct": {
+      "status": "FLOAT",
+      "default": 2.0944950148668005,
+      "component": "sizer",
+      "min": 1.8,
+      "max": 2.5
+    },
+    "max_position_lots": {
+      "status": "FLOAT",
+      "default": 5.0,
+      "component": "sizer",
+      "min": 5.0,
+      "max": 8.0
+    },
+    "marginal_rounding_threshold": {
+      "status": "FLOAT",
+      "default": 0.6596058416826159,
+      "component": "sizer",
+      "min": 0.3,
+      "max": 0.7
+    },
+    "volatile_regime_size_floor": {
+      "status": "FLOAT",
+      "default": 3.5,
+      "component": "sizer",
+      "min": 2.5,
+      "max": 4.5
+    },
+    "contract_multiplier": {
+      "status": "FIXED",
+      "default": 5,
+      "component": "sizer"
+    },
+    "initial_capital": {
+      "status": "FIXED",
+      "default": 200000.0,
+      "component": "sizer"
+    }
+  }
+}

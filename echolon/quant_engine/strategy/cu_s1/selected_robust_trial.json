@@ -1,0 +1,388 @@
+{
+  "trial_number": 50,
+  "selection_reason": "Highest risk-adjusted return from most robust cluster",
+  "cluster_id": 1,
+  "cluster_robustness_score": 1.4698847060599307,
+  "parameter_stability_score": 0.458544854636329,
+  "metrics": {
+    "sharpe_ratio": 1.9563961802626055,
+    "annual_return": 12.543288145182284,
+    "max_drawdown_pct": -2.965879382765608
+  },
+  "params": {
+    "entry_adx_confirmation_threshold": 31.17167839605081,
+    "entry_adx_period": 10,
+    "entry_adxr_threshold": 18.19611630752545,
+    "entry_mfi_oversold_threshold": 38.11609612960146,
+    "entry_mfi_period": 16,
+    "entry_natr_period": 16,
+    "entry_natr_threshold": 1.3810529109172387,
+    "exit_atr_multiplier_ranging": 2.772899190802093,
+    "exit_atr_multiplier_trending_down": 2.563873180570632,
+    "exit_atr_multiplier_trending_up": 2.7724059724315024,
+    "exit_atr_multiplier_trending_up_short": 2.829634876238517,
+    "exit_atr_multiplier_volatile": 2.62619533518489,
+    "exit_atr_period": 20,
+    "exit_max_holding_period_ranging": 31,
+    "exit_max_holding_period_trending_down": 18,
+    "exit_max_holding_period_trending_up": 18,
+    "exit_profit_protection_activation_r_multiple": 1.934305661329882,
+    "exit_profit_protection_floor_atr_multiple": 1.006453985620103,
+    "risk_cooldown_bars_after_loss": 3,
+    "risk_max_drawdown_pct": 15.0,
+    "sizer_marginal_rounding_threshold": 0.4685795642132042,
+    "sizer_risk_per_trade_pct": 8.5,
+    "sizer_trailing_atr_multiplier": 2.437,
+    "entry_entry_adx_period": 13,
+    "entry_entry_mfi_period": 11,
+    "entry_entry_natr_period": 12,
+    "entry_entry_adx_confirmation_threshold": 32.21,
+    "entry_entry_adxr_threshold": 20.62,
+    "entry_entry_mfi_oversold_threshold": 42.93,
+    "entry_entry_natr_threshold": 1.81,
+    "entry_entry_adx_threshold": 34.27,
+    "entry_entry_direction_regime_1": "LONG",
+    "entry_entry_direction_regime_2": "LONG",
+    "entry_entry_direction_regime_3": "SHORT",
+    "entry_entry_direction_regime_4": "LONG",
+    "entry_entry_direction_regime_5": "LONG",
+    "entry_entry_direction_regime_6": "SHORT",
+    "entry_entry_direction_regime_7": "SHORT",
+    "entry_entry_direction_regime_8": "SHORT",
+    "entry_entry_minus_dm_threshold": 2875.86,
+    "entry_entry_obv_threshold": -0.562,
+    "entry_entry_sar_accel_factor": 0.02,
+    "entry_entry_sar_max_accel": 0.3,
+    "entry_entry_willr_overbought_threshold": -20.0,
+    "exit_contract_expiry_exit_days": 3,
+    "exit_exit_direction_regime_1": "LONG",
+    "exit_exit_direction_regime_2": "LONG",
+    "exit_exit_direction_regime_3": "SHORT",
+    "exit_exit_direction_regime_4": "LONG",
+    "exit_exit_direction_regime_5": "LONG",
+    "exit_exit_direction_regime_6": "SHORT",
+    "exit_exit_direction_regime_7": "SHORT",
+    "exit_max_holding_period_trending_up_short": 15,
+    "exit_max_holding_period_volatile": 18,
+    "exit_rolling_high_window": 5,
+    "exit_rolling_low_window": 5,
+    "risk_max_capital_deployed_pct": 100.0,
+    "risk_max_concurrent_positions": 1,
+    "sizer_atr_period": 20,
+    "sizer_contract_multiplier": 5,
+    "sizer_max_position_lots": 1
+  },
+  "param_classifications": {
+    "entry_adx_period": {
+      "status": "INT",
+      "default": 13,
+      "component": "entry",
+      "min": 10,
+      "max": 20
+    },
+    "entry_mfi_period": {
+      "status": "INT",
+      "default": 11,
+      "component": "entry",
+      "min": 10,
+      "max": 20
+    },
+    "entry_natr_period": {
+      "status": "INT",
+      "default": 12,
+      "component": "entry",
+      "min": 10,
+      "max": 21
+    },
+    "entry_adx_confirmation_threshold": {
+      "status": "FLOAT",
+      "default": 32.21,
+      "component": "entry",
+      "min": 25.0,
+      "max": 40.0
+    },
+    "entry_adxr_threshold": {
+      "status": "FLOAT",
+      "default": 20.62,
+      "component": "entry",
+      "min": 16.0,
+      "max": 19.5
+    },
+    "entry_mfi_oversold_threshold": {
+      "status": "FLOAT",
+      "default": 42.93,
+      "component": "entry",
+      "min": 38.0,
+      "max": 43.0
+    },
+    "entry_natr_threshold": {
+      "status": "FLOAT",
+      "default": 1.81,
+      "component": "entry",
+      "min": 1.35,
+      "max": 1.65
+    },
+    "entry_adx_threshold": {
+      "status": "FIXED",
+      "default": 34.27,
+      "component": "entry"
+    },
+    "entry_direction_regime_1": {
+      "status": "FIXED",
+      "default": "LONG",
+      "component": "entry"
+    },
+    "entry_direction_regime_2": {
+      "status": "FIXED",
+      "default": "LONG",
+      "component": "entry"
+    },
+    "entry_direction_regime_3": {
+      "status": "FIXED",
+      "default": "SHORT",
+      "component": "entry"
+    },
+    "entry_direction_regime_4": {
+      "status": "FIXED",
+      "default": "LONG",
+      "component": "entry"
+    },
+    "entry_direction_regime_5": {
+      "status": "FIXED",
+      "default": "LONG",
+      "component": "entry"
+    },
+    "entry_direction_regime_6": {
+      "status": "FIXED",
+      "default": "SHORT",
+      "component": "entry"
+    },
+    "entry_direction_regime_7": {
+      "status": "FIXED",
+      "default": "SHORT",
+      "component": "entry"
+    },
+    "entry_direction_regime_8": {
+      "status": "FIXED",
+      "default": "SHORT",
+      "component": "entry"
+    },
+    "entry_minus_dm_threshold": {
+      "status": "FIXED",
+      "default": 2875.86,
+      "component": "entry"
+    },
+    "entry_obv_threshold": {
+      "status": "FIXED",
+      "default": -0.562,
+      "component": "entry"
+    },
+    "entry_sar_accel_factor": {
+      "status": "FIXED",
+      "default": 0.02,
+      "component": "entry"
+    },
+    "entry_sar_max_accel": {
+      "status": "FIXED",
+      "default": 0.3,
+      "component": "entry"
+    },
+    "entry_willr_overbought_threshold": {
+      "status": "FIXED",
+      "default": -20.0,
+      "component": "entry"
+    },
+    "atr_period": {
+      "status": "INT",
+      "default": 20,
+      "component": "sizer",
+      "min": 14,
+      "max": 20
+    },
+    "atr_multiplier_ranging": {
+      "status": "FLOAT",
+      "default": 2.75,
+      "component": "exit",
+      "min": 2.5,
+      "max": 3.0
+    },
+    "atr_multiplier_trending_down": {
+      "status": "FLOAT",
+      "default": 2.75,
+      "component": "exit",
+      "min": 2.5,
+      "max": 3.0
+    },
+    "atr_multiplier_trending_up": {
+      "status": "FLOAT",
+      "default": 2.75,
+      "component": "exit",
+      "min": 2.5,
+      "max": 3.0
+    },
+    "atr_multiplier_trending_up_short": {
+      "status": "FLOAT",
+      "default": 2.775,
+      "component": "exit",
+      "min": 2.7,
+      "max": 2.85
+    },
+    "atr_multiplier_volatile": {
+      "status": "FLOAT",
+      "default": 2.75,
+      "component": "exit",
+      "min": 2.5,
+      "max": 3.0
+    },
+    "max_holding_period_ranging": {
+      "status": "INT",
+      "default": 25,
+      "component": "exit",
+      "min": 15,
+      "max": 40
+    },
+    "max_holding_period_trending_down": {
+      "status": "INT",
+      "default": 20,
+      "component": "exit",
+      "min": 18,
+      "max": 22
+    },
+    "max_holding_period_trending_up": {
+      "status": "INT",
+      "default": 20,
+      "component": "exit",
+      "min": 18,
+      "max": 25
+    },
+    "profit_protection_activation_r_multiple": {
+      "status": "FLOAT",
+      "default": 2.0,
+      "component": "exit",
+      "min": 1.5,
+      "max": 2.5
+    },
+    "profit_protection_floor_atr_multiple": {
+      "status": "FLOAT",
+      "default": 1.0,
+      "component": "exit",
+      "min": 0.8,
+      "max": 1.2
+    },
+    "contract_expiry_exit_days": {
+      "status": "FIXED",
+      "default": 3,
+      "component": "exit"
+    },
+    "exit_direction_regime_1": {
+      "status": "FIXED",
+      "default": "LONG",
+      "component": "exit"
+    },
+    "exit_direction_regime_2": {
+      "status": "FIXED",
+      "default": "LONG",
+      "component": "exit"
+    },
+    "exit_direction_regime_3": {
+      "status": "FIXED",
+      "default": "SHORT",
+      "component": "exit"
+    },
+    "exit_direction_regime_4": {
+      "status": "FIXED",
+      "default": "LONG",
+      "component": "exit"
+    },
+    "exit_direction_regime_5": {
+      "status": "FIXED",
+      "default": "LONG",
+      "component": "exit"
+    },
+    "exit_direction_regime_6": {
+      "status": "FIXED",
+      "default": "SHORT",
+      "component": "exit"
+    },
+    "exit_direction_regime_7": {
+      "status": "FIXED",
+      "default": "SHORT",
+      "component": "exit"
+    },
+    "max_holding_period_trending_up_short": {
+      "status": "FIXED",
+      "default": 15,
+      "component": "exit"
+    },
+    "max_holding_period_volatile": {
+      "status": "FIXED",
+      "default": 18,
+      "component": "exit"
+    },
+    "rolling_high_window": {
+      "status": "FIXED",
+      "default": 5,
+      "component": "exit"
+    },
+    "rolling_low_window": {
+      "status": "FIXED",
+      "default": 5,
+      "component": "exit"
+    },
+    "cooldown_bars_after_loss": {
+      "status": "INT",
+      "default": 3,
+      "component": "risk",
+      "min": 3,
+      "max": 3
+    },
+    "max_drawdown_pct": {
+      "status": "FLOAT",
+      "default": 15.0,
+      "component": "risk",
+      "min": 15.0,
+      "max": 15.0
+    },
+    "max_capital_deployed_pct": {
+      "status": "FIXED",
+      "default": 100.0,
+      "component": "risk"
+    },
+    "max_concurrent_positions": {
+      "status": "FIXED",
+      "default": 1,
+      "component": "risk"
+    },
+    "marginal_rounding_threshold": {
+      "status": "FLOAT",
+      "default": 0.406,
+      "component": "sizer",
+      "min": 0.3,
+      "max": 0.6
+    },
+    "risk_per_trade_pct": {
+      "status": "FLOAT",
+      "default": 8.5,
+      "component": "sizer",
+      "min": 8.5,
+      "max": 8.5
+    },
+    "trailing_atr_multiplier": {
+      "status": "FLOAT",
+      "default": 2.437,
+      "component": "sizer",
+      "min": 2.437,
+      "max": 2.437
+    },
+    "contract_multiplier": {
+      "status": "FIXED",
+      "default": 5,
+      "component": "sizer"
+    },
+    "max_position_lots": {
+      "status": "FIXED",
+      "default": 1,
+      "component": "sizer"
+    }
+  }
+}

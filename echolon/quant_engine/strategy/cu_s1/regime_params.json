@@ -1,0 +1,40 @@
+{
+  "params": {
+    "fast_ma_period": 10,
+    "slow_ma_period": 32,
+    "adx_period": 11,
+    "adx_trend_threshold": 18.344918863297437,
+    "atr_period": 49,
+    "vol_lookback": 32,
+    "vol_high_percentile": 73.13160370569432,
+    "min_regime_bars": 3,
+    "chop_period": 18,
+    "chop_threshold": 49.198616762535444
+  },
+  "score": 0.9227907054773372,
+  "validation_passed": true,
+  "metrics": {
+    "trending_up_return": 0.20218447950635468,
+    "trending_down_return": -0.1807509053698079,
+    "ranging_return": 0.04901347584518159,
+    "volatile_return": -0.09825925816766375,
+    "return_separation": 0.3829353848761626,
+    "segment_up_return": 3.0148102569890187,
+    "segment_down_return": -2.5687958689227752,
+    "direction_alignment_score": 0.7342419080068143,
+    "volatility_coherence_score": 1.0,
+    "trending_up_pct": 19.631877504066008,
+    "trending_down_pct": 13.97120076163275,
+    "ranging_pct": 59.23678051489547,
+    "volatile_pct": 7.160141219405768,
+    "balance_score": 0.9076321948510453,
+    "transition_stability": 0.9497005037883296,
+    "avg_regime_duration": 17.66573230553609,
+    "n_bars": 25209,
+    "n_segments": 1427,
+    "composite_score": 0.9227907054773372
+  },
+  "optimized_at": "2026-04-10T12:17:56.270008",
+  "n_trials": 400,
+  "futures": "copper"
+}

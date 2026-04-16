@@ -1,0 +1,17 @@
+{
+  "indicators_with_lookback": {
+    "aroonosc": [15, 17],
+    "atr": [10, 30],
+    "mfi": [13, 15],
+    "tema": [19, 21],
+    "trix": [14, 16]
+  },
+  "indicators_without_lookback": [
+    "ad"
+  ],
+  "indicators_with_special_params": [
+    "market_regime",
+    "macd_histogram",
+    "ppo"
+  ]
+}

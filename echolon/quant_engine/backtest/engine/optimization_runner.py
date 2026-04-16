@@ -1,0 +1,403 @@
+"""
+Optimization Runner
+===================
+
+Lightweight backtest runner optimized for Optuna hyperparameter optimization.
+
+Key differences from BacktestRunner:
+- No CSV strategy logging (saves I/O)
+- No result saving to disk
+- Returns only metrics needed for objective function
+- Optimized for parallel execution with ProcessPoolExecutor
+- Shares data via class variables (copy-on-write in child processes)
+
+Used by OptunaOptimizer for running many parallel backtests during optimization.
+
+Usage:
+    from config.markets.factory import MarketFactory
+
+    # Get TradingContext (single source of truth)
+    ctx = MarketFactory.from_session()
+
+    # Setup shared data once (before spawning processes)
+    OptimizationRunner.setup_shared_data(
+        ctx=ctx,
+        indicators=indicators_df,
+        strategy_class=MyStrategy,
+        market_adapter=adapter,
+    )
+
+    # Run individual trials (can be parallelized)
+    metrics = OptimizationRunner.run_trial(
+        trial_params={'entry_rsi': 30, 'exit_atr': 2.0},
+        trial_id=42,
+    )
+"""
+
+import logging
+from dataclasses import dataclass
+from typing import Dict, Any, Optional, TYPE_CHECKING
+
+import pandas as pd
+import numpy as np
+
+from .backtrader_engine import BacktestResults
+from .backtrader_strategy import get_strategy_class
+from .enriched_pandas_data import get_cached_data_feed_class
+from .hooks.contract_aware.broker import preload_contract_prices
+from ...logging_utils import setup_backtest_logging
+from config.markets.core.context import TradingContext
+
+if TYPE_CHECKING:
+    from ...core.interfaces import IMarketAdapter
+
+logger = logging.getLogger(__name__)
+
+
+# =============================================================================
+# Configuration
+# =============================================================================
+
+@dataclass
+class OptimizationConfig:
+    """Configuration for optimization runs.
+
+    Note:
+        Futures-specific components (contract-aware broker, commission, slippage,
+        multiplier) are automatically enabled/retrieved from market_adapter.
+    """
+
+
+# =============================================================================
+# Metrics Result
+# =============================================================================
+
+@dataclass
+class OptimizationMetrics:
+    """
+    Metrics returned from optimization backtest.
+
+    Contains only what's needed for Optuna objective function.
+    """
+    sharpe_ratio: float
+    max_drawdown_pct: float
+    annual_return_pct: float
+    total_trades: int
+
+    # Optional: set when trial failed
+    success: bool = True
+    error_message: Optional[str] = None
+
+    @classmethod
+    def failed(cls, error_message: str) -> 'OptimizationMetrics':
+        """Create a failed metrics result."""
+        return cls(
+            sharpe_ratio=-1.0,
+            max_drawdown_pct=-999.0,
+            annual_return_pct=-100.0,
+            total_trades=0,
+            success=False,
+            error_message=error_message,
+        )
+
+    def get_multi_objective_values(self) -> tuple:
+        """Get values for multi-objective optimization (sharpe, -drawdown, return)."""
+        return (self.sharpe_ratio, -self.max_drawdown_pct, self.annual_return_pct)
+
+    def get_single_objective_value(self, target: str) -> float:
+        """Get value for single-objective optimization."""
+        if target == "sharpe_ratio":
+            return self.sharpe_ratio
+        elif target == "total_return":
+            return self.annual_return_pct
+        elif target == "drawdown":
+            return -self.max_drawdown_pct
+        else:
+            # Default: risk-adjusted return
+            if self.max_drawdown_pct > 0:
+                return self.annual_return_pct / (1 + self.max_drawdown_pct)
+            return self.annual_return_pct
+
+
+# =============================================================================
+# OptimizationRunner Class
+# =============================================================================
+
+class OptimizationRunner:
+    """
+    Lightweight backtest runner for Optuna optimization.
+
+    Uses class-level shared data for efficient process pool execution.
+    Child processes inherit shared data via copy-on-write.
+
+    Class Methods
+    -------------
+    setup_shared_data(ctx, **kwargs)
+        Setup shared data before optimization (call once in main process)
+
+    run_trial(trial_params, trial_id)
+        Run single backtest with trial parameters (parallelizable)
+
+    preload_contracts(indicators_dir)
+        Pre-load contract prices for O(1) lookups
+    """
+
+    # Shared data for child processes (copy-on-write)
+    # Note: strategy_class is NOT stored here - it's recreated in each process
+    # via get_strategy_class(ctx) to avoid pickle issues with dynamic classes
+    _shared_data: Dict[str, Any] = {
+        'indicators': None,
+        'indicator_metadata': None,  # For creating data feed class
+        'market_adapter': None,
+        'ctx': None,  # TradingContext (single source of truth)
+        'regime_data': None,
+        'indicators_dir': None,
+        'optimization_config': None,
+    }
+
+    @classmethod
+    def setup_shared_data(
+        cls,
+        ctx: TradingContext,
+        indicators: pd.DataFrame,
+        strategy_class: type,  # Kept for backward compat but not stored
+        market_adapter: 'IMarketAdapter',
+        indicators_dir: Optional[str] = None,
+        regime_data: Optional[pd.DataFrame] = None,
+        optimization_config: Optional[OptimizationConfig] = None,
+        indicator_metadata: Optional[Dict[str, Any]] = None,
+    ) -> None:
+        """
+        Setup shared data for optimization runs.
+
+        Call this once in the main process before spawning workers.
+        Child processes will inherit this data via copy-on-write.
+
+        Note: strategy_class is NOT stored - it's recreated in each process
+        via get_strategy_class(ctx) to avoid pickle issues with dynamic classes.
+
+        Parameters
+        ----------
+        ctx : TradingContext
+            Trading context (single source of truth for market/instrument config)
+        indicators : pd.DataFrame
+            Market data with indicators (indexed by date)
+        strategy_class : type
+            Backtrader strategy class (not stored, recreated per-process)
+        market_adapter : IMarketAdapter
+            Market adapter for market-specific rules
+        indicators_dir : str, optional
+            Path to indicators directory (for contract-aware broker)
+        regime_data : pd.DataFrame, optional
+            Pre-loaded regime data for analyzers
+        optimization_config : OptimizationConfig, optional
+            Optimization-specific configuration
+        indicator_metadata : Dict[str, Any], optional
+            Indicator metadata for creating data feed class
+        """
+        cls._shared_data['ctx'] = ctx
+        cls._shared_data['indicators'] = indicators
+        # Note: strategy_class intentionally NOT stored to avoid pickle issues
+        # It will be recreated via get_strategy_class(ctx) in each worker
+        cls._shared_data['market_adapter'] = market_adapter
+        cls._shared_data['indicators_dir'] = indicators_dir
+        cls._shared_data['regime_data'] = regime_data
+        cls._shared_data['optimization_config'] = optimization_config or OptimizationConfig()
+        cls._shared_data['indicator_metadata'] = indicator_metadata
+
+        logger.info(
+            f"[OPTIMIZATION_RUNNER] Shared data setup | "
+            f"rows={len(indicators)}, strategy={strategy_class.__name__}, "
+            f"market={ctx.market_code}, instrument={ctx.instrument_name}"
+        )
+
+    @classmethod
+    def preload_contracts(cls, indicators_dir: str) -> int:
+        """
+        Pre-load contract prices for O(1) lookups during optimization.
+
+        Call this before running optimization to speed up contract-aware broker.
+
+        Parameters
+        ----------
+        indicators_dir : str
+            Path to indicators directory
+
+        Returns
+        -------
+        int
+            Number of contracts loaded
+        """
+        contracts_loaded = preload_contract_prices(indicators_dir)
+        logger.info(f"[OPTIMIZATION_RUNNER] Pre-loaded {contracts_loaded} contracts")
+        return contracts_loaded
+
+    @classmethod
+    def run_trial(
+        cls,
+        trial_params: Dict[str, Any],
+        trial_id: int,
+    ) -> OptimizationMetrics:
+        """
+        Run a single backtest with trial parameters.
+
+        This method is designed for parallel execution via ProcessPoolExecutor.
+        Uses shared data setup via setup_shared_data().
+
+        Parameters
+        ----------
+        trial_params : Dict[str, Any]
+            Strategy parameters from Optuna trial
+        trial_id : int
+            Trial number for logging
+
+        Returns
+        -------
+        OptimizationMetrics
+            Metrics for objective function evaluation
+        """
+        # CRITICAL: Set logging context for child processes
+        # ProcessPoolExecutor spawns fresh processes where _current_context
+        # defaults to "debug". This suppresses verbose bar-by-bar logging.
+        setup_backtest_logging("optimization")
+
+        # Get shared data
+        indicators = cls._shared_data['indicators']
+        ctx = cls._shared_data['ctx']
+        regime_data = cls._shared_data['regime_data']
+        indicators_dir = cls._shared_data['indicators_dir']
+        indicator_metadata = cls._shared_data['indicator_metadata']
+
+        if indicators is None or ctx is None:
+            return OptimizationMetrics.failed("Shared data not initialized")
+
+        if indicator_metadata is None:
+            return OptimizationMetrics.failed("indicator_metadata not set in shared data")
+
+        # Recreate strategy class in this process (avoids pickle issues)
+        strategy_class = get_strategy_class(ctx)
+
+        try:
+            # Create engine (lightweight - no logging)
+            # Use EngineFactory to handle frequency context and hooks
+            from ...engine_factory import EngineFactory
+            engine = EngineFactory.create_backtest_engine(
+                ctx=ctx,
+                indicators_dir=indicators_dir,
+                strategy_logger_enabled=False,  # No logging during optimization
+            )
+
+            # Create data feed with cached class using metadata
+            DataFeedClass = get_cached_data_feed_class(indicator_metadata)
+            data_feed = DataFeedClass(dataname=indicators)
+
+            # Prepare strategy parameters
+            strategy_params = {
+                'use_precalculated_indicators': True,
+                'debug_level': 0,
+                'printlog': False,
+                **trial_params
+            }
+
+            # Setup and run (commission, slippage, multiplier auto-retrieved from market_adapter)
+            engine.setup(
+                data_feed=data_feed,
+                strategy_class=strategy_class,
+                strategy_params=strategy_params,
+                regime_data=regime_data,
+            )
+
+            results = engine.run()
+
+            if results is None:
+                return OptimizationMetrics.failed("Backtest returned None")
+
+            # Extract metrics from analyzers
+            return cls._extract_metrics(results)
+
+        except Exception as e:
+            error_msg = f"{type(e).__name__}: {e}"
+            # Use WARNING level so errors are visible during optimization
+            logger.warning(f"[OPTIMIZATION_RUNNER] Trial {trial_id} FAILED | {error_msg}")
+            return OptimizationMetrics.failed(error_msg)
+
+    @classmethod
+    def _extract_metrics(cls, results: BacktestResults) -> OptimizationMetrics:
+        """Extract optimization metrics from backtest results."""
+        analyzers = results.analyzers or {}
+
+        # Get metrics with fallbacks
+        sharpe_ratio = results.sharpe_ratio
+        if sharpe_ratio is None or np.isnan(sharpe_ratio) or np.isinf(sharpe_ratio):
+            sharpe_ratio = -1.0
+
+        max_drawdown = results.max_drawdown
+        if max_drawdown is None or np.isnan(max_drawdown) or np.isinf(max_drawdown):
+            max_drawdown = -999.0
+
+        # Annual return from analyzers
+        annual_return = analyzers.get('average_annual_return_pct', -100.0)
+        if annual_return is None or np.isnan(annual_return) or np.isinf(annual_return):
+            annual_return = -100.0
+
+        return OptimizationMetrics(
+            sharpe_ratio=float(sharpe_ratio),
+            max_drawdown_pct=float(max_drawdown),
+            annual_return_pct=float(annual_return),
+            total_trades=results.total_trades or 0,
+            success=True,
+        )
+
+    @classmethod
+    def clear_shared_data(cls) -> None:
+        """Clear shared data after optimization completes."""
+        for key in cls._shared_data:
+            cls._shared_data[key] = None
+        logger.debug("[OPTIMIZATION_RUNNER] Shared data cleared")
+
+
+# =============================================================================
+# Convenience Functions
+# =============================================================================
+
+def run_optimization_trial(
+    trial_params: Dict[str, Any],
+    trial_id: int,
+) -> Dict[str, Any]:
+    """
+    Convenience function for running optimization trial.
+
+    Returns dict format compatible with OptunaOptimizer's parallel execution.
+
+    Parameters
+    ----------
+    trial_params : Dict[str, Any]
+        Strategy parameters from Optuna trial
+    trial_id : int
+        Trial number
+
+    Returns
+    -------
+    Dict[str, Any]
+        Result dict with 'success', 'values'/'value', 'metrics' keys
+    """
+    metrics = OptimizationRunner.run_trial(trial_params, trial_id)
+
+    if not metrics.success:
+        return {
+            'success': False,
+            'error_message': metrics.error_message,
+            'critical_error': False,
+        }
+
+    return {
+        'success': True,
+        'values': metrics.get_multi_objective_values(),
+        'value': metrics.sharpe_ratio,  # Default single objective
+        'metrics': {
+            'sharpe_ratio': metrics.sharpe_ratio,
+            'max_drawdown_pct': metrics.max_drawdown_pct,
+            'annual_return_pct': metrics.annual_return_pct,
+            'total_trades': metrics.total_trades,
+        }
+    }
