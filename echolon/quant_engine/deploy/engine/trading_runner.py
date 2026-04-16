@@ -66,6 +66,8 @@ from ...core.base.hooks.forced_exit_strategy_hook import ForcedExitStrategyHook
 from .trading_data_logger import save_trading_data_snapshot, save_trade_execution
 from ...core.interfaces.trading_interfaces import OrderStatus
 from echolon.config.settings import MARKET_DATA_DIR
+from echolon.data_pipeline.run_pipeline import run_data_pipeline
+from echolon.indicators.run_indicators import run_indicator_calculation
 
 class TradingRunner:
     """
