@@ -24,7 +24,7 @@ Note: This is a skeleton for future implementation.
 """
 
 from datetime import time
-from ...core.interfaces import SessionWindow
+from echolon.config.markets.core.types import SessionWindow
 
 # TODO: Define session constants (future work):
 # - EVENING_SESSION = SessionWindow("evening", time(18,0), time(9,30), crosses_midnight=True)

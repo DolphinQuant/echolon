@@ -37,12 +37,19 @@ import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.date import DateTrigger
 
-from xtquant import xtconstant
+try:
+    from xtquant import xtconstant
+except ImportError:
+    xtconstant = None  # Available only on QMT-enabled machines
 
 from ..config.deploy_config import QMTAccountConfig
 from ..config.portfolio_deploy_config import PortfolioDeployConfig, SlotConfig
 from ..config.logging_config import get_deploy_logger, init_logging, shutdown_logging
-from ..platforms.miniqmt.qmt_client import MiniQMTClient
+try:
+    from ..platforms.miniqmt.qmt_client import MiniQMTClient
+except ImportError:
+    MiniQMTClient = None  # Available only on QMT-enabled machines
+
 from ..data_pipeline import get_main_contract
 from ...core.interfaces.trading_interfaces import Order, OrderIntent, OrderStatus
 from .capital_slot import CapitalSlot
@@ -54,8 +61,6 @@ from echolon.data_pipeline.loaders.calendar_loader import (
     is_night_market_open,
 )
 from echolon.config.settings import MARKET_DATA_DIR
-from echolon.data_pipeline.run_pipeline import run_data_pipeline
-from echolon.indicators.run_indicators import run_indicator_calculation
 from echolon.config.markets.factory import MarketFactory
 
 import logging

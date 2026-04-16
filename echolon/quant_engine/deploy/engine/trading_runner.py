@@ -50,7 +50,11 @@ from apscheduler.triggers.date import DateTrigger
 from echolon.config.markets.core.context import TradingContext
 from ..config.deploy_config import DeployConfig
 from ..config.logging_config import get_deploy_logger, init_logging, shutdown_logging
-from ..platforms.miniqmt.qmt_client import MiniQMTClient
+try:
+    from ..platforms.miniqmt.qmt_client import MiniQMTClient
+except ImportError:
+    MiniQMTClient = None  # Available only on QMT-enabled machines
+
 from ..data_pipeline import get_main_contract
 from echolon.data_pipeline.loaders.calendar_loader import (
     get_trading_dates,
@@ -62,8 +66,6 @@ from ...core.base.hooks.forced_exit_strategy_hook import ForcedExitStrategyHook
 from .trading_data_logger import save_trading_data_snapshot, save_trade_execution
 from ...core.interfaces.trading_interfaces import OrderStatus
 from echolon.config.settings import MARKET_DATA_DIR
-from echolon.data_pipeline.run_pipeline import run_data_pipeline
-from echolon.indicators.run_indicators import run_indicator_calculation
 
 class TradingRunner:
     """

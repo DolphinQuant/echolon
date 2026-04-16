@@ -29,6 +29,11 @@ dependencies = [
     "structlog>=23.0.0",
     "python-dotenv>=1.0.0",
     "pyarrow>=14.0.0",
+    "matplotlib>=3.7.0",
+    "psutil>=5.9.0",
+    "scikit-learn>=1.3.0",
+    "pytz>=2023.3",
+    "scipy>=1.11.0",
 ]
 
 [project.optional-dependencies]
