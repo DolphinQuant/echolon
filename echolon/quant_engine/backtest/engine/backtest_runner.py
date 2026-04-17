@@ -67,6 +67,7 @@ from echolon.config.quant_engine import (
     MARKET_DATA_DIR,
 )
 from echolon.config.markets.core.context import TradingContext
+from echolon.config.backtest_config import BacktestConfig as BacktestSettings
 from ...logging_utils import (
     setup_backtest_logging,
     log_workflow_start,
@@ -119,18 +120,45 @@ class BacktestRunner:
     """
 
     def __init__(self, ctx: TradingContext, config: Optional[BacktestConfig] = None,
-                 strategy_code_dir: Optional[str] = None):
+                 strategy_code_dir: Optional[str] = None,
+                 backtest_config: Optional[BacktestSettings] = None):
         """
         Initialize BacktestRunner with TradingContext.
 
         Args:
             ctx: TradingContext containing market, instrument, frequency info
-            config: Optional BacktestConfig for paths and features
+            config: Optional BacktestConfig for paths and features (local dataclass)
             strategy_code_dir: Optional path to strategy code directory.
                 If provided, strategy is loaded from this directory via importlib
                 instead of from strategy/platform_agnostic/. Used by portfolio
                 backtest to run per-slot strategies.
+            backtest_config: Optional Pydantic BacktestConfig providing
+                date ranges, data paths, and drawdown thresholds. Falls back
+                to module globals if not provided (Phase 1 compat).
         """
+        # Phase 1 compat: build BacktestSettings from globals if not passed
+        if backtest_config is None:
+            from echolon.config.quant_engine import (
+                BACKTEST_START_DATE, BACKTEST_END_DATE,
+                OPTIMIZATION_END_DATE, OOS_START_DATE,
+                PLATFORM_AGNOSTIC_DIR, BACKTEST_RESULTS_DIR,
+                MARKET_DATA_DIR, INDICATOR_DIR,
+                ACCEPTABLE_MAX_DRAWDOWN_PCT, MARKET_RESEARCH_END_DATE,
+            )
+            backtest_config = BacktestSettings(
+                start_date=BACKTEST_START_DATE,
+                end_date=BACKTEST_END_DATE,
+                is_end_date=OPTIMIZATION_END_DATE,
+                oos_start_date=OOS_START_DATE,
+                strategy_dir=Path(PLATFORM_AGNOSTIC_DIR),
+                market_data_dir=Path(MARKET_DATA_DIR),
+                indicator_dir=Path(INDICATOR_DIR),
+                results_dir=Path(BACKTEST_RESULTS_DIR),
+                max_drawdown_pct=ACCEPTABLE_MAX_DRAWDOWN_PCT,
+                market_research_end_date=MARKET_RESEARCH_END_DATE,
+            )
+        self._backtest_config = backtest_config
+
         self.ctx = ctx
         self.config = config or BacktestConfig()
         self.strategy_code_dir = strategy_code_dir
@@ -184,8 +212,8 @@ class BacktestRunner:
         BacktestRunner
             Self for method chaining
         """
-        start_date = start_date or BACKTEST_START_DATE
-        end_date = end_date or BACKTEST_END_DATE
+        start_date = start_date or self._backtest_config.start_date
+        end_date = end_date or self._backtest_config.end_date
 
         # Load data — per-slot dir if strategy_code_dir set, else default
         if self.strategy_code_dir:
