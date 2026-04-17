@@ -49,3 +49,15 @@ def test_import_config():
 def test_import_deploy():
     from echolon.quant_engine.deploy import platforms
     assert platforms is not None
+
+
+def test_public_api():
+    """Top-level echolon namespace exposes the main public types."""
+    import echolon
+
+    assert echolon.__version__
+    assert echolon.TradingContext is not None
+    assert echolon.BacktestConfig is not None
+    assert echolon.OptunaConfig is not None
+    assert echolon.IndicatorConfig is not None
+    assert echolon.quick_start is not None
