@@ -1,0 +1,1 @@
+{"indicators_with_lookback": {"HIGH": [10, 50], "LOW": [5, 20]}, "indicators_without_lookback": [], "indicators_with_special_params": ["market_regime"]}

@@ -50,6 +50,13 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["echolon"]
 
+[tool.hatch.build]
+include = [
+    "echolon/native/templates/**/*.py",
+    "echolon/native/templates/**/*.json",
+    "echolon/native/templates/**/*.md",
+]
+
 [project.scripts]
 echolon = "echolon.native.cli.main:app"
 
