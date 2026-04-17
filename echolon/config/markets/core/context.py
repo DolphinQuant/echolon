@@ -468,6 +468,41 @@ class TradingContext:
         return self.instrument.calculate_contract_value(price, size)
 
     # =========================================================================
+    # Alternate Constructors
+    # =========================================================================
+
+    @classmethod
+    def from_market(
+        cls,
+        market: str,
+        instrument: str,
+        frequency: str = "interday",
+        bar_size: str = "1d",
+    ) -> "TradingContext":
+        """
+        Create a TradingContext from market/instrument codes.
+
+        Thin convenience wrapper over MarketFactory.create() so callers can
+        construct a context without importing the factory directly.
+
+        Args:
+            market: Market code ('SHFE', 'CRYPTO'); case-insensitive
+            instrument: Instrument code ('cu', 'al', 'btc'); case-insensitive
+            frequency: 'interday' (default) or 'intraday'
+            bar_size: Bar size string ('1d' default, '5m', '15m', '1h', ...)
+
+        Returns:
+            Configured TradingContext
+        """
+        from echolon.config.markets.factory import MarketFactory
+        return MarketFactory.create(
+            market=market,
+            instrument=instrument,
+            frequency=frequency,
+            bar_size=bar_size,
+        )
+
+    # =========================================================================
     # Serialization
     # =========================================================================
 
