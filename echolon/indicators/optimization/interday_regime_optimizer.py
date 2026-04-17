@@ -43,7 +43,7 @@ import logging
 import json
 from datetime import datetime
 
-from echolon.config.quant_engine import INDICATOR_PERIOD_CAPS, BACKTEST_START_DATE
+from echolon.config.quant_engine import INDICATOR_PERIOD_CAPS
 from echolon.config.markets.factory import MarketFactory
 
 logger = logging.getLogger(__name__)
@@ -187,7 +187,8 @@ class InterdayRegimeOptimizer:
                  data_dir: str,
                  config: Optional[RegimeOptimizerConfig] = None,
                  futures: str = "copper",
-                 market: str = "SHFE"):
+                 market: str = "SHFE",
+                 backtest_start_year: Optional[int] = None):
         """
         Initialize regime optimizer.
 
@@ -201,11 +202,16 @@ class InterdayRegimeOptimizer:
             Futures type for contract file pattern (name or code)
         market : str
             Market code (e.g., "SHFE")
+        backtest_start_year : int, optional
+            Earliest contract year (e.g. 2018) for filtering.  Required when
+            contract filtering is desired; pass ``None`` to disable filtering
+            (all contracts are loaded).
         """
         self.data_dir = Path(data_dir)
         self.config = config or RegimeOptimizerConfig()
         self.futures = futures
         self.market = market
+        self._backtest_start_year = backtest_start_year
 
         # Determine futures code using MarketFactory (supports code or name)
         instrument_spec = MarketFactory.get_instrument_flexible(market, futures)
@@ -279,9 +285,10 @@ class InterdayRegimeOptimizer:
         """Load all contract data files for optimization"""
         contract_files = sorted(self.data_dir.glob(f"{self.futures_code}*.csv"))
 
-        # Extract start year from BACKTEST_START_DATE for consistent filtering
-        # This ensures regime optimization uses the same date range as backtesting
-        backtest_start_year = int(BACKTEST_START_DATE[:4])
+        # Use ``self._backtest_start_year`` for consistent filtering between
+        # regime optimization and backtesting.  When unset, all contracts are
+        # loaded without filtering.
+        backtest_start_year = self._backtest_start_year
 
         # Filter for contracts within backtest period
         recent_contracts = []
@@ -293,7 +300,7 @@ class InterdayRegimeOptimizer:
             if match:
                 year_suffix = int(match.group(2)[:2])
                 full_year = 2000 + year_suffix
-                if full_year >= backtest_start_year:
+                if backtest_start_year is None or full_year >= backtest_start_year:
                     recent_contracts.append(f)
 
         # Load data

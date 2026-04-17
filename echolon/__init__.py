@@ -1,6 +1,6 @@
 """Echolon — See what others can't. Market-agnostic quantitative trading engine."""
 
-__version__ = "0.1.0"
+__version__ = "0.2.0"
 
 from echolon.config.backtest_config import BacktestConfig
 from echolon.config.indicator_config import IndicatorConfig

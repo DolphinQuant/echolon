@@ -51,42 +51,17 @@ class PortfolioBacktestRunner:
         backtest_config: Optional[BacktestConfig] = None,
         optuna_config: Optional[OptunaConfig] = None,
     ):
-        # Phase 1 compat: build BacktestConfig from globals if not passed
         if backtest_config is None:
-            from echolon.config.quant_engine import (
-                BACKTEST_START_DATE, BACKTEST_END_DATE,
-                OPTIMIZATION_END_DATE, OOS_START_DATE,
-                PLATFORM_AGNOSTIC_DIR, BACKTEST_RESULTS_DIR,
-                MARKET_DATA_DIR, INDICATOR_DIR,
-                ACCEPTABLE_MAX_DRAWDOWN_PCT, MARKET_RESEARCH_END_DATE,
-            )
-            backtest_config = BacktestConfig(
-                start_date=BACKTEST_START_DATE,
-                end_date=BACKTEST_END_DATE,
-                is_end_date=OPTIMIZATION_END_DATE,
-                oos_start_date=OOS_START_DATE,
-                strategy_dir=Path(PLATFORM_AGNOSTIC_DIR),
-                market_data_dir=Path(MARKET_DATA_DIR),
-                indicator_dir=Path(INDICATOR_DIR),
-                results_dir=Path(BACKTEST_RESULTS_DIR),
-                max_drawdown_pct=ACCEPTABLE_MAX_DRAWDOWN_PCT,
-                market_research_end_date=MARKET_RESEARCH_END_DATE,
+            raise ValueError(
+                "backtest_config is required. Build one with BacktestConfig(...) "
+                "or use echolon.quick_start() for defaults."
             )
         self._backtest_config = backtest_config
 
-        # Phase 1 compat: build OptunaConfig from globals if not passed
         if optuna_config is None:
-            from echolon.config.quant_engine import (
-                OPTUNA_TRIALS, OPTUNA_TRIALS_DEBUG, OPTUNA_N_JOBS,
-                OPTUNA_TIMEOUT, OPTUNA_OPTIMIZATION_TARGET,
-                OPTUNA_AGGRESSIVE_MEMORY_MANAGEMENT, OPTUNA_ENHANCED_MONITORING,
-            )
-            optuna_config = OptunaConfig(
-                n_trials=OPTUNA_TRIALS, n_trials_debug=OPTUNA_TRIALS_DEBUG,
-                n_jobs=OPTUNA_N_JOBS, timeout=OPTUNA_TIMEOUT,
-                target=OPTUNA_OPTIMIZATION_TARGET,
-                aggressive_memory_management=OPTUNA_AGGRESSIVE_MEMORY_MANAGEMENT,
-                enhanced_monitoring=OPTUNA_ENHANCED_MONITORING,
+            raise ValueError(
+                "optuna_config is required. Build one with OptunaConfig(...) "
+                "or use echolon.quick_start() for defaults."
             )
         self._optuna_config = optuna_config
 

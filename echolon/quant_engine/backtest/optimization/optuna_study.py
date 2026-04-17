@@ -174,19 +174,10 @@ class OptunaOptimizer:
         run_context: str = "optimization",
         optuna_config: Optional[OptunaConfig] = None,
     ):
-        # Phase 1 compat: build OptunaConfig from globals if not passed
         if optuna_config is None:
-            from echolon.config.quant_engine import (
-                OPTUNA_TRIALS, OPTUNA_TRIALS_DEBUG, OPTUNA_N_JOBS,
-                OPTUNA_TIMEOUT, OPTUNA_OPTIMIZATION_TARGET,
-                OPTUNA_AGGRESSIVE_MEMORY_MANAGEMENT, OPTUNA_ENHANCED_MONITORING,
-            )
-            optuna_config = OptunaConfig(
-                n_trials=OPTUNA_TRIALS, n_trials_debug=OPTUNA_TRIALS_DEBUG,
-                n_jobs=OPTUNA_N_JOBS, timeout=OPTUNA_TIMEOUT,
-                target=OPTUNA_OPTIMIZATION_TARGET,
-                aggressive_memory_management=OPTUNA_AGGRESSIVE_MEMORY_MANAGEMENT,
-                enhanced_monitoring=OPTUNA_ENHANCED_MONITORING,
+            raise ValueError(
+                "optuna_config is required. Build one with OptunaConfig(...) "
+                "or use echolon.quick_start() for defaults."
             )
         self._optuna_config = optuna_config
 

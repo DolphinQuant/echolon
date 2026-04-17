@@ -16,7 +16,6 @@ from datetime import datetime
 import pandas as pd
 
 from echolon.config.settings import INDICATORS_BACKTEST_DIR, INDICATORS_RESEARCH_DIR
-from echolon.config.quant_engine import BACKTEST_START_DATE, BACKTEST_END_DATE
 from echolon.config.markets.core.context import TradingContext
 
 logger = logging.getLogger(__name__)
@@ -32,6 +31,9 @@ def run_indicator_calculation(
     optimize_regime: bool = False,
     indicator_config: Optional[dict] = None,
     regime_params: Optional[dict] = None,
+    start_date: Optional[str] = None,
+    end_date: Optional[str] = None,
+    backtest_start_year: Optional[int] = None,
 ) -> pd.DataFrame:
     """
     Run indicator calculation on market data.
@@ -96,7 +98,13 @@ def run_indicator_calculation(
     # Load trading dates if not provided
     if trading_dates is None:
         if mode == 'backtest':
-            trading_dates = _load_trading_dates(market, instrument, BACKTEST_START_DATE, BACKTEST_END_DATE)
+            if start_date is None or end_date is None:
+                raise ValueError(
+                    "start_date and end_date are required for mode='backtest' "
+                    "when trading_dates is None. Pass them explicitly or build "
+                    "a BacktestConfig and forward its fields."
+                )
+            trading_dates = _load_trading_dates(market, instrument, start_date, end_date)
         if mode == 'deploy':
             trading_dates = _load_trading_dates(market, instrument)
 
@@ -105,6 +113,10 @@ def run_indicator_calculation(
     # Import and create processor
     from .engine.processor import IndicatorProcessor
 
+    # Derive backtest_start_year from start_date if not explicitly provided
+    if backtest_start_year is None and start_date is not None:
+        backtest_start_year = int(start_date[:4])
+
     processor = IndicatorProcessor(
         ctx=ctx,
         trading_date_list=trading_dates,
@@ -112,6 +124,7 @@ def run_indicator_calculation(
         selected=selected_only,
         indicator_config=indicator_config,
         regime_params=regime_params,
+        backtest_start_year=backtest_start_year,
     )
 
     # Process all contracts

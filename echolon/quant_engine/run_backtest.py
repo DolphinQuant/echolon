@@ -49,6 +49,7 @@ import logging
 from typing import Dict, Any, Optional
 
 from echolon.config.markets.core.context import TradingContext
+from echolon.config.backtest_config import BacktestConfig
 from .backtest.engine.backtest_runner import BacktestRunner, _RunnerConfig
 
 logger = logging.getLogger(__name__)
@@ -65,6 +66,7 @@ def run_backtest(
     enable_strategy_logging: bool = True,
     output_dir: Optional[str] = None,
     save_results: bool = True,
+    backtest_config: Optional[BacktestConfig] = None,
 ) -> Dict[str, Any]:
     """
     Run a single backtest with provided parameters.
@@ -108,7 +110,7 @@ def run_backtest(
         config.output_dir = output_dir
 
     # Create runner with ctx and execute
-    runner = BacktestRunner(ctx=ctx, config=config)
+    runner = BacktestRunner(ctx=ctx, config=config, backtest_config=backtest_config)
     runner.load_data()
 
     # Get default params if not provided
@@ -123,7 +125,10 @@ def run_backtest(
     )
 
 
-def run_debug_backtest(ctx: TradingContext) -> Dict[str, Any]:
+def run_debug_backtest(
+    ctx: TradingContext,
+    backtest_config: Optional[BacktestConfig] = None,
+) -> Dict[str, Any]:
     """
     Run debug backtest with default parameters and detailed logging.
 
@@ -145,7 +150,7 @@ def run_debug_backtest(ctx: TradingContext) -> Dict[str, Any]:
         f"market={ctx.market_code}, instrument={ctx.instrument_name}"
     )
 
-    results = BacktestRunner.debug(ctx)
+    results = BacktestRunner.debug(ctx, backtest_config=backtest_config)
 
     # Log result summary
     logger.info(
@@ -165,6 +170,7 @@ def run_best_trial(
     best_params_path: Optional[str] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    backtest_config: Optional[BacktestConfig] = None,
 ) -> Dict[str, Any]:
     """
     Run backtest with best parameters from Optuna optimization.
@@ -196,6 +202,7 @@ def run_best_trial(
     results = BacktestRunner.best_trial(
         ctx=ctx, params_path=best_params_path,
         start_date=start_date, end_date=end_date,
+        backtest_config=backtest_config,
     )
 
     # Log result summary

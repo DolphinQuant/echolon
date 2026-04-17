@@ -61,8 +61,6 @@ from ...schemas.backtest_results import BacktestResultsSchemaV4
 from .backtrader_strategy import get_strategy_class
 from echolon.config.settings import PROJECT_ROOT
 from echolon.config.quant_engine import (
-    BACKTEST_START_DATE,
-    BACKTEST_END_DATE,
     INDICATOR_DIR,
     MARKET_DATA_DIR,
 )
@@ -136,30 +134,13 @@ class BacktestRunner:
                 If provided, strategy is loaded from this directory via importlib
                 instead of from strategy/platform_agnostic/. Used by portfolio
                 backtest to run per-slot strategies.
-            backtest_config: Optional Pydantic ``BacktestConfig`` providing
-                date ranges, data paths, and drawdown thresholds. Falls back
-                to module globals if not provided (Phase 1 compat).
+            backtest_config: Pydantic ``BacktestConfig`` providing date
+                ranges, data paths, and drawdown thresholds.  Required.
         """
-        # Phase 1 compat: build BacktestConfig from globals if not passed
         if backtest_config is None:
-            from echolon.config.quant_engine import (
-                BACKTEST_START_DATE, BACKTEST_END_DATE,
-                OPTIMIZATION_END_DATE, OOS_START_DATE,
-                PLATFORM_AGNOSTIC_DIR, BACKTEST_RESULTS_DIR,
-                MARKET_DATA_DIR, INDICATOR_DIR,
-                ACCEPTABLE_MAX_DRAWDOWN_PCT, MARKET_RESEARCH_END_DATE,
-            )
-            backtest_config = BacktestConfig(
-                start_date=BACKTEST_START_DATE,
-                end_date=BACKTEST_END_DATE,
-                is_end_date=OPTIMIZATION_END_DATE,
-                oos_start_date=OOS_START_DATE,
-                strategy_dir=Path(PLATFORM_AGNOSTIC_DIR),
-                market_data_dir=Path(MARKET_DATA_DIR),
-                indicator_dir=Path(INDICATOR_DIR),
-                results_dir=Path(BACKTEST_RESULTS_DIR),
-                max_drawdown_pct=ACCEPTABLE_MAX_DRAWDOWN_PCT,
-                market_research_end_date=MARKET_RESEARCH_END_DATE,
+            raise ValueError(
+                "backtest_config is required. Build one with BacktestConfig(...) "
+                "or use echolon.quick_start() for defaults."
             )
         self._backtest_config = backtest_config
 
@@ -527,7 +508,11 @@ class BacktestRunner:
     # =========================================================================
 
     @classmethod
-    def debug(cls, ctx: TradingContext) -> Dict[str, Any]:
+    def debug(
+        cls,
+        ctx: TradingContext,
+        backtest_config: Optional[BacktestConfig] = None,
+    ) -> Dict[str, Any]:
         """
         Run debug backtest with DEFAULT_PARAMS.
 
@@ -537,13 +522,15 @@ class BacktestRunner:
         ----------
         ctx : TradingContext
             Trading context (single source of truth)
+        backtest_config : BacktestConfig, optional
+            Pydantic config with date ranges, paths, and thresholds.  Required.
 
         Returns
         -------
         Dict[str, Any]
             Detailed results
         """
-        runner = cls(ctx)
+        runner = cls(ctx, backtest_config=backtest_config)
         runner.load_data()
         return runner.run(_get_default_params(), context='debug')
 

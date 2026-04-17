@@ -35,7 +35,7 @@ from echolon.indicators.utils.indicator_loader import get_analysis_indicator_lis
 from echolon.quant_engine.types import validate_indicator_list_json
 from echolon.config.settings import PROJECT_ROOT, OUTPUT_DIR
 from echolon.config.markets.core.context import TradingContext
-from echolon.config.quant_engine import MARKET_DATA_DIR, BACKTEST_START_DATE
+from echolon.config.quant_engine import MARKET_DATA_DIR
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -65,6 +65,7 @@ class IndicatorProcessor:
         selected: bool = True,
         indicator_config: Optional[Dict[str, Any]] = None,
         regime_params: Optional[Dict[str, Any]] = None,
+        backtest_start_year: Optional[int] = None,
     ):
         """
         Initialize the parallel processor.
@@ -81,8 +82,12 @@ class IndicatorProcessor:
                 If provided, used instead of loading from output/regime_params.json
                 or running Optuna optimization. Each strategy cluster has its own
                 regime_params.json optimized on its instrument's data.
+            backtest_start_year: Earliest year (e.g. 2018) used to filter contracts
+                in :meth:`_is_contract_in_backtest_period`. Required only when
+                ``selected`` is True and contracts must match the backtest period.
         """
         self._provided_regime_params = regime_params
+        self._backtest_start_year = backtest_start_year
         # Store context for frequency-aware indicator parameters
         self.ctx = ctx
 
@@ -934,13 +939,19 @@ class IndicatorProcessor:
     def _is_contract_in_backtest_period(self, contract_name: str) -> bool:
         """Check if contract is within backtest period.
 
-        Uses BACKTEST_START_DATE from config to ensure consistent filtering
-        between indicator calculation and backtesting.
+        Uses ``self._backtest_start_year`` (passed at construction time) to
+        ensure consistent filtering between indicator calculation and
+        backtesting.
         """
         import re
 
-        # Extract start year from BACKTEST_START_DATE for consistent filtering
-        backtest_start_year = int(BACKTEST_START_DATE[:4])
+        if self._backtest_start_year is None:
+            raise ValueError(
+                "backtest_start_year is required for contract filtering. "
+                "Pass it to IndicatorProcessor(..., backtest_start_year=YYYY) "
+                "or forward it via run_indicator_calculation(start_date=...)."
+            )
+        backtest_start_year = self._backtest_start_year
 
         # Use regex to extract year from contract name (e.g., al1803, cu2401)
         # Pattern: letters followed by 4 digits (YYMM)
