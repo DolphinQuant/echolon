@@ -17,6 +17,7 @@ Usage:
 import json
 import logging
 import os
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 
 import numpy as np
@@ -24,6 +25,8 @@ import pandas as pd
 
 from echolon.config.markets.factory import MarketFactory
 from echolon.config.markets.core.trading_target import TradingTarget
+from echolon.config.optuna_config import OptunaConfig
+from echolon.config.backtest_config import BacktestConfig
 from .engine.backtest_runner import BacktestRunner
 from .portfolio_metrics import (
     compute_correlation_matrix,
@@ -45,7 +48,48 @@ class PortfolioBacktestRunner:
         self,
         config: PortfolioDeployConfig,
         output_dir: str = "workspace/portfolio_backtest",
+        backtest_config: Optional[BacktestConfig] = None,
+        optuna_config: Optional[OptunaConfig] = None,
     ):
+        # Phase 1 compat: build BacktestConfig from globals if not passed
+        if backtest_config is None:
+            from echolon.config.quant_engine import (
+                BACKTEST_START_DATE, BACKTEST_END_DATE,
+                OPTIMIZATION_END_DATE, OOS_START_DATE,
+                PLATFORM_AGNOSTIC_DIR, BACKTEST_RESULTS_DIR,
+                MARKET_DATA_DIR, INDICATOR_DIR,
+                ACCEPTABLE_MAX_DRAWDOWN_PCT, MARKET_RESEARCH_END_DATE,
+            )
+            backtest_config = BacktestConfig(
+                start_date=BACKTEST_START_DATE,
+                end_date=BACKTEST_END_DATE,
+                is_end_date=OPTIMIZATION_END_DATE,
+                oos_start_date=OOS_START_DATE,
+                strategy_dir=Path(PLATFORM_AGNOSTIC_DIR),
+                market_data_dir=Path(MARKET_DATA_DIR),
+                indicator_dir=Path(INDICATOR_DIR),
+                results_dir=Path(BACKTEST_RESULTS_DIR),
+                max_drawdown_pct=ACCEPTABLE_MAX_DRAWDOWN_PCT,
+                market_research_end_date=MARKET_RESEARCH_END_DATE,
+            )
+        self._backtest_config = backtest_config
+
+        # Phase 1 compat: build OptunaConfig from globals if not passed
+        if optuna_config is None:
+            from echolon.config.quant_engine import (
+                OPTUNA_TRIALS, OPTUNA_TRIALS_DEBUG, OPTUNA_N_JOBS,
+                OPTUNA_TIMEOUT, OPTUNA_OPTIMIZATION_TARGET,
+                OPTUNA_AGGRESSIVE_MEMORY_MANAGEMENT, OPTUNA_ENHANCED_MONITORING,
+            )
+            optuna_config = OptunaConfig(
+                n_trials=OPTUNA_TRIALS, n_trials_debug=OPTUNA_TRIALS_DEBUG,
+                n_jobs=OPTUNA_N_JOBS, timeout=OPTUNA_TIMEOUT,
+                target=OPTUNA_OPTIMIZATION_TARGET,
+                aggressive_memory_management=OPTUNA_AGGRESSIVE_MEMORY_MANAGEMENT,
+                enhanced_monitoring=OPTUNA_ENHANCED_MONITORING,
+            )
+        self._optuna_config = optuna_config
+
         self.config = config
         self.output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)
