@@ -35,8 +35,8 @@ Usage:
     results = run_backtest(ctx, strategy_params={'entry_params': {...}, 'exit_params': {...}})
 
     # Class-based API for more control
-    from echolon.quant_engine.backtest.engine import BacktestRunner, BacktestConfig
-    runner = BacktestRunner(ctx=ctx, config=BacktestConfig(initial_capital=500000))
+    from echolon.quant_engine.backtest.engine.backtest_runner import BacktestRunner
+    runner = BacktestRunner(ctx=ctx)
     results = runner.load_data().run(params=my_params, context='custom')
 
     # Command line (uses MarketFactory.from_session() internally)
@@ -49,7 +49,7 @@ import logging
 from typing import Dict, Any, Optional
 
 from echolon.config.markets.core.context import TradingContext
-from .backtest.engine.backtest_runner import BacktestRunner, BacktestConfig
+from .backtest.engine.backtest_runner import BacktestRunner, _RunnerConfig
 
 logger = logging.getLogger(__name__)
 
@@ -99,8 +99,8 @@ def run_backtest(
       enabled based on ctx.has_contract_expiry.
     - Commission and multiplier are retrieved from market_adapter.get_contract_spec().
     """
-    # Build config
-    config = BacktestConfig(
+    # Build internal runner config
+    config = _RunnerConfig(
         enable_strategy_logging=enable_strategy_logging,
     )
 

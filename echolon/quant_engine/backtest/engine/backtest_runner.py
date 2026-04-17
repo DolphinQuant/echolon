@@ -67,7 +67,7 @@ from echolon.config.quant_engine import (
     MARKET_DATA_DIR,
 )
 from echolon.config.markets.core.context import TradingContext
-from echolon.config.backtest_config import BacktestConfig as BacktestSettings
+from echolon.config.backtest_config import BacktestConfig
 from ...logging_utils import (
     setup_backtest_logging,
     log_workflow_start,
@@ -86,8 +86,12 @@ logger = logging.getLogger(__name__)
 # =============================================================================
 
 @dataclass
-class BacktestConfig:
-    """Configuration for backtest runs."""
+class _RunnerConfig:
+    """Internal runner options (paths + feature flags).
+
+    Not part of the public API — use the Pydantic ``BacktestConfig`` from
+    ``echolon.config.backtest_config`` for external configuration.
+    """
     # Paths - use centralized config from config/quant_engine.py
     indicator_dir: str = INDICATOR_DIR  # workspace/data/indicators/backtest/
     market_data_dir: str = MARKET_DATA_DIR  # workspace/data/market_data/
@@ -115,28 +119,28 @@ class BacktestRunner:
     ctx : TradingContext
         Trading context with market, instrument, and frequency configuration.
         This is the single source of truth for all trading parameters.
-    config : BacktestConfig, optional
-        Configuration object. Uses defaults if None.
+    config : _RunnerConfig, optional
+        Internal runner options (paths + feature flags). Uses defaults if None.
     """
 
-    def __init__(self, ctx: TradingContext, config: Optional[BacktestConfig] = None,
+    def __init__(self, ctx: TradingContext, config: Optional[_RunnerConfig] = None,
                  strategy_code_dir: Optional[str] = None,
-                 backtest_config: Optional[BacktestSettings] = None):
+                 backtest_config: Optional[BacktestConfig] = None):
         """
         Initialize BacktestRunner with TradingContext.
 
         Args:
             ctx: TradingContext containing market, instrument, frequency info
-            config: Optional BacktestConfig for paths and features (local dataclass)
+            config: Optional _RunnerConfig for internal paths and feature flags.
             strategy_code_dir: Optional path to strategy code directory.
                 If provided, strategy is loaded from this directory via importlib
                 instead of from strategy/platform_agnostic/. Used by portfolio
                 backtest to run per-slot strategies.
-            backtest_config: Optional Pydantic BacktestConfig providing
+            backtest_config: Optional Pydantic ``BacktestConfig`` providing
                 date ranges, data paths, and drawdown thresholds. Falls back
                 to module globals if not provided (Phase 1 compat).
         """
-        # Phase 1 compat: build BacktestSettings from globals if not passed
+        # Phase 1 compat: build BacktestConfig from globals if not passed
         if backtest_config is None:
             from echolon.config.quant_engine import (
                 BACKTEST_START_DATE, BACKTEST_END_DATE,
@@ -145,7 +149,7 @@ class BacktestRunner:
                 MARKET_DATA_DIR, INDICATOR_DIR,
                 ACCEPTABLE_MAX_DRAWDOWN_PCT, MARKET_RESEARCH_END_DATE,
             )
-            backtest_config = BacktestSettings(
+            backtest_config = BacktestConfig(
                 start_date=BACKTEST_START_DATE,
                 end_date=BACKTEST_END_DATE,
                 is_end_date=OPTIMIZATION_END_DATE,
@@ -160,7 +164,7 @@ class BacktestRunner:
         self._backtest_config = backtest_config
 
         self.ctx = ctx
-        self.config = config or BacktestConfig()
+        self.config = config or _RunnerConfig()
         self.strategy_code_dir = strategy_code_dir
 
         # State
