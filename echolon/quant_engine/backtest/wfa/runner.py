@@ -22,13 +22,15 @@ import json
 import logging
 import shutil
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, Optional
 
 import pandas as pd
 
 from echolon.config.settings import WORKSPACE_DIR
 from echolon.config.quant_engine import PLATFORM_AGNOSTIC_DIR
 from echolon.config.markets.core.context import TradingContext
+from echolon.config.optuna_config import OptunaConfig
+from echolon.config.backtest_config import BacktestConfig
 from .window import WFAWindow, WFAConfig
 from .analyzer import WalkForwardAnalyzer
 from .drs_calculator import compute_drs, DRSConfig
@@ -45,7 +47,52 @@ class WFARunner:
     parameters, and WFA robustness metrics are added to the results.
     """
 
-    def __init__(self, ctx: TradingContext, config: WFAConfig):
+    def __init__(
+        self,
+        ctx: TradingContext,
+        config: WFAConfig,
+        optuna_config: Optional[OptunaConfig] = None,
+        backtest_config: Optional[BacktestConfig] = None,
+    ):
+        # Phase 1 compat: build OptunaConfig from globals if not passed
+        if optuna_config is None:
+            from echolon.config.quant_engine import (
+                OPTUNA_TRIALS, OPTUNA_TRIALS_DEBUG, OPTUNA_N_JOBS,
+                OPTUNA_TIMEOUT, OPTUNA_OPTIMIZATION_TARGET,
+                OPTUNA_AGGRESSIVE_MEMORY_MANAGEMENT, OPTUNA_ENHANCED_MONITORING,
+            )
+            optuna_config = OptunaConfig(
+                n_trials=OPTUNA_TRIALS, n_trials_debug=OPTUNA_TRIALS_DEBUG,
+                n_jobs=OPTUNA_N_JOBS, timeout=OPTUNA_TIMEOUT,
+                target=OPTUNA_OPTIMIZATION_TARGET,
+                aggressive_memory_management=OPTUNA_AGGRESSIVE_MEMORY_MANAGEMENT,
+                enhanced_monitoring=OPTUNA_ENHANCED_MONITORING,
+            )
+        self._optuna_config = optuna_config
+
+        # Phase 1 compat: build BacktestConfig from globals if not passed
+        if backtest_config is None:
+            from echolon.config.quant_engine import (
+                BACKTEST_START_DATE, BACKTEST_END_DATE,
+                OPTIMIZATION_END_DATE, OOS_START_DATE,
+                PLATFORM_AGNOSTIC_DIR as _PA_DIR, BACKTEST_RESULTS_DIR,
+                MARKET_DATA_DIR, INDICATOR_DIR,
+                ACCEPTABLE_MAX_DRAWDOWN_PCT, MARKET_RESEARCH_END_DATE,
+            )
+            backtest_config = BacktestConfig(
+                start_date=BACKTEST_START_DATE,
+                end_date=BACKTEST_END_DATE,
+                is_end_date=OPTIMIZATION_END_DATE,
+                oos_start_date=OOS_START_DATE,
+                strategy_dir=Path(_PA_DIR),
+                market_data_dir=Path(MARKET_DATA_DIR),
+                indicator_dir=Path(INDICATOR_DIR),
+                results_dir=Path(BACKTEST_RESULTS_DIR),
+                max_drawdown_pct=ACCEPTABLE_MAX_DRAWDOWN_PCT,
+                market_research_end_date=MARKET_RESEARCH_END_DATE,
+            )
+        self._backtest_config = backtest_config
+
         self.ctx = ctx
         self.config = config
         self.output_dir = Path(WORKSPACE_DIR) / "current/backtest"
@@ -134,6 +181,7 @@ class WFARunner:
                 n_trials=self.config.trials_per_window,
                 optimization_target=self.config.optimization_target,
                 run_context="optimization",
+                optuna_config=self._optuna_config,
             )
 
             study, _best_params = optimizer.run(
