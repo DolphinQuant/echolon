@@ -62,6 +62,7 @@ from ...logging_utils import (
 )
 from echolon.config.quant_engine import INDICATOR_DIR
 from echolon.config.markets.core.context import TradingContext
+from echolon.config.optuna_config import OptunaConfig
 
 if TYPE_CHECKING:
     from ...core.interfaces import IMarketAdapter
@@ -166,19 +167,40 @@ class OptunaOptimizer:
         market_adapter: 'IMarketAdapter',
         strategy_class: type,
         search_space_fn: Callable[[optuna.Trial], Dict[str, Any]],
-        n_trials: int = 100,
-        optimization_target: str = "sharpe_ratio",
+        n_trials: Optional[int] = None,
+        optimization_target: Optional[str] = None,
         timeout: Optional[int] = None,
         use_sequential: bool = False,
         run_context: str = "optimization",
+        optuna_config: Optional[OptunaConfig] = None,
     ):
+        # Phase 1 compat: build OptunaConfig from globals if not passed
+        if optuna_config is None:
+            from echolon.config.quant_engine import (
+                OPTUNA_TRIALS, OPTUNA_TRIALS_DEBUG, OPTUNA_N_JOBS,
+                OPTUNA_TIMEOUT, OPTUNA_OPTIMIZATION_TARGET,
+                OPTUNA_AGGRESSIVE_MEMORY_MANAGEMENT, OPTUNA_ENHANCED_MONITORING,
+            )
+            optuna_config = OptunaConfig(
+                n_trials=OPTUNA_TRIALS, n_trials_debug=OPTUNA_TRIALS_DEBUG,
+                n_jobs=OPTUNA_N_JOBS, timeout=OPTUNA_TIMEOUT,
+                target=OPTUNA_OPTIMIZATION_TARGET,
+                aggressive_memory_management=OPTUNA_AGGRESSIVE_MEMORY_MANAGEMENT,
+                enhanced_monitoring=OPTUNA_ENHANCED_MONITORING,
+            )
+        self._optuna_config = optuna_config
+
         self.ctx = ctx
         self.market_adapter = market_adapter
         self.strategy_class = strategy_class
         self.search_space_fn = search_space_fn
-        self.n_trials = n_trials
-        self.optimization_target = optimization_target
-        self.timeout = timeout
+        # Explicit constructor arguments override config values (back-compat)
+        self.n_trials = n_trials if n_trials is not None else self._optuna_config.n_trials
+        self.optimization_target = (
+            optimization_target if optimization_target is not None
+            else self._optuna_config.target
+        )
+        self.timeout = timeout if timeout is not None else self._optuna_config.timeout
         self.use_sequential = use_sequential
         self.run_context = run_context
         self.start_time: Optional[float] = None
