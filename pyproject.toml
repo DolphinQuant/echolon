@@ -1,6 +1,6 @@
 [project]
 name = "echolon"
-version = "0.2.0"
+version = "0.3.2"
 description = "See what others can't. Market-agnostic quantitative trading engine for futures backtesting, optimization, and deployment."
 readme = "README.md"
 license = "Apache-2.0"
@@ -49,10 +49,7 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["echolon"]
-
-[tool.hatch.build]
-include = [
-    "echolon/native/templates/**/*.py",
+artifacts = [
     "echolon/native/templates/**/*.json",
     "echolon/native/templates/**/*.md",
 ]
