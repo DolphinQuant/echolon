@@ -555,6 +555,7 @@ class BacktestRunner:
         start_date: Optional[str] = None,
         end_date: Optional[str] = None,
         strategy_code_dir: Optional[str] = None,
+        backtest_config: Optional[BacktestConfig] = None,
     ) -> Dict[str, Any]:
         """
         Run backtest with best parameters from optimization.
@@ -574,13 +575,20 @@ class BacktestRunner:
         strategy_code_dir : str, optional
             Path to strategy code directory. If provided, loads strategy
             from this directory instead of platform_agnostic/.
+        backtest_config : BacktestConfig, optional
+            Pydantic config with date ranges, paths, and thresholds.
+            Falls back to module globals if not provided.
 
         Returns
         -------
         Dict[str, Any]
             Detailed results
         """
-        runner = cls(ctx, strategy_code_dir=strategy_code_dir)
+        runner = cls(
+            ctx,
+            strategy_code_dir=strategy_code_dir,
+            backtest_config=backtest_config,
+        )
 
         # Default params path — from slot dir if provided, else platform_agnostic
         if params_path is None:

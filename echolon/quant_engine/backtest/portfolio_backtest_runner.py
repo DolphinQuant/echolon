@@ -214,6 +214,7 @@ class PortfolioBacktestRunner:
             strategy_code_dir=sc.strategy_code_dir,
             start_date=start_date,
             end_date=end_date,
+            backtest_config=self._backtest_config,
         )
 
         # Extract equity curve from result (list of {'date': str, 'equity': float})
@@ -324,6 +325,7 @@ class PortfolioBacktestRunner:
             strategy_code_dir=sc.strategy_code_dir,
             start_date=start_date,
             end_date=end_date,
+            backtest_config=self._backtest_config,
         )
 
         if isinstance(result, dict) and 'equity_curve' in result:
