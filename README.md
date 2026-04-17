@@ -39,3 +39,20 @@ opt.n_trials = 500
 - `ECHOLON_DATA_DIR` (default `./data`) — market data, indicator cache
 - `ECHOLON_LOG_LEVEL` (default `INFO`)
 - `ECHOLON_N_JOBS_DEFAULT` (default `-1`) — Optuna parallelism
+
+## AI-Native Documentation
+
+Echolon is designed for both humans and AI coding agents. See:
+
+- [`llms.txt`](./llms.txt) — AI agent entry point with instructions
+- [`docs/`](./docs/) — structured documentation
+- [`examples/`](./examples/) — working strategies to learn from
+
+## CLI
+
+```bash
+pip install echolon
+echolon init-strategy my_first --template minimal
+echolon validate my_first/
+echolon run my_first/ --instrument cu --start 2020-01-01 --end 2023-12-31
+```
