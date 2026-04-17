@@ -117,3 +117,24 @@ def test_raise_error_formats_fix_template():
     with pytest.raises(EchelonError) as exc_info:
         raise_error("IND-001", code_name="ATR_14", json_name="atr_14", file="entry.py")
     assert "ATR_14" in exc_info.value.fix or "atr_14" in exc_info.value.fix
+
+
+def test_echolon_reexports_echolon_error():
+    import echolon
+    assert echolon.EchelonError is not None
+    from echolon.native.validation.errors import EchelonError as E
+    assert echolon.EchelonError is E
+
+
+def test_validation_package_reexports():
+    from echolon.native.validation import (
+        EchelonError, ValidationError, StrategyStructureError,
+        IndicatorError, ParameterError,
+        validate_strategy_dir, validate_indicator_names,
+    )
+    assert validate_strategy_dir is not None
+
+
+def test_native_reexports():
+    from echolon.native import validate_strategy_dir, validate_indicator_names, EchelonError
+    assert validate_strategy_dir is not None
