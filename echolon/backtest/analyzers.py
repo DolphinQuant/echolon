@@ -50,7 +50,7 @@ import datetime
 import logging
 from typing import Optional, Dict, Any, List, TYPE_CHECKING
 
-from echolon.lib.regime_utils import convert_regime_to_string
+from echolon.indicators.utils.regime_utils import convert_regime_to_string
 
 if TYPE_CHECKING:
     from echolon.strategy.interfaces import IMarketAdapter
