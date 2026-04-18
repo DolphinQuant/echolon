@@ -118,6 +118,16 @@ class PortfolioDeployConfig:
             )
             config.slots.append(SlotConfig(**slot_data, dashboard=dashboard_cfg))
 
+        # Resolve relative strategy_code_dir / trial_params_path anchored to the
+        # config file's directory. Users can then place strategies anywhere on disk
+        # and reference them relatively from the config.
+        config_dir = Path(config_path).parent.resolve()
+        for slot in config.slots:
+            if not Path(slot.strategy_code_dir).is_absolute():
+                slot.strategy_code_dir = str(config_dir / slot.strategy_code_dir)
+            if not Path(slot.trial_params_path).is_absolute():
+                slot.trial_params_path = str(config_dir / slot.trial_params_path)
+
         # Parse deploy settings
         deploy_data = data.get('deploy', {})
         config.deploy = DeploySettings(**deploy_data)

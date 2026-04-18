@@ -5,6 +5,8 @@ import typer
 
 from echolon.config.markets.factory import MarketFactory
 from echolon.live.config.deploy_config import DeployConfig
+from echolon.live.config.portfolio_deploy_config import PortfolioDeployConfig
+from echolon.live.portfolio_runner import PortfolioTradingRunner
 from echolon.live.runner import TradingRunner
 
 logger = logging.getLogger(__name__)
@@ -49,7 +51,21 @@ def deploy_portfolio(
     validate_only: bool = typer.Option(False, "--validate-only", help="Validate schema + paths then exit"),
 ) -> None:
     """Run multi-slot portfolio live trading (scheduled continuous)."""
-    raise typer.Exit(code=1)  # filled in Task 3
+    portfolio_config = PortfolioDeployConfig.load(config)
+    enabled = portfolio_config.get_enabled_slots()
+    logger.info("Loaded portfolio config: %d enabled slots", len(enabled))
+
+    if validate_only:
+        logger.info("Validation complete — exiting (--validate-only)")
+        return
+
+    portfolio_runner = PortfolioTradingRunner(config=portfolio_config)
+    try:
+        portfolio_runner.run()
+    except KeyboardInterrupt:
+        logger.info("Portfolio deploy stopped by user")
+    finally:
+        portfolio_runner.stop()
 
 
 @deploy_app.command("portfolio-cycle")
@@ -57,4 +73,10 @@ def deploy_portfolio_cycle(
     config: str = typer.Option(..., "--config", "-c", help="Path to portfolio_deploy_config.json"),
 ) -> None:
     """Run a single portfolio trading cycle (for testing)."""
-    raise typer.Exit(code=1)  # filled in Task 3
+    portfolio_config = PortfolioDeployConfig.load(config)
+    portfolio_runner = PortfolioTradingRunner(config=portfolio_config)
+    try:
+        result = portfolio_runner.run_single_cycle()
+        logger.info("Single portfolio cycle complete: status=%s", result.get("status"))
+    finally:
+        portfolio_runner.stop()
