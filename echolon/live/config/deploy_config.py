@@ -49,6 +49,13 @@ class DeployConfig:
     # Trial params path
     trial_params_path: Optional[str] = None
 
+    # Market/instrument/frequency (for building TradingContext)
+    market: str = ""
+    instrument: str = ""
+    frequency: str = ""
+    bar_size: str = ""
+    initial_capital: float = 0.0
+
     @property
     def active_account(self) -> QMTAccountConfig:
         """Get the active account config based on use_test_account flag."""
@@ -93,6 +100,13 @@ class DeployConfig:
 
         # Trial params
         config.trial_params_path = data.get('trial_params_path')
+
+        # Market/instrument/frequency fields
+        config.market = data.get('market', config.market)
+        config.instrument = data.get('instrument', config.instrument)
+        config.frequency = data.get('frequency', config.frequency)
+        config.bar_size = data.get('bar_size', config.bar_size)
+        config.initial_capital = data.get('initial_capital', config.initial_capital)
 
         # Resolve empty paths from centralized config
         config.resolve_paths()
