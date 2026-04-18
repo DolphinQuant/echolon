@@ -32,9 +32,9 @@ Architecture:
 from typing import Dict, Any, Type, Optional, TYPE_CHECKING
 import backtrader as bt
 import logging
-from ...data_loader.SHFE_loader import load_indicator_metadata
+from echolon.data.loaders.shfe_loader import load_indicator_metadata
 from echolon.strategy.interfaces import OrderStatus
-from ...logging_utils import get_run_context, should_log_details
+from echolon.backtest.logging_utils import get_run_context, should_log_details
 
 if TYPE_CHECKING:
     from .backtrader_engine import BacktraderEngine

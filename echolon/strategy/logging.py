@@ -18,7 +18,7 @@ from pathlib import Path
 import logging
 
 from .interfaces import IStrategyLogger
-from echolon.quant_engine.schemas.strategy_log import validate_strategy_log_dict_list
+from echolon.backtest.schemas import validate_strategy_log_dict_list
 
 logger = logging.getLogger(__name__)
 

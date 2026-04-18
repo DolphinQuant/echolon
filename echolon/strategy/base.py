@@ -48,7 +48,7 @@ from .interfaces import (
     ILogger, IEventBus, IStrategyLogger
 )
 from .hooks.strategy_hook_base import IStrategyHook
-from echolon.quant_engine.logging_utils import get_run_context, should_log_details
+from echolon.backtest.logging_utils import get_run_context, should_log_details
 
 if TYPE_CHECKING:
     from echolon.markets.interface import IMarketAdapter

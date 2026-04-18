@@ -54,7 +54,7 @@ from ..engine.optimization_runner import (
     OptimizationConfig,
     run_optimization_trial,
 )
-from ...logging_utils import (
+from echolon.backtest.logging_utils import (
     setup_backtest_logging,
     log_workflow_start,
     log_workflow_success,

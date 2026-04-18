@@ -7,7 +7,7 @@ and computes portfolio-level metrics.
 
 Usage:
     from echolon.live.config.portfolio_deploy_config import PortfolioDeployConfig
-    from echolon.quant_engine.backtest.portfolio_backtest_runner import PortfolioBacktestRunner
+    from echolon.backtest.portfolio_runner import PortfolioBacktestRunner
 
     config = PortfolioDeployConfig.load("session/portfolio_deploy_config.json")
     runner = PortfolioBacktestRunner(config)
@@ -34,7 +34,7 @@ from .portfolio_metrics import (
     compute_portfolio_metrics,
     validate_margin,
 )
-from ..deploy.config.portfolio_deploy_config import PortfolioDeployConfig, SlotConfig
+from echolon.live.config.portfolio_deploy_config import PortfolioDeployConfig, SlotConfig
 
 logger = logging.getLogger(__name__)
 

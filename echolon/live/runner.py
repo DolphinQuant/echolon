@@ -61,7 +61,7 @@ from echolon.data.loaders.calendar_loader import (
     is_trading_day,
     is_night_market_open,
 )
-from echolon.quant_engine.engine_factory import EngineFactory
+from echolon.backtest.engine_factory import EngineFactory
 from echolon.strategy.hooks.forced_exit_strategy_hook import ForcedExitStrategyHook
 from .data_logger import save_trading_data_snapshot, save_trade_execution
 from echolon.strategy.interfaces import OrderStatus

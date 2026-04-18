@@ -19,7 +19,7 @@ For more control, use the class-based API directly:
 Usage:
 ------
     from echolon.config.markets.factory import MarketFactory
-    from echolon.quant_engine.run_backtest import run_debug_backtest, run_best_trial
+    from echolon.backtest.runner import run_debug_backtest, run_best_trial
 
     # Get TradingContext (single source of truth)
     ctx = MarketFactory.from_session()
@@ -31,11 +31,11 @@ Usage:
     results = run_best_trial(ctx)
 
     # Custom parameters
-    from echolon.quant_engine.run_backtest import run_backtest
+    from echolon.backtest.runner import run_backtest
     results = run_backtest(ctx, strategy_params={'entry_params': {...}, 'exit_params': {...}})
 
     # Class-based API for more control
-    from echolon.quant_engine.backtest.engine.backtest_runner import BacktestRunner
+    from echolon.backtest.engine.backtest_runner import BacktestRunner
     runner = BacktestRunner(ctx=ctx)
     results = runner.load_data().run(params=my_params, context='custom')
 

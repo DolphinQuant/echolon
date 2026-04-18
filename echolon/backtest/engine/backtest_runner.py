@@ -46,9 +46,9 @@ import pandas as pd
 
 from .backtrader_engine import BacktestResults
 from .enriched_pandas_data import EnrichedPandasData
-from ...engine_factory import EngineFactory
-from ...reporting import convert_to_serializable, save_trade_log, save_equity_curve
-from ...data_loader.SHFE_loader import load_backtest_data, load_indicator_metadata, load_best_params
+from echolon.backtest.engine_factory import EngineFactory
+from echolon.backtest.reporting import convert_to_serializable, save_trade_log, save_equity_curve
+from echolon.data.loaders.shfe_loader import load_backtest_data, load_indicator_metadata, load_best_params
 def _get_default_params():
     """Lazy load DEFAULT_PARAMS from platform_agnostic (single-instrument mode only)."""
     from pathlib import Path
@@ -56,8 +56,8 @@ def _get_default_params():
     from echolon.config.quant_engine import PLATFORM_AGNOSTIC_DIR
     loader = StrategyLoader(Path(PLATFORM_AGNOSTIC_DIR))
     return loader.load_attr("strategy_params", "DEFAULT_PARAMS")
-from ...calculate_mfe_mae import enrich_trades_with_mfe_mae
-from ...schemas.backtest_results import BacktestResultsSchemaV4
+from echolon.backtest.mfe_mae import enrich_trades_with_mfe_mae
+from echolon.backtest.schemas import BacktestResultsSchemaV4
 from .backtrader_strategy import get_strategy_class
 from echolon.config.settings import PROJECT_ROOT
 from echolon.config.quant_engine import (
@@ -66,7 +66,7 @@ from echolon.config.quant_engine import (
 )
 from echolon.config.markets.core.context import TradingContext
 from echolon.config.backtest_config import BacktestConfig
-from ...logging_utils import (
+from echolon.backtest.logging_utils import (
     setup_backtest_logging,
     log_workflow_start,
     log_workflow_success,

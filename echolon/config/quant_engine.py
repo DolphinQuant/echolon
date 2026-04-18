@@ -11,7 +11,7 @@ Pydantic configs:
 - :class:`echolon.config.backtest_config.BacktestConfig`
 - :class:`echolon.config.optuna_config.OptunaConfig`
 - :class:`echolon.config.indicator_config.IndicatorConfig`
-- ``echolon.quant_engine.backtest.wfa.window.WFAConfig``
+- ``echolon.backtest.wfa.window.WFAConfig``
 
 Build them manually or via :func:`echolon.quick_start` for defaults.
 """

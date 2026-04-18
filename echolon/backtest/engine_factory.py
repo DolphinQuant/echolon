@@ -45,10 +45,10 @@ from echolon.strategy.frequency.interday_context import InterdayContext
 from echolon.strategy.frequency.intraday_context import IntradayContext
 from echolon.markets.shfe.adapter import SHFEAdapter
 from echolon.markets.crypto.adapter import CryptoAdapter
-from .backtest.engine.backtrader_engine import BacktraderEngine
-from .backtest.engine.hooks.contract_aware.hook import ContractAwareHook
-from .backtest.engine.hooks.session_aware import SessionAwareHook
-from .data_loader.contract_data import ContractIndicatorManager
+from echolon.backtest.engine.backtrader_engine import BacktraderEngine
+from echolon.backtest.engine.hooks.contract_aware.hook import ContractAwareHook
+from echolon.backtest.engine.hooks.session_aware import SessionAwareHook
+from echolon.data.loaders.contract_data import ContractIndicatorManager
 from echolon.config.markets.core.context import TradingContext
 
 if TYPE_CHECKING:

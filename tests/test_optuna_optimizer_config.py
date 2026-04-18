@@ -1,6 +1,6 @@
 """Verify OptunaOptimizer signature accepts OptunaConfig."""
 import inspect
-from echolon.quant_engine.backtest.optimization.optuna_study import OptunaOptimizer
+from echolon.backtest.optimization.optuna_study import OptunaOptimizer
 
 
 def test_optimizer_accepts_optuna_config():

@@ -37,7 +37,7 @@ def run_command(
 
     try:
         from echolon import quick_start
-        from echolon.quant_engine.backtest.engine.backtest_runner import BacktestRunner
+        from echolon.backtest.engine.backtest_runner import BacktestRunner
     except Exception as e:
         typer.echo(f"Backtest subsystem not available: {e}")
         raise typer.Exit(code=3)

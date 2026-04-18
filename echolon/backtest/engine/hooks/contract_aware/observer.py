@@ -23,7 +23,7 @@ import logging
 from typing import Optional, Dict, Any, List, Tuple, TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from .....core.interfaces.market_adapter import IMarketAdapter
+    from echolon.markets.interface import IMarketAdapter
 
 logger = logging.getLogger(__name__)
 

@@ -46,8 +46,8 @@ from typing import Any, Dict, Optional, TYPE_CHECKING
 if TYPE_CHECKING:
     import backtrader as bt
     from ..backtrader_engine import BacktraderEngine
-    from ....core.interfaces.market_adapter import IMarketAdapter
-    from ....core.interfaces.session_context import ISessionContext
+    from echolon.markets.interface import IMarketAdapter
+    from echolon.strategy.frequency.session_interface import ISessionContext
 
 from .base import IEngineHook
 

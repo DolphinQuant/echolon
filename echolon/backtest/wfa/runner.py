@@ -81,12 +81,12 @@ class WFARunner:
             Dict with final backtest_results.json content including WFA fields.
         """
         # Deferred imports (after cache clearing in orchestrator)
-        from echolon.quant_engine.backtest.optimization.optuna_study import OptunaOptimizer
-        from echolon.quant_engine.backtest.optimization.select_best_trial import TrialSelector
-        from echolon.quant_engine.run_backtest import run_best_trial
-        from echolon.quant_engine.engine_factory import EngineFactory
-        from echolon.quant_engine.backtest.engine.backtrader_strategy import get_strategy_class
-        from echolon.quant_engine.data_loader.SHFE_loader import (
+        from echolon.backtest.optimization.optuna_study import OptunaOptimizer
+        from echolon.backtest.optimization.select_best_trial import TrialSelector
+        from echolon.backtest.runner import run_best_trial
+        from echolon.backtest.engine_factory import EngineFactory
+        from echolon.backtest.engine.backtrader_strategy import get_strategy_class
+        from echolon.data.loaders.shfe_loader import (
             load_backtest_data, load_indicator_metadata
         )
         from echolon.quant_engine.strategy.platform_agnostic.strategy_params import (

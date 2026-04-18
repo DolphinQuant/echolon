@@ -74,7 +74,7 @@ from echolon.strategy.frequency.session_context_provider import BaseSessionConte
 from echolon.strategy.logging import CSVStrategyLogger, NullStrategyLogger
 
 # Analyzers
-from .analyzers import add_analyzers, extract_analysis_results
+from echolon.backtest.analyzers import add_analyzers, extract_analysis_results
 
 # Hook interface
 from .hooks.base import IEngineHook
@@ -82,7 +82,7 @@ from .hooks.base import IEngineHook
 from echolon.config.markets.core.context import TradingContext
 
 if TYPE_CHECKING:
-    from ...data_loader.contract_data import ContractIndicatorManager
+    from echolon.data.loaders.contract_data import ContractIndicatorManager
 logger = logging.getLogger(__name__)
 
 

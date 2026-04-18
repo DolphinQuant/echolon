@@ -45,7 +45,7 @@ from .backtrader_engine import BacktestResults
 from .backtrader_strategy import get_strategy_class
 from .enriched_pandas_data import get_cached_data_feed_class
 from .hooks.contract_aware.broker import preload_contract_prices
-from ...logging_utils import setup_backtest_logging
+from echolon.backtest.logging_utils import setup_backtest_logging
 from echolon.config.markets.core.context import TradingContext
 
 if TYPE_CHECKING:
@@ -280,7 +280,7 @@ class OptimizationRunner:
         try:
             # Create engine (lightweight - no logging)
             # Use EngineFactory to handle frequency context and hooks
-            from ...engine_factory import EngineFactory
+            from echolon.backtest.engine_factory import EngineFactory
             engine = EngineFactory.create_backtest_engine(
                 ctx=ctx,
                 indicators_dir=indicators_dir,

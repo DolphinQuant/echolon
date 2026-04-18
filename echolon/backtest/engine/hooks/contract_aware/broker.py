@@ -31,7 +31,7 @@ from collections import defaultdict
 from ...futures.enhanced_position import EnhancedPosition
 
 if TYPE_CHECKING:
-    from .....core.interfaces.market_adapter import IMarketAdapter
+    from echolon.markets.interface import IMarketAdapter
 
 logger = logging.getLogger(__name__)
 debug_logger = logging.getLogger(f"{__name__}.debug")

@@ -50,7 +50,7 @@ from .interfaces import (
 from echolon.strategy.schemas import EntrySignalOutput, ExitSignalOutput, RiskOutput, SizerOutput, validate_position_size
 from .hooks.component_hook_base import IComponentHook
 from echolon.indicators.calculators.interday.market_regime import convert_regime_to_string
-from echolon.quant_engine.logging_utils import get_run_context, should_log_details
+from echolon.backtest.logging_utils import get_run_context, should_log_details
 # decode_session_phase is now accessed via trading_context.decode_phase()
 
 from echolon.config.markets.core.context import TradingContext
