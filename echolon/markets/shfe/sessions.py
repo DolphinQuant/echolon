@@ -22,7 +22,7 @@ import logging
 from datetime import datetime, time, timedelta
 from typing import Dict, Optional, TYPE_CHECKING
 
-from ...core.frequency.session_context_provider import BaseSessionContextProvider
+from echolon.quant_engine.core.frequency.session_context_provider import BaseSessionContextProvider
 
 # Import session constants from centralized config (single source of truth)
 from echolon.config.markets.core.types import SessionPhaseSpec
@@ -32,7 +32,7 @@ from echolon.config.markets.shfe.phases import PHASES_AGGREGATED as SHFE_SESSION
 from echolon.config.markets.shfe.phases import is_aggregated_bar_size_minutes
 
 if TYPE_CHECKING:
-    from ...core.interfaces.market_adapter import IMarketAdapter
+    from echolon.quant_engine.core.interfaces.market_adapter import IMarketAdapter
 
 logger = logging.getLogger(__name__)
 

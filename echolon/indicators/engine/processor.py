@@ -26,7 +26,7 @@ from echolon.data.loaders.ohlcv_loader import (
     get_available_contracts,
 )
 # SHFE contract rules (main contract lookup, expiry date)
-from echolon.quant_engine.market_adapters.shfe.contract_rules import get_main_contract, get_expiry_date
+from echolon.markets.shfe.contract_rules import get_main_contract, get_expiry_date
 from echolon.data.loaders.session_availability_loader import (
     get_session_availability_loader,
 )

@@ -234,7 +234,7 @@ class InterdayRegimeOptimizer:
     #     Loads each selected contract's FULL data (no row-level date filtering)
     #     to preserve indicator lookback warmup and maximize statistical power.
     #     """
-    #     from echolon.quant_engine.market_adapters.shfe.contract_rules import _load_main_contract_data
+    #     from echolon.markets.shfe.contract_rules import _load_main_contract_data
     #     from echolon.config.quant_engine import BACKTEST_END_DATE
 
     #     backtest_start = pd.Timestamp(BACKTEST_START_DATE).date()

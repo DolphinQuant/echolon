@@ -16,8 +16,8 @@ def test_import_core():
 
 
 def test_import_market_adapters():
-    from echolon.quant_engine.market_adapters.shfe.shfe_adapter import SHFEAdapter
-    from echolon.quant_engine.market_adapters.crypto.crypto_adapter import CryptoAdapter
+    from echolon.markets.shfe.adapter import SHFEAdapter
+    from echolon.markets.crypto.adapter import CryptoAdapter
     assert SHFEAdapter is not None
     assert CryptoAdapter is not None
 

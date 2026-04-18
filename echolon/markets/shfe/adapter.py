@@ -27,12 +27,12 @@ from datetime import date, datetime
 from typing import Optional, List, TYPE_CHECKING
 import math
 
-from ..base_adapter import BaseMarketAdapter
-from ...core.interfaces.market_adapter import SessionWindow, ContractSpec
+from ..base import BaseMarketAdapter
+from echolon.quant_engine.core.interfaces.market_adapter import SessionWindow, ContractSpec
 
 if TYPE_CHECKING:
-    from ...core.interfaces.session_context import ISessionContext
-from .shfe_session_provider import SHFESessionProvider
+    from echolon.quant_engine.core.interfaces.session_context import ISessionContext
+from .sessions import SHFESessionProvider
 from echolon.config.markets.shfe.sessions import (
     ALL_SESSIONS,
     DAY_SESSIONS,

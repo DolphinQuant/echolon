@@ -31,11 +31,11 @@ from datetime import date, datetime, time, timedelta
 from typing import Optional, List, TYPE_CHECKING
 import math
 
-from ..base_adapter import BaseMarketAdapter
-from ...core.interfaces.market_adapter import SessionWindow, ContractSpec
+from ..base import BaseMarketAdapter
+from echolon.quant_engine.core.interfaces.market_adapter import SessionWindow, ContractSpec
 
 if TYPE_CHECKING:
-    from ...core.interfaces.session_context import ISessionContext
+    from echolon.quant_engine.core.interfaces.session_context import ISessionContext
 
 from .session_config import (
     ALL_SESSIONS,
@@ -469,7 +469,7 @@ class CryptoAdapter(BaseMarketAdapter):
         Returns:
             CryptoSessionProvider instance
         """
-        from .crypto_session_provider import CryptoSessionProvider
+        from .sessions import CryptoSessionProvider
         return CryptoSessionProvider(
             market_adapter=self,
             bar_size_minutes=bar_size_minutes,

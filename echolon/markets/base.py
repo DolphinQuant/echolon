@@ -30,7 +30,7 @@ from abc import ABC, abstractmethod
 from datetime import datetime, date, time
 from typing import Optional, List, Dict, Any
 
-from ..core.interfaces.market_adapter import SessionWindow, ContractSpec, IMarketAdapter
+from echolon.quant_engine.core.interfaces.market_adapter import SessionWindow, ContractSpec, IMarketAdapter
 
 
 class BaseMarketAdapter(IMarketAdapter, ABC):

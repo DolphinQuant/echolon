@@ -43,8 +43,8 @@ from .core.interfaces.frequency_context import IFrequencyContext, FrequencyType,
 from .core.interfaces.market_adapter import IMarketAdapter
 from .core.frequency.interday_context import InterdayContext
 from .core.frequency.intraday_context import IntradayContext
-from .market_adapters.shfe.shfe_adapter import SHFEAdapter
-from .market_adapters.crypto.crypto_adapter import CryptoAdapter
+from echolon.markets.shfe.adapter import SHFEAdapter
+from echolon.markets.crypto.adapter import CryptoAdapter
 from .backtest.engine.backtrader_engine import BacktraderEngine
 from .backtest.engine.hooks.contract_aware.hook import ContractAwareHook
 from .backtest.engine.hooks.session_aware import SessionAwareHook

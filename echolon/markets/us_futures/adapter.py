@@ -23,7 +23,7 @@ Contract naming convention:
 - Example: ESH24 = E-mini S&P 500, March 2024
 """
 
-from ..base_adapter import BaseMarketAdapter
+from ..base import BaseMarketAdapter
 
 # TODO: Implement CMEAdapter class (future work):
 # - SESSIONS: CME trading hours

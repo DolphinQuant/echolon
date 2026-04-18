@@ -12,7 +12,7 @@ from datetime import datetime
 from pathlib import Path
 
 from echolon.config.quant_engine import MARKET_DATA_DIR
-from echolon.quant_engine.market_adapters.shfe.trading_calendar import TradingCalendar
+from echolon.markets.shfe.trading_calendar import TradingCalendar
 
 logger = logging.getLogger(__name__)
 
