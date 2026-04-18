@@ -1,20 +1,47 @@
 """Echolon — See what others can't. Market-agnostic quantitative trading engine."""
 
-__version__ = "0.3.2"
+__version__ = "0.1.0"
 
+# Errors
+from echolon.errors import EchelonError
+
+# Configs
 from echolon.config.backtest_config import BacktestConfig
 from echolon.config.indicator_config import IndicatorConfig
 from echolon.config.markets.core.context import TradingContext
 from echolon.config.optuna_config import OptunaConfig
 from echolon.config.quick_start import quick_start
-from echolon.errors import EchelonError
+
+# Schemas (most commonly used)
+from echolon.strategy.schemas import (
+    EntrySignalOutput,
+    ExitSignalOutput,
+    OrderIntent,
+    RiskOutput,
+    SizerOutput,
+)
+
+# Convenience entry points
+from echolon.backtest.runner import run_backtest
+from echolon.data.run import run_data_pipeline
 
 __all__ = [
     "__version__",
-    "BacktestConfig",
+    # Errors
     "EchelonError",
+    # Configs
+    "BacktestConfig",
     "IndicatorConfig",
     "OptunaConfig",
     "TradingContext",
     "quick_start",
+    # Schemas
+    "EntrySignalOutput",
+    "ExitSignalOutput",
+    "OrderIntent",
+    "RiskOutput",
+    "SizerOutput",
+    # Entry points
+    "run_backtest",
+    "run_data_pipeline",
 ]
