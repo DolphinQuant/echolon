@@ -1,6 +1,8 @@
-"""
-Data Pipeline Module
-====================
+"""Echolon data pipeline — extractors, transformers, loaders, schemas."""
 
-Market data retrieval, preprocessing, and standardization.
-"""
+from echolon.data.run import run_data_pipeline
+
+# Alias for the concise public name used in the top-level package.
+run_pipeline = run_data_pipeline
+
+__all__ = ["run_data_pipeline", "run_pipeline"]
