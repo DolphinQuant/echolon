@@ -32,7 +32,7 @@ from echolon.data.loaders.session_availability_loader import (
 )
 from ..registry.utils import get_indicator_info, get_function
 from echolon.indicators.utils.indicator_loader import get_analysis_indicator_list
-from echolon.quant_engine.types import validate_indicator_list_json
+from echolon.strategy.schemas import validate_indicator_list_json
 from echolon.config.settings import PROJECT_ROOT, OUTPUT_DIR
 from echolon.config.markets.core.context import TradingContext
 from echolon.config.quant_engine import MARKET_DATA_DIR

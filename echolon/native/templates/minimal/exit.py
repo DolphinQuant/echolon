@@ -1,7 +1,7 @@
 """Minimal exit rule."""
 
-from echolon.quant_engine.core.base.base_component import BaseComponent
-from echolon.quant_engine.types import ExitSignalOutput
+from echolon.strategy.component import BaseComponent
+from echolon.strategy.schemas import ExitSignalOutput
 
 
 class exit_rule(BaseComponent):

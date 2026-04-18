@@ -62,9 +62,9 @@ from echolon.data.loaders.calendar_loader import (
     is_night_market_open,
 )
 from echolon.quant_engine.engine_factory import EngineFactory
-from echolon.quant_engine.core.base.hooks.forced_exit_strategy_hook import ForcedExitStrategyHook
+from echolon.strategy.hooks.forced_exit_strategy_hook import ForcedExitStrategyHook
 from .data_logger import save_trading_data_snapshot, save_trade_execution
-from echolon.quant_engine.core.interfaces.trading_interfaces import OrderStatus
+from echolon.strategy.interfaces import OrderStatus
 from echolon.config.settings import MARKET_DATA_DIR
 from echolon.data.run import run_data_pipeline
 from echolon.indicators.run_indicators import run_indicator_calculation
@@ -378,7 +378,7 @@ class TradingRunner:
     def _create_strategy(self, strategy_params: Dict[str, Any]):
         """Import and instantiate the platform-agnostic strategy."""
         from pathlib import Path
-        from echolon.quant_engine.strategy.loader import StrategyLoader
+        from echolon.strategy.loader import StrategyLoader
         from echolon.config.quant_engine import PLATFORM_AGNOSTIC_DIR
 
         loader = StrategyLoader(Path(PLATFORM_AGNOSTIC_DIR))
@@ -639,7 +639,7 @@ class TradingRunner:
             Nested strategy parameter dictionary.
         """
         from pathlib import Path
-        from echolon.quant_engine.strategy.loader import StrategyLoader
+        from echolon.strategy.loader import StrategyLoader
         from echolon.config.quant_engine import PLATFORM_AGNOSTIC_DIR
 
         loader = StrategyLoader(Path(PLATFORM_AGNOSTIC_DIR))

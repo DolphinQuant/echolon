@@ -21,14 +21,14 @@ DESIGN PRINCIPLE:
 from datetime import datetime
 from typing import TYPE_CHECKING, Optional
 
-from ..interfaces.frequency_context import (
+from .interface import (
     IFrequencyContext,
     FrequencyType,
     BarSize
 )
 
 if TYPE_CHECKING:
-    from ..interfaces.market_adapter import IMarketAdapter
+    from echolon.markets.interface import IMarketAdapter
 
 
 class IntradayContext(IFrequencyContext):

@@ -51,7 +51,7 @@ except ImportError:
     MiniQMTClient = None  # Available only on QMT-enabled machines
 
 from echolon.data.loaders.contract_utils import get_main_contract
-from echolon.quant_engine.core.interfaces.trading_interfaces import Order, OrderIntent, OrderStatus
+from echolon.strategy.interfaces import Order, OrderIntent, OrderStatus
 from .capital_slot import CapitalSlot
 from .trading_slot import TradingSlot
 from .portfolio_risk import PortfolioRiskOverlay

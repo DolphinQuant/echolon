@@ -65,7 +65,7 @@ from echolon.config.markets.core.context import TradingContext
 from echolon.config.optuna_config import OptunaConfig
 
 if TYPE_CHECKING:
-    from ...core.interfaces import IMarketAdapter
+    from echolon.strategy.interfaces import IMarketAdapter
 
 logger = logging.getLogger(__name__)
 

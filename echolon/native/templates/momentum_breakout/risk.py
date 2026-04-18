@@ -1,7 +1,7 @@
 """Minimal risk manager."""
 
-from echolon.quant_engine.core.base.base_component import BaseComponent
-from echolon.quant_engine.types import RiskOutput
+from echolon.strategy.component import BaseComponent
+from echolon.strategy.schemas import RiskOutput
 
 
 class risk_manager(BaseComponent):

@@ -39,10 +39,10 @@ Example:
 from typing import Dict, Any, Optional, Type, TYPE_CHECKING
 import logging
 
-from .core.interfaces.frequency_context import IFrequencyContext, FrequencyType, BarSize
-from .core.interfaces.market_adapter import IMarketAdapter
-from .core.frequency.interday_context import InterdayContext
-from .core.frequency.intraday_context import IntradayContext
+from echolon.strategy.frequency.interface import IFrequencyContext, FrequencyType, BarSize
+from echolon.markets.interface import IMarketAdapter
+from echolon.strategy.frequency.interday_context import InterdayContext
+from echolon.strategy.frequency.intraday_context import IntradayContext
 from echolon.markets.shfe.adapter import SHFEAdapter
 from echolon.markets.crypto.adapter import CryptoAdapter
 from .backtest.engine.backtrader_engine import BacktraderEngine
@@ -52,7 +52,7 @@ from .data_loader.contract_data import ContractIndicatorManager
 from echolon.config.markets.core.context import TradingContext
 
 if TYPE_CHECKING:
-    from .core.interfaces.trading_interfaces import ITradingEngine
+    from echolon.strategy.interfaces import ITradingEngine
 
 logger = logging.getLogger(__name__)
 

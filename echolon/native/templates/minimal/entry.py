@@ -1,7 +1,7 @@
 """Minimal entry rule. TODO: replace hold-forever logic with your signal."""
 
-from echolon.quant_engine.core.base.base_component import BaseComponent
-from echolon.quant_engine.types import EntrySignalOutput
+from echolon.strategy.component import BaseComponent
+from echolon.strategy.schemas import EntrySignalOutput
 
 
 class entry_rule(BaseComponent):

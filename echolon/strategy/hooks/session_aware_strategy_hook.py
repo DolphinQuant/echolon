@@ -47,12 +47,12 @@ from typing import Optional, Tuple, TYPE_CHECKING
 import logging
 
 from .strategy_hook_base import IStrategyHook
-from ...interfaces.trading_interfaces import OrderIntent
+from ..interfaces import OrderIntent
 
 if TYPE_CHECKING:
-    from ..base_strategy import BaseStrategy
-    from ...interfaces.session_context import SessionContext
-    from ...interfaces.frequency_context import IFrequencyContext
+    from ..base import BaseStrategy
+    from echolon.strategy.frequency.session_interface import SessionContext
+    from echolon.strategy.frequency.interface import IFrequencyContext
 
 logger = logging.getLogger(__name__)
 

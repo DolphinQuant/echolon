@@ -27,11 +27,11 @@ import logging
 from datetime import datetime, time
 from typing import Dict, Optional, TYPE_CHECKING
 
-from echolon.quant_engine.core.frequency.session_context_provider import BaseSessionContextProvider
+from echolon.strategy.frequency.session_context_provider import BaseSessionContextProvider
 from echolon.config.markets.core.types import SessionPhaseSpec
 
 if TYPE_CHECKING:
-    from echolon.quant_engine.core.interfaces.market_adapter import IMarketAdapter
+    from echolon.markets.interface import IMarketAdapter
 
 logger = logging.getLogger(__name__)
 

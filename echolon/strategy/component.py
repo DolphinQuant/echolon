@@ -41,13 +41,13 @@ from abc import ABC
 from typing import Dict, Any, List, TYPE_CHECKING
 import logging
 
-from ..interfaces.trading_interfaces import (
+from .interfaces import (
     ITradingEngine,
     IMarketData,
     IPortfolio,
     ILogger,
 )
-from ...types import EntrySignalOutput, ExitSignalOutput, RiskOutput, SizerOutput, validate_position_size
+from echolon.strategy.schemas import EntrySignalOutput, ExitSignalOutput, RiskOutput, SizerOutput, validate_position_size
 from .hooks.component_hook_base import IComponentHook
 from echolon.indicators.calculators.interday.market_regime import convert_regime_to_string
 from echolon.quant_engine.logging_utils import get_run_context, should_log_details
@@ -56,9 +56,9 @@ from echolon.quant_engine.logging_utils import get_run_context, should_log_detai
 from echolon.config.markets.core.context import TradingContext
 
 if TYPE_CHECKING:
-    from ..interfaces.frequency_context import IFrequencyContext
-    from ..interfaces.market_adapter import IMarketAdapter
-    from ..interfaces.session_context import ISessionContext, SessionContext
+    from .frequency.interface import IFrequencyContext
+    from echolon.markets.interface import IMarketAdapter
+    from .frequency.session_interface import ISessionContext, SessionContext
 
 module_logger = logging.getLogger(__name__)
 
@@ -513,7 +513,7 @@ class BaseComponent(ABC):
         RuntimeError
             If called in intraday context (use get_session_phase() instead)
         """
-        from ..interfaces.frequency_context import FrequencyType
+        from .frequency.interface import FrequencyType
 
         if self._context and self._context.frequency_type == FrequencyType.INTRADAY:
             raise RuntimeError(
@@ -546,7 +546,7 @@ class BaseComponent(ABC):
         RuntimeError
             If called in interday context (use get_market_regime() instead)
         """
-        from ..interfaces.frequency_context import FrequencyType
+        from .frequency.interface import FrequencyType
 
         if not self._context or self._context.frequency_type != FrequencyType.INTRADAY:
             raise RuntimeError(

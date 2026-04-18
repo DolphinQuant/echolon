@@ -12,7 +12,7 @@ from echolon.native.validation.strategy_validator import (
 
 MINIMAL_STRATEGY_FILES = {
     "strategy.py": """\
-        from echolon.quant_engine.core.base.base_strategy import BaseStrategy
+        from echolon.strategy.base import BaseStrategy
         class strategy_main(BaseStrategy):
             def __init__(self, trading_engine, **params):
                 super().__init__(trading_engine, **params)
@@ -20,7 +20,7 @@ MINIMAL_STRATEGY_FILES = {
                 pass
     """,
     "entry.py": """\
-        from echolon.quant_engine.core.base.base_component import BaseComponent
+        from echolon.strategy.component import BaseComponent
         class entry_rule(BaseComponent):
             def __init__(self, trading_engine, **params):
                 super().__init__(trading_engine, **params)
@@ -28,7 +28,7 @@ MINIMAL_STRATEGY_FILES = {
                 pass
     """,
     "exit.py": """\
-        from echolon.quant_engine.core.base.base_component import BaseComponent
+        from echolon.strategy.component import BaseComponent
         class exit_rule(BaseComponent):
             def __init__(self, trading_engine, **params):
                 super().__init__(trading_engine, **params)
@@ -36,7 +36,7 @@ MINIMAL_STRATEGY_FILES = {
                 pass
     """,
     "risk.py": """\
-        from echolon.quant_engine.core.base.base_component import BaseComponent
+        from echolon.strategy.component import BaseComponent
         class risk_manager(BaseComponent):
             def __init__(self, trading_engine, **params):
                 super().__init__(trading_engine, **params)
@@ -44,7 +44,7 @@ MINIMAL_STRATEGY_FILES = {
                 pass
     """,
     "sizer.py": """\
-        from echolon.quant_engine.core.base.base_component import BaseComponent
+        from echolon.strategy.component import BaseComponent
         class position_sizer(BaseComponent):
             def __init__(self, trading_engine, **params):
                 super().__init__(trading_engine, **params)
@@ -103,7 +103,7 @@ def test_nonexistent_directory_raises(tmp_path):
 
 def test_missing_class_in_file_raises_str_002(valid_strategy):
     (valid_strategy / "entry.py").write_text(textwrap.dedent("""\
-        from echolon.quant_engine.core.base.base_component import BaseComponent
+        from echolon.strategy.component import BaseComponent
         class wrong_name(BaseComponent):
             pass
     """))

@@ -17,7 +17,7 @@ DESIGN PRINCIPLE:
 
 from typing import Optional
 
-from ..interfaces.frequency_context import (
+from .interface import (
     IFrequencyContext,
     FrequencyType,
     BarSize

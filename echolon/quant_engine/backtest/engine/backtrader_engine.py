@@ -48,7 +48,7 @@ import logging
 
 import pandas as pd
 import backtrader as bt
-from ...core.interfaces.trading_interfaces import (
+from echolon.strategy.interfaces import (
     ITradingEngine,
     IMarketData,
     IPortfolio,
@@ -67,11 +67,11 @@ from ...core.interfaces.trading_interfaces import (
     OrderStatus,
     PositionSide,
 )
-from ...core.interfaces.frequency_context import IFrequencyContext, FrequencyType
-from ...core.interfaces.market_adapter import IMarketAdapter
-from ...core.interfaces.session_context import ISessionContext, SessionContext
-from ...core.frequency.session_context_provider import BaseSessionContextProvider
-from ...core.logging.strategy_logger import CSVStrategyLogger, NullStrategyLogger
+from echolon.strategy.frequency.interface import IFrequencyContext, FrequencyType
+from echolon.markets.interface import IMarketAdapter
+from echolon.strategy.frequency.session_interface import ISessionContext, SessionContext
+from echolon.strategy.frequency.session_context_provider import BaseSessionContextProvider
+from echolon.strategy.logging import CSVStrategyLogger, NullStrategyLogger
 
 # Analyzers
 from .analyzers import add_analyzers, extract_analysis_results

@@ -28,10 +28,10 @@ from typing import Optional, List, TYPE_CHECKING
 import math
 
 from ..base import BaseMarketAdapter
-from echolon.quant_engine.core.interfaces.market_adapter import SessionWindow, ContractSpec
+from echolon.markets.interface import SessionWindow, ContractSpec
 
 if TYPE_CHECKING:
-    from echolon.quant_engine.core.interfaces.session_context import ISessionContext
+    from echolon.strategy.frequency.session_interface import ISessionContext
 from .sessions import SHFESessionProvider
 from echolon.config.markets.shfe.sessions import (
     ALL_SESSIONS,

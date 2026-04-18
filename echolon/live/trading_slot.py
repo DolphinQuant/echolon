@@ -22,8 +22,8 @@ from typing import Any, Dict, List, Optional
 from echolon.config.markets.factory import MarketFactory
 from echolon.config.markets.core.context import TradingContext
 from echolon.quant_engine.engine_factory import EngineFactory
-from echolon.quant_engine.core.base.hooks.forced_exit_strategy_hook import ForcedExitStrategyHook
-from echolon.quant_engine.core.interfaces.trading_interfaces import Order, OrderStatus
+from echolon.strategy.hooks.forced_exit_strategy_hook import ForcedExitStrategyHook
+from echolon.strategy.interfaces import Order, OrderStatus
 from .config.portfolio_deploy_config import SlotConfig
 from echolon.data.loaders.contract_utils import get_main_contract
 from .capital_slot import CapitalSlot
@@ -277,7 +277,7 @@ class TradingSlot:
         """
         if self._state_path is None:
             return
-        from echolon.quant_engine.core.base.state_manager import StateManager
+        from echolon.strategy.state_manager import StateManager
         sm = StateManager(state_path=self._state_path)
         sm.load_state()
 
@@ -412,7 +412,7 @@ class TradingSlot:
 
         # Load DEFAULT_PARAMS from the slot's strategy code via StrategyLoader
         strategy_code_dir = self.slot_config.strategy_code_dir
-        from echolon.quant_engine.strategy.loader import StrategyLoader
+        from echolon.strategy.loader import StrategyLoader
         loader = StrategyLoader(Path(strategy_code_dir))
         if loader.has_module("strategy_params"):
             default_params = loader.load_attr("strategy_params", "DEFAULT_PARAMS")
@@ -449,7 +449,7 @@ class TradingSlot:
 
     def _import_and_create_strategy(self, strategy_params: Dict[str, Any]) -> None:
         """Dynamically import strategy from strategy_code_dir."""
-        from echolon.quant_engine.strategy.loader import StrategyLoader
+        from echolon.strategy.loader import StrategyLoader
 
         strategy_code_dir = self.slot_config.strategy_code_dir
         loader = StrategyLoader(Path(strategy_code_dir))

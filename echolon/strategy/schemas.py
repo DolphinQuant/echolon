@@ -23,7 +23,7 @@ import os
 import math
 
 # Import OrderIntent for strategy coordination
-from .core.interfaces.trading_interfaces import OrderIntent
+from echolon.strategy.interfaces import OrderIntent
 
 
 class EntrySignalOutput(BaseModel):

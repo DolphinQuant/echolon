@@ -42,8 +42,8 @@ import logging
 from .component_hook_base import IComponentHook
 
 if TYPE_CHECKING:
-    from ..base_component import BaseComponent
-    from ...interfaces.session_context import SessionContext
+    from ..component import BaseComponent
+    from echolon.strategy.frequency.session_interface import SessionContext
 
 logger = logging.getLogger(__name__)
 

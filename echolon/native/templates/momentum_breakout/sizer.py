@@ -1,7 +1,7 @@
 """Minimal sizer."""
 
-from echolon.quant_engine.core.base.base_component import BaseComponent
-from echolon.quant_engine.types import EntrySignalOutput, SizerOutput
+from echolon.strategy.component import BaseComponent
+from echolon.strategy.schemas import EntrySignalOutput, SizerOutput
 
 
 class position_sizer(BaseComponent):

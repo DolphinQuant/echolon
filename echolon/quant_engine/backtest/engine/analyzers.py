@@ -53,7 +53,7 @@ from typing import Optional, Dict, Any, List, TYPE_CHECKING
 from echolon.lib.regime_utils import convert_regime_to_string
 
 if TYPE_CHECKING:
-    from ...core.interfaces.trading_interfaces import IMarketAdapter
+    from echolon.strategy.interfaces import IMarketAdapter
     from ...data_loader.contract_data import ContractIndicatorManager
 
 logger = logging.getLogger(__name__)

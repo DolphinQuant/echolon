@@ -2,9 +2,9 @@
 
 
 def test_import_core():
-    from echolon.quant_engine.core.base.base_strategy import BaseStrategy
-    from echolon.quant_engine.core.base.base_component import BaseComponent
-    from echolon.quant_engine.core.interfaces.trading_interfaces import (
+    from echolon.strategy.base import BaseStrategy
+    from echolon.strategy.component import BaseComponent
+    from echolon.strategy.interfaces import (
         ITradingEngine,
         IMarketData,
         IPortfolio,

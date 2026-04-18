@@ -33,7 +33,7 @@ from typing import Dict, Any, Type, Optional, TYPE_CHECKING
 import backtrader as bt
 import logging
 from ...data_loader.SHFE_loader import load_indicator_metadata
-from ...core.interfaces.trading_interfaces import OrderStatus
+from echolon.strategy.interfaces import OrderStatus
 from ...logging_utils import get_run_context, should_log_details
 
 if TYPE_CHECKING:
@@ -182,7 +182,7 @@ class BacktraderStrategyBridge(bt.Strategy):
         via StrategyLoader instead of the default platform_agnostic package.
         """
         from pathlib import Path
-        from echolon.quant_engine.strategy.loader import StrategyLoader
+        from echolon.strategy.loader import StrategyLoader
         from echolon.config.quant_engine import PLATFORM_AGNOSTIC_DIR
 
         code_dir = self.p.strategy_code_dir
@@ -221,7 +221,7 @@ class BacktraderStrategyBridge(bt.Strategy):
             | Crypto | Intraday  | ❌             | ✅               |
             | Crypto | Interday  | ❌             | ❌               |
         """
-        from ...core.interfaces.frequency_context import FrequencyType
+        from echolon.strategy.frequency.interface import FrequencyType
 
         market_adapter = self._engine.get_market_adapter()
         frequency_context = self._engine.get_frequency_context()
@@ -237,13 +237,13 @@ class BacktraderStrategyBridge(bt.Strategy):
 
         # ForcedExitStrategyHook: For interday futures trading
         if has_contract_expiry and is_interday:
-            from ...core.base.hooks.forced_exit_strategy_hook import ForcedExitStrategyHook
+            from echolon.strategy.hooks.forced_exit_strategy_hook import ForcedExitStrategyHook
             self._agnostic_strategy.add_hook(ForcedExitStrategyHook(market_adapter))
             hooks_added.append("ForcedExitStrategyHook")
 
         # SessionAwareStrategyHook: For intraday trading
         if is_intraday:
-            from ...core.base.hooks.session_aware_strategy_hook import SessionAwareStrategyHook
+            from echolon.strategy.hooks.session_aware_strategy_hook import SessionAwareStrategyHook
             self._agnostic_strategy.add_hook(SessionAwareStrategyHook())
             hooks_added.append("SessionAwareStrategyHook")
 

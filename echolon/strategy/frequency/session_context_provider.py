@@ -30,14 +30,14 @@ from abc import abstractmethod
 from datetime import datetime, time
 from typing import Optional, Dict, TYPE_CHECKING
 
-from ..interfaces.session_context import (
+from .session_interface import (
     SessionContext,
     ISessionContext,
 )
 from echolon.config.markets.core.types import SessionPhaseSpec
 
 if TYPE_CHECKING:
-    from ..interfaces.market_adapter import IMarketAdapter
+    from echolon.markets.interface import IMarketAdapter
 
 logger = logging.getLogger(__name__)
 

@@ -627,7 +627,7 @@ To modify parameters:
 
 from typing import List, Dict, Any
 import optuna
-from ...core.base.parameter_architecture import (
+from ..parameter_architecture import (
     ComponentParameterTemplate,
     ParameterSpec,
     ParameterType,

@@ -42,7 +42,7 @@ from typing import Dict, Any, Optional, List, Union, TYPE_CHECKING
 from datetime import datetime
 import logging
 
-from ..interfaces.trading_interfaces import (
+from .interfaces import (
     ITradingEngine, IStrategyCallbacks, OrderResult, Position, Trade,
     OrderStatus, OrderIntent, IMarketData, IPortfolio, IOrderManager,
     ILogger, IEventBus, IStrategyLogger
@@ -51,9 +51,9 @@ from .hooks.strategy_hook_base import IStrategyHook
 from echolon.quant_engine.logging_utils import get_run_context, should_log_details
 
 if TYPE_CHECKING:
-    from ..interfaces.market_adapter import IMarketAdapter
-    from ..interfaces.frequency_context import IFrequencyContext
-    from ..interfaces.session_context import ISessionContext, SessionContext
+    from echolon.markets.interface import IMarketAdapter
+    from .frequency.interface import IFrequencyContext
+    from .frequency.session_interface import ISessionContext, SessionContext
 
 logger = logging.getLogger(__name__)
 
@@ -812,7 +812,7 @@ class BaseStrategy(IStrategyCallbacks):
         Args:
             component_instances: List of (name, component) tuples
         """
-        from ..interfaces.frequency_context import FrequencyType
+        from .frequency.interface import FrequencyType
 
         frequency_context = self.frequency_context
         if frequency_context is None:
@@ -831,7 +831,7 @@ class BaseStrategy(IStrategyCallbacks):
 
     def _get_component_class(self, component_name: str):
         """Get component class by name using StrategyLoader."""
-        from echolon.quant_engine.strategy.loader import StrategyLoader
+        from echolon.strategy.loader import StrategyLoader
 
         # Map component_name to file name
         file_name_map = {

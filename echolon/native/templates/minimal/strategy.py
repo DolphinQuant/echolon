@@ -1,6 +1,6 @@
 """Minimal working strategy. Edit _execute_bar to customize."""
 
-from echolon.quant_engine.core.base.base_strategy import BaseStrategy
+from echolon.strategy.base import BaseStrategy
 
 
 class strategy_main(BaseStrategy):

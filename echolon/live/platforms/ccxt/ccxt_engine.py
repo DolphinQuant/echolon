@@ -36,7 +36,7 @@ Supported exchanges (via CCXT):
 - binance, bybit, okx, kraken, etc.
 """
 
-from echolon.quant_engine.core.interfaces import ITradingEngine
+from echolon.strategy.interfaces import ITradingEngine
 
 # TODO: Implement CCXTEngine class (future work):
 # - __init__(config, market_adapter, frequency_context)

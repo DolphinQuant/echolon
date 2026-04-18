@@ -49,7 +49,7 @@ from ...logging_utils import setup_backtest_logging
 from echolon.config.markets.core.context import TradingContext
 
 if TYPE_CHECKING:
-    from ...core.interfaces import IMarketAdapter
+    from echolon.strategy.interfaces import IMarketAdapter
 
 logger = logging.getLogger(__name__)
 

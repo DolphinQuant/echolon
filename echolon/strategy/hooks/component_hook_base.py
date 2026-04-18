@@ -21,7 +21,7 @@ from typing import Any, Dict, Optional, TYPE_CHECKING
 import logging
 
 if TYPE_CHECKING:
-    from ..base_component import BaseComponent
+    from ..component import BaseComponent
 
 logger = logging.getLogger(__name__)
 

@@ -25,7 +25,7 @@ from typing import Any, Dict, Optional, TYPE_CHECKING
 import logging
 
 if TYPE_CHECKING:
-    from ..base_strategy import BaseStrategy
+    from ..base import BaseStrategy
 
 logger = logging.getLogger(__name__)
 

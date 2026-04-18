@@ -14,7 +14,7 @@ runner = CliRunner()
 
 MINIMAL = {
     "strategy.py": """\
-        from echolon.quant_engine.core.base.base_strategy import BaseStrategy
+        from echolon.strategy.base import BaseStrategy
         class strategy_main(BaseStrategy):
             def __init__(self, trading_engine, **params):
                 super().__init__(trading_engine, **params)
@@ -22,7 +22,7 @@ MINIMAL = {
                 pass
     """,
     "entry.py": """\
-        from echolon.quant_engine.core.base.base_component import BaseComponent
+        from echolon.strategy.component import BaseComponent
         class entry_rule(BaseComponent):
             def __init__(self, trading_engine, **params):
                 super().__init__(trading_engine, **params)
@@ -30,7 +30,7 @@ MINIMAL = {
                 pass
     """,
     "exit.py": """\
-        from echolon.quant_engine.core.base.base_component import BaseComponent
+        from echolon.strategy.component import BaseComponent
         class exit_rule(BaseComponent):
             def __init__(self, trading_engine, **params):
                 super().__init__(trading_engine, **params)
@@ -38,7 +38,7 @@ MINIMAL = {
                 pass
     """,
     "risk.py": """\
-        from echolon.quant_engine.core.base.base_component import BaseComponent
+        from echolon.strategy.component import BaseComponent
         class risk_manager(BaseComponent):
             def __init__(self, trading_engine, **params):
                 super().__init__(trading_engine, **params)
@@ -46,7 +46,7 @@ MINIMAL = {
                 pass
     """,
     "sizer.py": """\
-        from echolon.quant_engine.core.base.base_component import BaseComponent
+        from echolon.strategy.component import BaseComponent
         class position_sizer(BaseComponent):
             def __init__(self, trading_engine, **params):
                 super().__init__(trading_engine, **params)

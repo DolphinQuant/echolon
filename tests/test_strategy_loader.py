@@ -5,7 +5,7 @@ from pathlib import Path
 
 import pytest
 
-from echolon.quant_engine.strategy.loader import StrategyLoader
+from echolon.strategy.loader import StrategyLoader
 
 
 @pytest.fixture

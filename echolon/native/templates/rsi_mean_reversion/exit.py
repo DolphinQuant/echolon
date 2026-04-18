@@ -1,8 +1,8 @@
 """RSI mean reversion: exit on overbought."""
 
-from echolon.quant_engine.core.base.base_component import BaseComponent
-from echolon.quant_engine.core.interfaces.trading_interfaces import OrderIntent
-from echolon.quant_engine.types import ExitSignalOutput
+from echolon.strategy.component import BaseComponent
+from echolon.strategy.interfaces import OrderIntent
+from echolon.strategy.schemas import ExitSignalOutput
 
 
 class exit_rule(BaseComponent):

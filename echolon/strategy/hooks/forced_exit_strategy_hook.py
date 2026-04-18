@@ -24,11 +24,11 @@ from typing import Optional, TYPE_CHECKING
 import logging
 
 from .strategy_hook_base import IStrategyHook
-from ...interfaces.trading_interfaces import OrderIntent
+from ..interfaces import OrderIntent
 
 if TYPE_CHECKING:
-    from ..base_strategy import BaseStrategy
-    from ...interfaces.market_adapter import IMarketAdapter
+    from ..base import BaseStrategy
+    from echolon.markets.interface import IMarketAdapter
 
 logger = logging.getLogger(__name__)
 

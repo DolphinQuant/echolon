@@ -52,7 +52,7 @@ from ...data_loader.SHFE_loader import load_backtest_data, load_indicator_metada
 def _get_default_params():
     """Lazy load DEFAULT_PARAMS from platform_agnostic (single-instrument mode only)."""
     from pathlib import Path
-    from echolon.quant_engine.strategy.loader import StrategyLoader
+    from echolon.strategy.loader import StrategyLoader
     from echolon.config.quant_engine import PLATFORM_AGNOSTIC_DIR
     loader = StrategyLoader(Path(PLATFORM_AGNOSTIC_DIR))
     return loader.load_attr("strategy_params", "DEFAULT_PARAMS")
@@ -591,7 +591,7 @@ class BacktestRunner:
 
         # Load DEFAULT_PARAMS from slot dir if custom, else platform_agnostic
         if strategy_code_dir:
-            from echolon.quant_engine.strategy.loader import StrategyLoader
+            from echolon.strategy.loader import StrategyLoader
             loader = StrategyLoader(Path(strategy_code_dir))
             slot_defaults = loader.load_attr("strategy_params", "DEFAULT_PARAMS")
         else:
