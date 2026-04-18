@@ -42,8 +42,8 @@ def test_import_indicators():
 
 
 def test_import_config():
-    from echolon.config import quant_engine
-    assert quant_engine is not None
+    from echolon.config import settings
+    assert settings is not None
 
 
 def test_import_deploy():

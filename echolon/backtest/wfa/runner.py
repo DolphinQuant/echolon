@@ -27,7 +27,7 @@ from typing import Dict, Any, Optional
 import pandas as pd
 
 from echolon.config.settings import WORKSPACE_DIR
-from echolon.config.quant_engine import PLATFORM_AGNOSTIC_DIR
+from echolon.config.settings import PLATFORM_AGNOSTIC_DIR
 from echolon.config.markets.core.context import TradingContext
 from echolon.config.optuna_config import OptunaConfig
 from echolon.config.backtest_config import BacktestConfig

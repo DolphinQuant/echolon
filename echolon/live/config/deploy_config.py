@@ -145,7 +145,7 @@ class DeployConfig:
 
         # Resolve trial_params_path from best params file if not set
         if not self.trial_params_path:
-            from echolon.config.quant_engine import BEST_PARAMS_FILE
+            from echolon.config.settings import BEST_PARAMS_FILE
             if os.path.exists(BEST_PARAMS_FILE):
                 self.trial_params_path = BEST_PARAMS_FILE
 

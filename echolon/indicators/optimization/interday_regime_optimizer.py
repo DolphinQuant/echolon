@@ -43,7 +43,7 @@ import logging
 import json
 from datetime import datetime
 
-from echolon.config.quant_engine import INDICATOR_PERIOD_CAPS
+from echolon.config.settings import INDICATOR_PERIOD_CAPS
 from echolon.config.markets.factory import MarketFactory
 
 logger = logging.getLogger(__name__)
@@ -235,7 +235,7 @@ class InterdayRegimeOptimizer:
     #     to preserve indicator lookback warmup and maximize statistical power.
     #     """
     #     from echolon.markets.shfe.contract_rules import _load_main_contract_data
-    #     from echolon.config.quant_engine import BACKTEST_END_DATE
+    #     from echolon.config.settings import BACKTEST_END_DATE
 
     #     backtest_start = pd.Timestamp(BACKTEST_START_DATE).date()
     #     # backtest_start = pd.Timestamp("2019-01-01").date()

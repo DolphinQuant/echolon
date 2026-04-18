@@ -53,14 +53,14 @@ def _get_default_params():
     """Lazy load DEFAULT_PARAMS from platform_agnostic (single-instrument mode only)."""
     from pathlib import Path
     from echolon.strategy.loader import StrategyLoader
-    from echolon.config.quant_engine import PLATFORM_AGNOSTIC_DIR
+    from echolon.config.settings import PLATFORM_AGNOSTIC_DIR
     loader = StrategyLoader(Path(PLATFORM_AGNOSTIC_DIR))
     return loader.load_attr("strategy_params", "DEFAULT_PARAMS")
 from echolon.backtest.mfe_mae import enrich_trades_with_mfe_mae
 from echolon.backtest.schemas import BacktestResultsSchemaV4
 from .backtrader_strategy import get_strategy_class
 from echolon.config.settings import PROJECT_ROOT
-from echolon.config.quant_engine import (
+from echolon.config.settings import (
     INDICATOR_DIR,
     MARKET_DATA_DIR,
 )
@@ -582,7 +582,7 @@ class BacktestRunner:
             if strategy_code_dir:
                 params_path = str(Path(strategy_code_dir) / "selected_robust_trial.json")
             else:
-                from echolon.config.quant_engine import BEST_PARAMS_FILE
+                from echolon.config.settings import BEST_PARAMS_FILE
                 params_path = BEST_PARAMS_FILE
 
         # Load and map parameters using shared utility

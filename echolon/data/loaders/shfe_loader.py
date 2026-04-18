@@ -21,7 +21,7 @@ import json
 import logging
 from typing import Dict, Any, Optional
 
-from echolon.config.quant_engine import INDICATOR_DIR, MARKET_DATA_DIR
+from echolon.config.settings import INDICATOR_DIR, MARKET_DATA_DIR
 from echolon.config.markets.factory import MarketFactory
 from echolon.config.markets.core.context import TradingContext
 

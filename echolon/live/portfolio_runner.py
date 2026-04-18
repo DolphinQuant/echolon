@@ -63,7 +63,7 @@ from echolon.data.loaders.calendar_loader import (
 from echolon.config.settings import MARKET_DATA_DIR
 from echolon.config.markets.factory import MarketFactory
 from echolon.data.run import run_data_pipeline
-from echolon.indicators.run_indicators import run_indicator_calculation
+from echolon.indicators.run import run_indicator_calculation
 
 import logging
 

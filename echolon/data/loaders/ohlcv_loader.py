@@ -12,7 +12,7 @@ import pandas as pd
 from typing import Optional, List
 from pathlib import Path
 
-from echolon.config.quant_engine import MARKET_DATA_DIR
+from echolon.config.settings import MARKET_DATA_DIR
 
 logger = logging.getLogger(__name__)
 

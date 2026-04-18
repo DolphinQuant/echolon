@@ -25,7 +25,7 @@ import os
 import logging
 from typing import Dict, List, Optional
 
-from echolon.config.quant_engine import MARKET_DATA_DIR, INDICATOR_DIR
+from echolon.config.settings import MARKET_DATA_DIR, INDICATOR_DIR
 from echolon.config.markets.core.context import TradingContext
 
 logger = logging.getLogger(__name__)

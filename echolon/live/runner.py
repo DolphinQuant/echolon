@@ -67,7 +67,7 @@ from .data_logger import save_trading_data_snapshot, save_trade_execution
 from echolon.strategy.interfaces import OrderStatus
 from echolon.config.settings import MARKET_DATA_DIR
 from echolon.data.run import run_data_pipeline
-from echolon.indicators.run_indicators import run_indicator_calculation
+from echolon.indicators.run import run_indicator_calculation
 
 class TradingRunner:
     """
@@ -379,7 +379,7 @@ class TradingRunner:
         """Import and instantiate the platform-agnostic strategy."""
         from pathlib import Path
         from echolon.strategy.loader import StrategyLoader
-        from echolon.config.quant_engine import PLATFORM_AGNOSTIC_DIR
+        from echolon.config.settings import PLATFORM_AGNOSTIC_DIR
 
         loader = StrategyLoader(Path(PLATFORM_AGNOSTIC_DIR))
         strategy_main = loader.load_function("strategy", "strategy_main")
@@ -640,7 +640,7 @@ class TradingRunner:
         """
         from pathlib import Path
         from echolon.strategy.loader import StrategyLoader
-        from echolon.config.quant_engine import PLATFORM_AGNOSTIC_DIR
+        from echolon.config.settings import PLATFORM_AGNOSTIC_DIR
 
         loader = StrategyLoader(Path(PLATFORM_AGNOSTIC_DIR))
         DEFAULT_PARAMS = loader.load_attr("strategy_params", "DEFAULT_PARAMS")

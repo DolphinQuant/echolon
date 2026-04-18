@@ -35,7 +35,7 @@ from echolon.indicators.utils.indicator_loader import get_analysis_indicator_lis
 from echolon.strategy.schemas import validate_indicator_list_json
 from echolon.config.settings import PROJECT_ROOT, OUTPUT_DIR
 from echolon.config.markets.core.context import TradingContext
-from echolon.config.quant_engine import MARKET_DATA_DIR
+from echolon.config.settings import MARKET_DATA_DIR
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)

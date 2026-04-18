@@ -58,7 +58,7 @@ class SHFEDayExtractor(BaseExtractor):
 
     def _get_default_paths(self) -> dict:
         """Get default input/output paths based on market and asset."""
-        from echolon.config.quant_engine import MARKET_DATA_DIR
+        from echolon.config.settings import MARKET_DATA_DIR
 
         dataset_root = os.path.join(PROJECT_ROOT, "data", self.market)
         futures_dir = os.path.join(MARKET_DATA_DIR, self.asset)

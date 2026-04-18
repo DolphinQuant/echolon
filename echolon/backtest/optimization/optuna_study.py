@@ -60,7 +60,7 @@ from echolon.backtest.logging_utils import (
     log_workflow_success,
     log_workflow_failure,
 )
-from echolon.config.quant_engine import INDICATOR_DIR
+from echolon.config.settings import INDICATOR_DIR
 from echolon.config.markets.core.context import TradingContext
 from echolon.config.optuna_config import OptunaConfig
 
