@@ -446,7 +446,7 @@ class SHFELiveDayExtractor(BaseExtractor):
         present_str = self.present_date.strftime('%Y%m%d')
 
         try:
-            from echolon.data_pipeline.loaders.calendar_loader import (
+            from echolon.data.loaders.calendar_loader import (
                 load_trading_calendar,
             )
             calendar_df = load_trading_calendar(self.market, self.asset)

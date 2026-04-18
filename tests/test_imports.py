@@ -32,7 +32,7 @@ def test_import_backtest():
 
 
 def test_import_data_pipeline():
-    from echolon.data_pipeline import extractors, transformers, loaders
+    from echolon.data import extractors, transformers, loaders
     assert extractors is not None
 
 

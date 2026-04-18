@@ -44,7 +44,7 @@ from xtquant.xttrader import XtQuantTrader, XtQuantTraderCallback
 from xtquant.xttype import StockAccount
 
 from ...config.deploy_config import QMTAccountConfig
-from echolon.data_pipeline.loaders.calendar_loader import is_night_market_open
+from echolon.data.loaders.calendar_loader import is_night_market_open
 
 logger = logging.getLogger(__name__)
 

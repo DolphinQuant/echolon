@@ -145,7 +145,7 @@ def _load_trading_dates(
     end_date: Optional[str] = None,
 ) -> List[datetime]:
     """Load trading dates from calendar."""
-    from echolon.data_pipeline.loaders.calendar_loader import get_trading_dates
+    from echolon.data.loaders.calendar_loader import get_trading_dates
 
     dates = get_trading_dates(
         market=market,

@@ -21,13 +21,13 @@ import json
 from datetime import datetime
 
 # Data pipeline loaders for standardized data access
-from echolon.data_pipeline.loaders.ohlcv_loader import (
+from echolon.data.loaders.ohlcv_loader import (
     load_contract_ohlcv,
     get_available_contracts,
 )
 # SHFE contract rules (main contract lookup, expiry date)
 from echolon.quant_engine.market_adapters.shfe.contract_rules import get_main_contract, get_expiry_date
-from echolon.data_pipeline.loaders.session_availability_loader import (
+from echolon.data.loaders.session_availability_loader import (
     get_session_availability_loader,
 )
 from ..registry.utils import get_indicator_info, get_function

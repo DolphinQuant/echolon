@@ -55,14 +55,14 @@ from ...core.interfaces.trading_interfaces import Order, OrderIntent, OrderStatu
 from .capital_slot import CapitalSlot
 from .trading_slot import TradingSlot
 from .portfolio_risk_overlay import PortfolioRiskOverlay
-from echolon.data_pipeline.loaders.calendar_loader import (
+from echolon.data.loaders.calendar_loader import (
     get_trading_dates,
     is_trading_day,
     is_night_market_open,
 )
 from echolon.config.settings import MARKET_DATA_DIR
 from echolon.config.markets.factory import MarketFactory
-from echolon.data_pipeline.run_pipeline import run_data_pipeline
+from echolon.data.run import run_data_pipeline
 from echolon.indicators.run_indicators import run_indicator_calculation
 
 import logging
@@ -1241,7 +1241,7 @@ class PortfolioTradingRunner:
         available. Mirrors TradingRunner._ensure_trading_calendar() but
         iterates all unique (market, instrument) pairs from enabled slots.
         """
-        from echolon.data_pipeline.extractors.shfe.live_day_extractor import SHFELiveDayExtractor
+        from echolon.data.extractors.shfe.live_day_extractor import SHFELiveDayExtractor
 
         seen = set()
         for sc in self.config.get_enabled_slots():

@@ -2,7 +2,7 @@
 Standard Market Data Schema
 ===========================
 
-Defines the canonical schema for data flowing between data_pipeline and indicators modules.
+Defines the canonical schema for data flowing between data and indicators modules.
 This is the CONTRACT between modules - any change here requires coordination.
 
 Supports:
@@ -11,16 +11,19 @@ Supports:
 - Multiple asset types: futures, perpetuals, spot
 
 Data Flow:
-    data_pipeline (extractors/transformers)
-        → StandardSchema (this file)
-        → indicators (calculators/engine)
-        → quant_engine (backtest/deploy)
+    data (extractors/transformers)
+        -> StandardSchema (this file)
+        -> indicators (calculators/engine)
+        -> backtest/live
 
 Schema Tiers:
     TIER 1 - CORE: Always required for any market/frequency
     TIER 2 - FREQUENCY: Required based on data frequency
     TIER 3 - MARKET: Required based on market type
     TIER 4 - OPTIONAL: Nice to have, may be missing
+
+Legacy re-exports (OHLCV_COLUMNS, COLUMN_TYPES, OHLCVSchema) are preserved
+for backwards compatibility - prefer StandardSchema in new code.
 """
 
 from dataclasses import dataclass, field
@@ -186,12 +189,12 @@ class StandardSchema:
     """
     Standard market data schema with validation.
 
-    This class defines the contract between data_pipeline output and
+    This class defines the contract between data output and
     indicators module input. All data must pass validation before
     being consumed by downstream modules.
 
     Usage:
-        >>> from echolon.data_pipeline.schemas import StandardSchema
+        >>> from echolon.data.schemas import StandardSchema
         >>>
         >>> # Create schema for SHFE daily data
         >>> schema = StandardSchema(market='shfe', frequency='daily')
@@ -506,12 +509,14 @@ def get_missing_columns(
 
 
 # =============================================================================
-# For backwards compatibility with ohlcv.py
+# Legacy Compatibility (originally in ohlcv.py)
 # =============================================================================
 
-# Re-export old names for compatibility
 OHLCV_COLUMNS = list(CORE_COLUMNS.keys())
 COLUMN_TYPES = {**CORE_COLUMNS, **FUTURES_COLUMNS}
+
+# Backwards-compatible list form of FUTURES_COLUMNS
+FUTURES_COLUMNS_LIST = list(FUTURES_COLUMNS.keys())
 
 
 class OHLCVSchema:
@@ -534,3 +539,31 @@ class OHLCVSchema:
     def get_missing_columns(cls, df: pd.DataFrame) -> List[str]:
         """Get list of missing required columns."""
         return list(set(cls.REQUIRED) - set(df.columns))
+
+
+__all__ = [
+    # Enums
+    'MarketType',
+    'FrequencyType',
+    # Column definitions
+    'CORE_COLUMNS',
+    'INTRADAY_COLUMNS',
+    'SESSION_COLUMNS',
+    'FUTURES_COLUMNS',
+    'FUTURES_COLUMNS_LIST',
+    'CRYPTO_COLUMNS',
+    'DERIVED_COLUMNS',
+    # Config
+    'SchemaConfig',
+    'SCHEMA_CONFIGS',
+    # Schema classes
+    'StandardSchema',
+    'OHLCVSchema',
+    # Legacy constants
+    'OHLCV_COLUMNS',
+    'COLUMN_TYPES',
+    # Functions
+    'get_schema',
+    'validate_dataframe',
+    'get_missing_columns',
+]
