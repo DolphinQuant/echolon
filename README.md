@@ -56,3 +56,42 @@ echolon init-strategy my_first --template minimal
 echolon validate my_first/
 echolon run my_first/ --instrument cu --start 2020-01-01 --end 2023-12-31
 ```
+
+## Live Deployment
+
+### Strategy directory contract
+
+Organize your strategy as a directory with these files:
+
+```
+my_strategy/
+├── strategy_code.py             # BaseStrategy subclass + components (REQUIRED)
+├── strategy_params.py           # optuna_search_space (optional for deploy)
+├── selected_robust_trial.json   # chosen trial params (REQUIRED)
+├── strategy_indicator_list.json # indicator spec (REQUIRED)
+└── regime_params.json           # per-regime params (REQUIRED if regime-aware)
+```
+
+### Single-instrument deployment
+
+```bash
+echolon deploy single --config deploy_config.json
+```
+
+### Portfolio deployment
+
+```bash
+echolon deploy portfolio --config portfolio_deploy_config.json
+echolon deploy portfolio --config portfolio_deploy_config.json --validate-only  # dry-run
+echolon deploy portfolio-cycle --config portfolio_deploy_config.json            # one cycle only
+```
+
+Paths in `portfolio_deploy_config.json` (`strategy_code_dir`, `trial_params_path`) are resolved relative to the config file's directory.
+
+### Pre-deploy backtest
+
+```bash
+echolon backtest portfolio --config portfolio_deploy_config.json \
+    --start 2020-01-01 --end 2024-12-31 \
+    --output-dir ./workspace/portfolio_backtest
+```
