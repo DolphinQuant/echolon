@@ -47,7 +47,7 @@ def test_import_config():
 
 
 def test_import_deploy():
-    from echolon.quant_engine.deploy import platforms
+    from echolon.live import platforms
     assert platforms is not None
 
 

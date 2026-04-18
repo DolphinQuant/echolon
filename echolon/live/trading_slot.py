@@ -21,11 +21,11 @@ from typing import Any, Dict, List, Optional
 
 from echolon.config.markets.factory import MarketFactory
 from echolon.config.markets.core.context import TradingContext
-from ...engine_factory import EngineFactory
-from ...core.base.hooks.forced_exit_strategy_hook import ForcedExitStrategyHook
-from ...core.interfaces.trading_interfaces import Order, OrderStatus
-from ..config.portfolio_deploy_config import SlotConfig
-from ..data_pipeline import get_main_contract
+from echolon.quant_engine.engine_factory import EngineFactory
+from echolon.quant_engine.core.base.hooks.forced_exit_strategy_hook import ForcedExitStrategyHook
+from echolon.quant_engine.core.interfaces.trading_interfaces import Order, OrderStatus
+from .config.portfolio_deploy_config import SlotConfig
+from echolon.data.loaders.contract_utils import get_main_contract
 from .capital_slot import CapitalSlot
 from .slot_aware_portfolio import SlotAwarePortfolio
 
@@ -277,7 +277,7 @@ class TradingSlot:
         """
         if self._state_path is None:
             return
-        from ...core.base.state_manager import StateManager
+        from echolon.quant_engine.core.base.state_manager import StateManager
         sm = StateManager(state_path=self._state_path)
         sm.load_state()
 

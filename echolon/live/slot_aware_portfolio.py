@@ -17,7 +17,7 @@ are sequential).
 import logging
 from typing import Any, Dict, List, Optional
 
-from ...core.interfaces.trading_interfaces import (
+from echolon.quant_engine.core.interfaces.trading_interfaces import (
     IMarketData,
     IPortfolio,
     Position,

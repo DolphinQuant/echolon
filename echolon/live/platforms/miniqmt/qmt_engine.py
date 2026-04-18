@@ -40,7 +40,7 @@ import logging
 import pickle
 import pandas as pd
 
-from ....core.interfaces.trading_interfaces import (
+from echolon.quant_engine.core.interfaces.trading_interfaces import (
     ITradingEngine,
     IMarketData,
     IPortfolio,
@@ -59,9 +59,9 @@ from ....core.interfaces.trading_interfaces import (
     OrderStatus,
     PositionSide,
 )
-from ....core.interfaces.market_adapter import IMarketAdapter
-from ....core.interfaces.frequency_context import IFrequencyContext
-from ....core.logging.strategy_logger import CSVStrategyLogger
+from echolon.quant_engine.core.interfaces.market_adapter import IMarketAdapter
+from echolon.quant_engine.core.interfaces.frequency_context import IFrequencyContext
+from echolon.quant_engine.core.logging.strategy_logger import CSVStrategyLogger
 
 from echolon.config.markets.core.context import TradingContext
 

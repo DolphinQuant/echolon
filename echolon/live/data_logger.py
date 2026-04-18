@@ -22,7 +22,7 @@ from datetime import datetime, timedelta
 from typing import Dict, Any, Optional
 from dataclasses import dataclass, asdict
 
-from ..config.logging_config import get_deploy_logger
+from .config.logging_config import get_deploy_logger
 
 logger = get_deploy_logger(__name__)
 

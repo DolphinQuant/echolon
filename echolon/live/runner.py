@@ -48,23 +48,23 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.date import DateTrigger
 
 from echolon.config.markets.core.context import TradingContext
-from ..config.deploy_config import DeployConfig
-from ..config.logging_config import get_deploy_logger, init_logging, shutdown_logging
+from .config.deploy_config import DeployConfig
+from .config.logging_config import get_deploy_logger, init_logging, shutdown_logging
 try:
-    from ..platforms.miniqmt.qmt_client import MiniQMTClient
+    from .platforms.miniqmt.qmt_client import MiniQMTClient
 except ImportError:
     MiniQMTClient = None  # Available only on QMT-enabled machines
 
-from ..data_pipeline import get_main_contract
+from echolon.data.loaders.contract_utils import get_main_contract
 from echolon.data.loaders.calendar_loader import (
     get_trading_dates,
     is_trading_day,
     is_night_market_open,
 )
-from ...engine_factory import EngineFactory
-from ...core.base.hooks.forced_exit_strategy_hook import ForcedExitStrategyHook
-from .trading_data_logger import save_trading_data_snapshot, save_trade_execution
-from ...core.interfaces.trading_interfaces import OrderStatus
+from echolon.quant_engine.engine_factory import EngineFactory
+from echolon.quant_engine.core.base.hooks.forced_exit_strategy_hook import ForcedExitStrategyHook
+from .data_logger import save_trading_data_snapshot, save_trade_execution
+from echolon.quant_engine.core.interfaces.trading_interfaces import OrderStatus
 from echolon.config.settings import MARKET_DATA_DIR
 from echolon.data.run import run_data_pipeline
 from echolon.indicators.run_indicators import run_indicator_calculation
@@ -550,8 +550,8 @@ class TradingRunner:
 
         # Step 7: Generate and send dashboard data to web frontend
         try:
-            from .dashboard_data_generator import generate_dashboard_data, save_dashboard_data
-            from .dashboard_data_sender import send_dashboard_data
+            from .dashboard import generate_dashboard_data, save_dashboard_data
+            from .dashboard import send_dashboard_data
 
             dashboard_data = generate_dashboard_data(
                 trading_data_dir=self.config.trading_data_dir,

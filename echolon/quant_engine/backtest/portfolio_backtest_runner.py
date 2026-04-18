@@ -6,7 +6,7 @@ Runs BacktestRunner per slot independently, combines equity curves,
 and computes portfolio-level metrics.
 
 Usage:
-    from echolon.quant_engine.deploy.config.portfolio_deploy_config import PortfolioDeployConfig
+    from echolon.live.config.portfolio_deploy_config import PortfolioDeployConfig
     from echolon.quant_engine.backtest.portfolio_backtest_runner import PortfolioBacktestRunner
 
     config = PortfolioDeployConfig.load("session/portfolio_deploy_config.json")
