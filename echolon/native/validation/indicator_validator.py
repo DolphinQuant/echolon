@@ -4,7 +4,7 @@ import json
 import re
 from pathlib import Path
 
-from echolon.native.validation.errors import EchelonError, ERROR_CATALOG
+from echolon.errors import EchelonError, ERROR_CATALOG
 
 _GET_INDICATOR_PATTERN = re.compile(
     r"""get_indicator\(\s*['"]([^'"]+)['"]\s*\)""",

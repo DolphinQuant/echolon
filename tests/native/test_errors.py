@@ -2,7 +2,7 @@
 
 import pytest
 
-from echolon.native.validation.errors import (
+from echolon.errors import (
     EchelonError,
     ValidationError,
     ConfigError,
@@ -67,7 +67,7 @@ def test_catching_echolon_error_catches_all_subclasses():
         assert e.code == "IND-001"
 
 
-from echolon.native.validation.errors import (
+from echolon.errors import (
     ERROR_CATALOG,
     raise_error,
 )
@@ -122,7 +122,7 @@ def test_raise_error_formats_fix_template():
 def test_echolon_reexports_echolon_error():
     import echolon
     assert echolon.EchelonError is not None
-    from echolon.native.validation.errors import EchelonError as E
+    from echolon.errors import EchelonError as E
     assert echolon.EchelonError is E
 
 

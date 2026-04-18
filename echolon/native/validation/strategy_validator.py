@@ -3,7 +3,7 @@
 import ast
 from pathlib import Path
 
-from echolon.native.validation.errors import EchelonError, ERROR_CATALOG
+from echolon.errors import EchelonError, ERROR_CATALOG
 
 
 REQUIRED_FILES = (

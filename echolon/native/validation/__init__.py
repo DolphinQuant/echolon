@@ -1,6 +1,6 @@
 """Validation package — errors and validators for AI-native Echolon."""
 
-from echolon.native.validation.errors import (
+from echolon.errors import (
     ERROR_CATALOG,
     ConfigError,
     DataError,
