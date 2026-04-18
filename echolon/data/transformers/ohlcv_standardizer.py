@@ -8,7 +8,7 @@ import logging
 from typing import Optional
 import pandas as pd
 
-from ..schemas.standard_schema import OHLCVSchema
+from ..schemas import OHLCVSchema
 from echolon.markets.shfe.trading_calendar import TradingCalendar
 from echolon.config.markets.shfe.phases import get_phase_for_time as get_session_phase
 from echolon.config.markets.shfe.sessions import NIGHT as SHFE_NIGHT_SESSION

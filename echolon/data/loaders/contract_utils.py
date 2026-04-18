@@ -13,7 +13,7 @@ wrappers here simply append it.
 import logging
 from datetime import datetime
 
-from ...market_adapters.shfe.contract_rules import (
+from ...markets.shfe.contract_rules import (
     get_main_contract as _get_main_contract_canonical,
 )
 
