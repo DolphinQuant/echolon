@@ -486,6 +486,13 @@ class PortfolioTradingRunner:
         duration = (datetime.now() - cycle_start).total_seconds()
         results["duration_seconds"] = duration
         self.log.info(f"Portfolio cycle completed in {duration:.1f}s")
+
+        from echolon.live.state_writer import update_heartbeat
+        update_heartbeat(
+            workspace_deploy_dir=self.deploy_data_dir,
+            slots_alive=[s.slot_id for s in self.slots],
+        )
+
         return results
 
     # =========================================================================
