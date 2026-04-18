@@ -2,6 +2,7 @@
 
 import typer
 
+from echolon.live.cli import deploy_app
 from echolon.native.cli import examples as examples_cmd
 from echolon.native.cli import init as init_cmd
 from echolon.native.cli import migrate as migrate_cmd
@@ -27,6 +28,7 @@ app.command(name="schema")(schema_cmd.schema_command)
 app.command(name="run")(run_cmd.run_command)
 app.command(name="migrate")(migrate_cmd.migrate_command)
 app.add_typer(examples_cmd.examples_app, name="examples")
+app.add_typer(deploy_app, name="deploy")
 
 
 if __name__ == "__main__":
