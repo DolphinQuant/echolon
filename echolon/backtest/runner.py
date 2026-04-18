@@ -50,7 +50,7 @@ from typing import Dict, Any, Optional
 
 from echolon.config.markets.core.context import TradingContext
 from echolon.config.backtest_config import BacktestConfig
-from .backtest.engine.backtest_runner import BacktestRunner, _RunnerConfig
+from .engine.backtest_runner import BacktestRunner, _RunnerConfig
 
 logger = logging.getLogger(__name__)
 
