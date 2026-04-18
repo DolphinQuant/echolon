@@ -1157,9 +1157,8 @@ class PortfolioTradingRunner:
     # =========================================================================
 
     def _generate_dashboard(self) -> None:
-        """Generate per-slot + portfolio aggregate dashboard using DashboardAggregator."""
+        """Generate per-slot + portfolio aggregate dashboard and save locally."""
         from .dashboard import generate_portfolio_dashboard, save_portfolio_dashboard
-        from .dashboard import send_portfolio_dashboard_data
 
         # Build slot statuses from runtime state
         slot_statuses = {}
@@ -1185,12 +1184,6 @@ class PortfolioTradingRunner:
 
         out_path = os.path.join(self.portfolio_dir, "dashboard_portfolio.json")
         save_portfolio_dashboard(dashboard, out_path)
-
-        # Send to backend
-        try:
-            send_portfolio_dashboard_data(dashboard)
-        except Exception as e:
-            self.log.warning(f"Portfolio dashboard send failed: {e}")
 
     # =========================================================================
     # Health report

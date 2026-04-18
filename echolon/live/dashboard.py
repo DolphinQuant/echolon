@@ -1,8 +1,8 @@
 """
-Dashboard (consolidated from aggregator + data_generator + data_sender)
-=======================================================================
+Dashboard (data generator + portfolio aggregator)
+==================================================
 
-Three responsibilities combined:
+Two responsibilities:
 
 1. Generator: Reads trading data from workspace CSV files and strategy state,
    computes per-slot KPIs.
@@ -17,17 +17,14 @@ Three responsibilities combined:
    and produces the full PortfolioDashboardPayload.
    Output: deploy_data/dashboard_portfolio.json
 
-3. Sender: Sends the generated dashboard_data.json to the DolphinQuant backend
-   via HTTP POST. Uses only stdlib (urllib) to avoid extra dependencies.
+HTTP posting to a specific backend is a consumer concern and has been moved
+to the goingmerry portal_client module.
 """
 
 import json
 import logging
 import math
 import os
-import ssl
-import urllib.error
-import urllib.request
 from datetime import datetime
 from typing import Any, Dict, List, Optional
 
@@ -38,72 +35,7 @@ from echolon.config.markets.factory import MarketFactory
 from .config.logging_config import get_deploy_logger
 from .config.portfolio_deploy_config import PortfolioDeployConfig, SlotConfig
 
-try:
-    import certifi
-    _SSL_CONTEXT = ssl.create_default_context(cafile=certifi.where())
-except ImportError:
-    _SSL_CONTEXT = ssl.create_default_context()
-
 logger = get_deploy_logger(__name__)
-
-
-# =============================================================================
-# DATA SENDER
-# =============================================================================
-
-DEFAULT_BACKEND_URL = 'https://dolphinquant.com'
-DASHBOARD_DATA_ENDPOINT = '/api/falcon/dashboard-data/'
-PORTFOLIO_DASHBOARD_ENDPOINT = '/api/falcon/portfolio-dashboard/'
-
-
-def _post_json(url: str, data: dict, label: str) -> bool:
-    """POST JSON data to URL. Returns True on success."""
-    payload = json.dumps(data).encode('utf-8')
-
-    req = urllib.request.Request(
-        url,
-        data=payload,
-        headers={
-            'Content-Type': 'application/json',
-            'User-Agent': 'DolphinQuant-TradingRunner/1.0',
-        },
-        method='POST',
-    )
-
-    try:
-        with urllib.request.urlopen(req, timeout=30, context=_SSL_CONTEXT) as resp:
-            status = resp.status
-            body = json.loads(resp.read().decode('utf-8'))
-            logger.info(f"{label} sent: {status} - {body}")
-            return True
-    except urllib.error.HTTPError as e:
-        body = e.read().decode('utf-8', errors='replace')
-        logger.error(f"{label} send failed: HTTP {e.code} - {body}")
-        return False
-    except urllib.error.URLError as e:
-        logger.error(f"{label} send failed: {e.reason}")
-        return False
-    except Exception as e:
-        logger.error(f"{label} send failed: {e}")
-        return False
-
-
-def send_dashboard_data(
-    data: dict,
-    backend_url: str = DEFAULT_BACKEND_URL,
-) -> bool:
-    """POST single-slot dashboard data JSON to the backend."""
-    url = f'{backend_url.rstrip("/")}{DASHBOARD_DATA_ENDPOINT}'
-    return _post_json(url, data, "Dashboard data")
-
-
-def send_portfolio_dashboard_data(
-    data: dict,
-    backend_url: str = DEFAULT_BACKEND_URL,
-) -> bool:
-    """POST portfolio dashboard data JSON to the backend."""
-    url = f'{backend_url.rstrip("/")}{PORTFOLIO_DASHBOARD_ENDPOINT}'
-    return _post_json(url, data, "Portfolio dashboard data")
 
 
 # =============================================================================
@@ -476,12 +408,56 @@ def _compute_kpis(
 # AGGREGATOR (portfolio-level)
 # =============================================================================
 
+def _compute_portfolio_equity_and_peak(
+    deploy_config: PortfolioDeployConfig,
+    deploy_data_dir: str,
+) -> tuple:
+    """Compute current portfolio equity + historical peak from per-slot CSVs.
+
+    Equity = sum of latest total_account_value across slots (falling back to
+    initial_capital when a slot has no CSV yet).
+    Peak = max over time of the aggregate curve.
+    """
+    enabled = deploy_config.get_enabled_slots()
+
+    per_slot_curves: Dict[str, Dict[str, float]] = {}
+    latest_equity: Dict[str, float] = {}
+    for slot in enabled:
+        csv_path = os.path.join(deploy_data_dir, "slots", slot.slot_id, f"trading_data_{slot.instrument}.csv")
+        if not os.path.exists(csv_path):
+            latest_equity[slot.slot_id] = slot.initial_capital
+            continue
+        df = pd.read_csv(csv_path)
+        if "timestamp" in df.columns and "total_account_value" in df.columns:
+            df["date"] = pd.to_datetime(df["timestamp"]).dt.strftime("%Y-%m-%d")
+            per_slot_curves[slot.slot_id] = dict(zip(df["date"], df["total_account_value"].astype(float)))
+            latest_equity[slot.slot_id] = float(df["total_account_value"].iloc[-1])
+        else:
+            latest_equity[slot.slot_id] = slot.initial_capital
+
+    equity = sum(latest_equity[s.slot_id] for s in enabled)
+
+    if per_slot_curves:
+        all_dates = sorted({d for curve in per_slot_curves.values() for d in curve})
+        peak = 0.0
+        for date in all_dates:
+            total = sum(
+                per_slot_curves.get(slot.slot_id, {}).get(date, slot.initial_capital)
+                for slot in enabled
+            )
+            peak = max(peak, total)
+    else:
+        peak = sum(s.initial_capital for s in enabled)
+
+    return equity, peak
+
+
 def generate_portfolio_dashboard(
     deploy_config: PortfolioDeployConfig,
     deploy_data_dir: str,
-    portfolio_equity: float,
-    portfolio_peak: float,
-    slot_statuses: Dict[str, str],
+    portfolio_equity: Optional[float] = None,
+    portfolio_peak: Optional[float] = None,
+    slot_statuses: Optional[Dict[str, str]] = None,
     exclude_today: bool = True,
 ) -> Dict[str, Any]:
     """
@@ -490,13 +466,25 @@ def generate_portfolio_dashboard(
     Args:
         deploy_config: Loaded PortfolioDeployConfig with slot definitions.
         deploy_data_dir: Base deploy data directory.
-        portfolio_equity: Current total portfolio equity.
-        portfolio_peak: Peak portfolio equity (for DD calculation).
-        slot_statuses: Mapping of slot_id -> "OK" / "ERROR".
+        portfolio_equity: Current total portfolio equity. Auto-computed from
+            per-slot CSVs when None.
+        portfolio_peak: Peak portfolio equity (for DD calculation). Auto-computed
+            when None.
+        slot_statuses: Mapping of slot_id -> "OK" / "ERROR". Defaults to all
+            "OK" when None.
 
     Returns:
         Full PortfolioDashboardPayload matching the migration schema.
     """
+    # Auto-compute equity/peak if not supplied
+    if portfolio_equity is None or portfolio_peak is None:
+        equity_auto, peak_auto = _compute_portfolio_equity_and_peak(deploy_config, deploy_data_dir)
+        if portfolio_equity is None:
+            portfolio_equity = equity_auto
+        if portfolio_peak is None:
+            portfolio_peak = peak_auto
+    if slot_statuses is None:
+        slot_statuses = {s.slot_id: "OK" for s in deploy_config.get_enabled_slots()}
     enabled_slots = deploy_config.get_enabled_slots()
     slot_dashboards: List[Dict[str, Any]] = []
 
@@ -837,3 +825,44 @@ def _get_multiplier(slot_config: SlotConfig) -> int:
         f"using default multiplier 5"
     )
     return 5
+
+
+# =============================================================================
+# Public API aliases (stable names for consumers like goingmerry)
+# =============================================================================
+
+def aggregate_portfolio(
+    deploy_config: PortfolioDeployConfig,
+    workspace_dir: str,
+    exclude_today: bool = True,
+) -> Dict[str, Any]:
+    """Public entry point: aggregate per-slot state into a portfolio dashboard payload.
+
+    Automatically computes portfolio equity + peak from per-slot CSVs.
+
+    Args:
+        deploy_config: Loaded PortfolioDeployConfig.
+        workspace_dir: Directory containing `deploy/slots/{slot_id}/...` files.
+            (Typically `./workspace` — the function appends `/deploy` internally.)
+        exclude_today: Apply 24h public-delay filter.
+    """
+    deploy_data_dir = os.path.join(workspace_dir, "deploy")
+    return generate_portfolio_dashboard(
+        deploy_config=deploy_config,
+        deploy_data_dir=deploy_data_dir,
+        exclude_today=exclude_today,
+    )
+
+
+def load_slot_state(workspace_dir: str, slot_id: str) -> Optional[Dict[str, Any]]:
+    """Read a slot's strategy_state.json safely. Returns None if missing."""
+    path = os.path.join(workspace_dir, "deploy", "slots", slot_id, "strategy_state.json")
+    return _load_json(path)
+
+
+def load_equity_curve(workspace_dir: str, slot_id: str, instrument: str):
+    """Read a slot's trading_data CSV as a DataFrame. Returns None if missing."""
+    return _load_trading_data(
+        os.path.join(workspace_dir, "deploy", "slots", slot_id),
+        instrument,
+    )

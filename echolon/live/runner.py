@@ -548,10 +548,9 @@ class TradingRunner:
         except Exception as e:
             self.logger.error(f"Failed to save trading data snapshot: {e}")
 
-        # Step 7: Generate and send dashboard data to web frontend
+        # Step 7: Generate dashboard data and save locally
         try:
             from .dashboard import generate_dashboard_data, save_dashboard_data
-            from .dashboard import send_dashboard_data
 
             dashboard_data = generate_dashboard_data(
                 trading_data_dir=self.config.trading_data_dir,
@@ -566,11 +565,8 @@ class TradingRunner:
                 self.config.trading_data_dir, 'dashboard_data.json'
             )
             save_dashboard_data(dashboard_data, dashboard_json_path)
-
-            # Send to backend
-            send_dashboard_data(dashboard_data)
         except Exception as e:
-            self.logger.error(f"Dashboard data generation/send failed: {e}")
+            self.logger.error(f"Dashboard data generation failed: {e}")
 
         self.logger.info(
             f"Trading cycle completed in {duration:.1f}s | "
