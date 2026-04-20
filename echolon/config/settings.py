@@ -5,20 +5,33 @@ This module is deliberately minimal. Library callers should construct
 ``get_project_root()`` here is the fallback used only when a caller supplies
 no paths at all.
 
-``PROJECT_ROOT`` remains as a module attribute (eager at import time) for
-backwards compatibility with callers that historically imported it. New code
-should prefer ``get_project_root()`` — the function re-reads the env var on
-every call, so env-var changes after import are honored.
+``PROJECT_ROOT`` is retained as a module attribute for back-compat but is now
+lazy (resolved on attribute access, not import) AND emits a DeprecationWarning
+on each access. Migrate to ``get_project_root()`` — the function re-reads the
+env var on every call, so env-var changes after import are honored and the
+access is no longer a deprecation-warned path. The ``PROJECT_ROOT`` attribute
+will be removed in a future release once all known callers have migrated.
 """
 import os
+import warnings
 from pathlib import Path
 
 
 def get_project_root() -> Path:
     """Resolve ECHOLON_PROJECT_ROOT (defaults to cwd) at call time."""
-    return Path(os.getenv("ECHOLON_PROJECT_ROOT", Path.cwd())).absolute()
+    return Path(os.getenv("ECHOLON_PROJECT_ROOT") or Path.cwd()).absolute()
 
 
-# Module-level eager resolution. Retained for back-compat with callers that
-# imported PROJECT_ROOT directly; new code should call get_project_root().
-PROJECT_ROOT = get_project_root()
+def __getattr__(name: str) -> Path:
+    """Lazy resolution of deprecated module attributes."""
+    if name == "PROJECT_ROOT":
+        warnings.warn(
+            "echolon.config.settings.PROJECT_ROOT is deprecated and will be "
+            "removed in a future release. Use "
+            "echolon.config.settings.get_project_root() instead, which re-reads "
+            "the env var on each call and does not bind cwd at import time.",
+            DeprecationWarning,
+            stacklevel=2,
+        )
+        return get_project_root()
+    raise AttributeError(f"module 'echolon.config.settings' has no attribute {name!r}")
