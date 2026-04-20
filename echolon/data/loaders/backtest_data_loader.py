@@ -19,9 +19,10 @@ import pandas as pd
 import os
 import json
 import logging
+from pathlib import Path
 from typing import Dict, Any, Optional
 
-from echolon.config.settings import INDICATOR_DIR, MARKET_DATA_DIR
+from echolon.config.settings import INDICATOR_DIR, MARKET_DATA_DIR  # deprecated — use PathsConfig injection
 from echolon.config.markets.factory import MarketFactory
 from echolon.config.markets.core.context import TradingContext
 
@@ -60,6 +61,9 @@ def _convert_contract_to_numeric(contract_str: str, contract_prefix: str) -> int
 def load_backtest_data(
     ctx: TradingContext,
     indicators_path: Optional[str] = None,
+    *,
+    indicator_dir: Optional[Path] = None,
+    market_data_dir: Optional[Path] = None,
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """
     Load previously prepared backtest data (enriched continuous OHLCV, trading calendar)
@@ -69,7 +73,14 @@ def load_backtest_data(
         ctx: TradingContext with market and instrument configuration
         indicators_path: Optional explicit path to strategy_indicators.csv.
             If provided, loads from this path instead of the default
-            INDICATOR_DIR/{instrument}/strategy_indicators.csv.
+            indicator_dir/{instrument}/strategy_indicators.csv.
+        indicator_dir: Root directory for pre-calculated indicators
+            (PathsConfig.indicators_backtest_dir). When None, falls back to a
+            PathsConfig built from ECHOLON_PROJECT_ROOT (deprecated — callers
+            SHOULD supply indicator_dir).
+        market_data_dir: Root directory for processed market data. When None,
+            falls back to a PathsConfig built from ECHOLON_PROJECT_ROOT
+            (deprecated — callers SHOULD supply market_data_dir).
 
     Returns:
         Tuple of (indicators_data DataFrame, trading_calendar DataFrame).
@@ -83,7 +94,11 @@ def load_backtest_data(
 
     # --- Load pre-calculated indicators ---
     if indicators_path is None:
-        indicators_path = os.path.join(INDICATOR_DIR, instrument, "strategy_indicators.csv")
+        if indicator_dir is None:
+            from echolon.config.paths_config import PathsConfig
+            from echolon.config.settings import PROJECT_ROOT
+            indicator_dir = PathsConfig.from_project_root(PROJECT_ROOT).indicators_backtest_dir
+        indicators_path = os.path.join(str(indicator_dir), instrument, "strategy_indicators.csv")
     indicators_data = pd.read_csv(indicators_path)
 
     # For intraday data: use 'datetime' column as index (has time component)
@@ -126,7 +141,11 @@ def load_backtest_data(
         logger.info(f"[DATA_LOADER] Indicator data loaded | path={indicators_path}")
 
     # --- Load trading calendar ---
-    calendar_path = os.path.join(MARKET_DATA_DIR, market.upper(), instrument, "trading_calendar.csv")
+    if market_data_dir is None:
+        from echolon.config.paths_config import PathsConfig
+        from echolon.config.settings import PROJECT_ROOT
+        market_data_dir = PathsConfig.from_project_root(PROJECT_ROOT).market_data_dir
+    calendar_path = os.path.join(str(market_data_dir), market.upper(), instrument, "trading_calendar.csv")
     trading_calendar = pd.read_csv(calendar_path)
     trading_calendar['date'] = pd.to_datetime(trading_calendar['date'])
     if logger.isEnabledFor(logging.INFO):
@@ -155,6 +174,8 @@ def load_best_params(params_file_path: str) -> dict:
 def load_indicator_metadata(
     ctx: TradingContext,
     metadata_path: Optional[str] = None,
+    *,
+    indicator_dir: Optional[Path] = None,
 ) -> Dict[str, Any]:
     """
     Load indicator metadata from the standard location.
@@ -163,13 +184,21 @@ def load_indicator_metadata(
         ctx: TradingContext with market and instrument configuration
         metadata_path: Optional explicit path to metadata JSON.
             If provided, loads from this path instead of the default.
+        indicator_dir: Root directory for pre-calculated indicators
+            (PathsConfig.indicators_backtest_dir). When None, falls back to a
+            PathsConfig built from ECHOLON_PROJECT_ROOT (deprecated — callers
+            SHOULD supply indicator_dir).
 
     Returns:
         Indicator metadata dictionary
     """
     if metadata_path is None:
+        if indicator_dir is None:
+            from echolon.config.paths_config import PathsConfig
+            from echolon.config.settings import PROJECT_ROOT
+            indicator_dir = PathsConfig.from_project_root(PROJECT_ROOT).indicators_backtest_dir
         instrument = ctx.instrument_name
-        metadata_path = os.path.join(INDICATOR_DIR, instrument, "strategy_indicator_metadata.json")
+        metadata_path = os.path.join(str(indicator_dir), instrument, "strategy_indicator_metadata.json")
     with open(metadata_path, 'r') as f:
         metadata = json.load(f)
     return metadata

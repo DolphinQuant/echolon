@@ -26,7 +26,7 @@ from typing import Dict, Optional
 
 import pandas as pd
 
-from echolon.config.settings import MARKET_DATA_DIR
+from echolon.config.settings import MARKET_DATA_DIR  # deprecated — use PathsConfig injection
 from echolon.config.markets.shfe.phases import (
     get_tradeable_phases,
     is_aggregated_bar_size,
@@ -81,6 +81,8 @@ class SessionAvailabilityLoader:
         bar_size_minutes: int,
         bar_size: Optional[str] = None,
         path: Optional[str] = None,
+        *,
+        market_data_dir: Optional[Path] = None,
     ):
         """
         Initialize loader.
@@ -93,14 +95,18 @@ class SessionAvailabilityLoader:
                       For 30m/1h, uses aggregated phases (night_session, day_session).
                       For 5m/15m or None, uses granular phases (night, morning, afternoon).
             path: Optional explicit file path to session_availability.csv. When
-                  provided, bypasses the MARKET_DATA_DIR / {market} / {instrument} /
+                  provided, bypasses the market_data_dir / {market} / {instrument} /
                   session_availability.csv convention.
+            market_data_dir: Root directory for processed market data. When None,
+                  falls back to a PathsConfig built from ECHOLON_PROJECT_ROOT
+                  (deprecated — callers SHOULD supply market_data_dir).
         """
         self.market = market.upper()
         self.instrument = instrument
         self.bar_size_minutes = bar_size_minutes
         self.bar_size = bar_size
         self._path_override = path
+        self._market_data_dir = market_data_dir
         self._data: Dict[str, SessionDayInfo] = {}
         self._loaded = False
 
@@ -136,7 +142,12 @@ class SessionAvailabilityLoader:
         if self._path_override is not None:
             file_path = Path(self._path_override)
         else:
-            file_path = MARKET_DATA_DIR / self.market / self.instrument / "session_availability.csv"
+            market_data_dir = self._market_data_dir
+            if market_data_dir is None:
+                from echolon.config.paths_config import PathsConfig
+                from echolon.config.settings import PROJECT_ROOT
+                market_data_dir = PathsConfig.from_project_root(PROJECT_ROOT).market_data_dir
+            file_path = Path(market_data_dir) / self.market / self.instrument / "session_availability.csv"
 
         if not file_path.exists():
             logger.warning(
@@ -375,6 +386,8 @@ def get_session_availability_loader(
     bar_size_minutes: int,
     bar_size: Optional[str] = None,
     path: Optional[str] = None,
+    *,
+    market_data_dir: Optional[Path] = None,
 ) -> SessionAvailabilityLoader:
     """
     Get or create a SessionAvailabilityLoader instance.
@@ -388,20 +401,32 @@ def get_session_availability_loader(
         bar_size: Optional bar size string ('5m', '15m', '30m', '1h').
                   For 30m/1h, uses aggregated phases.
         path: Optional explicit file path to session_availability.csv. When
-              provided, bypasses the MARKET_DATA_DIR convention. Note: a
+              provided, bypasses the market_data_dir convention. Note: a
               non-None path produces a distinct cache key so it is not
               confused with the default-path singleton.
+        market_data_dir: Root directory for processed market data. When None,
+              falls back to a PathsConfig built from ECHOLON_PROJECT_ROOT
+              (deprecated — callers SHOULD supply market_data_dir).
 
     Returns:
         SessionAvailabilityLoader instance
     """
     bar_size_key = bar_size or "granular"
     path_key = path or "default"
-    key = f"{market.upper()}_{instrument}_{bar_size_minutes}m_{bar_size_key}_{path_key}"
+    market_data_dir_key = str(market_data_dir) if market_data_dir is not None else "default"
+    key = (
+        f"{market.upper()}_{instrument}_{bar_size_minutes}m_"
+        f"{bar_size_key}_{path_key}_{market_data_dir_key}"
+    )
 
     if key not in _loaders:
         _loaders[key] = SessionAvailabilityLoader(
-            market, instrument, bar_size_minutes, bar_size=bar_size, path=path
+            market,
+            instrument,
+            bar_size_minutes,
+            bar_size=bar_size,
+            path=path,
+            market_data_dir=market_data_dir,
         )
 
     return _loaders[key]

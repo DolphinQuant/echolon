@@ -11,8 +11,6 @@ Typical call from a live-deploy runner::
     from echolon.data.live_data import run_live_data_update
     run_live_data_update(ctx, client=xtdc, trading_calendar_path=config.trading_calendar_path)
 """
-from __future__ import annotations
-
 import logging
 from pathlib import Path
 from typing import Optional
@@ -20,6 +18,7 @@ from typing import Optional
 import pandas as pd
 
 from echolon.config.markets.core.context import TradingContext
+from echolon.config.paths_config import PathsConfig
 from echolon.config.settings import MARKET_DATA_DIR
 from .transformers.ohlcv_standardizer import OHLCVStandardizer
 from .transformers.session_filter import SessionFilter
@@ -34,6 +33,8 @@ logger = logging.getLogger(__name__)
 def run_live_data_update(
     ctx: TradingContext,
     client,                                         # XtdataClient or similar; required
+    *,
+    paths: Optional[PathsConfig] = None,
     output_dir: Optional[str] = None,
     trading_calendar_path: Optional[str] = None,
     present_date=None,
@@ -56,8 +57,12 @@ def run_live_data_update(
         ctx:                    TradingContext with market/instrument/frequency.
         client:                 Caller-injected data client (protocol: XtdataClient).
                                 Required — echolon does not ship a broker SDK.
+        paths:                  PathsConfig supplying library-owned directory layout.
+                                When None the conventional layout rooted at
+                                ECHOLON_PROJECT_ROOT is used (deprecated fallback —
+                                callers SHOULD supply paths).
         output_dir:             Destination for per-contract CSVs.  Defaults to
-                                ``MARKET_DATA_DIR / {market} / {instrument}``.
+                                ``paths.market_data_dir / {market} / {instrument}``.
         trading_calendar_path:  Path to user-supplied ``trading_calendar.csv``
                                 (SHFE live deploys require this).
         present_date:           Reference date; defaults to today.
@@ -67,6 +72,10 @@ def run_live_data_update(
     Returns:
         True if successful.
     """
+    if paths is None:
+        from echolon.config.settings import PROJECT_ROOT
+        paths = PathsConfig.from_project_root(PROJECT_ROOT)
+
     market = ctx.market_code
     instrument = ctx.instrument_name
     is_intraday = ctx.is_intraday
@@ -78,7 +87,7 @@ def run_live_data_update(
         f"frequency={'intraday' if is_intraday else 'interday'}, bar_size={bar_size}"
     )
 
-    output_path = Path(output_dir) if output_dir else MARKET_DATA_DIR / market / instrument
+    output_path = Path(output_dir) if output_dir else paths.market_data_dir / market / instrument
     output_path.mkdir(parents=True, exist_ok=True)
 
     extractor_frequency = "minute" if is_intraday else "day"

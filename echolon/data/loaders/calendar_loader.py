@@ -11,7 +11,7 @@ from typing import Optional, List
 from datetime import datetime
 from pathlib import Path
 
-from echolon.config.settings import MARKET_DATA_DIR
+from echolon.config.settings import MARKET_DATA_DIR  # deprecated — use PathsConfig injection
 from echolon.markets.shfe.trading_calendar import TradingCalendar
 
 logger = logging.getLogger(__name__)
@@ -23,6 +23,8 @@ def load_trading_calendar(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     path: Optional[str] = None,
+    *,
+    market_data_dir: Optional[Path] = None,
 ) -> pd.DataFrame:
     """
     Load trading calendar for a market/asset.
@@ -33,13 +35,20 @@ def load_trading_calendar(
         start_date: Optional start date filter (YYYY-MM-DD)
         end_date: Optional end date filter (YYYY-MM-DD)
         path: Optional explicit file path. When provided, bypasses the
-              MARKET_DATA_DIR / {market} / {asset} / trading_calendar.csv convention.
+              market_data_dir / {market} / {asset} / trading_calendar.csv convention.
+        market_data_dir: Root directory for processed market data. When None,
+              falls back to a PathsConfig built from ECHOLON_PROJECT_ROOT
+              (deprecated — callers SHOULD supply market_data_dir).
 
     Returns:
         DataFrame with trading calendar
     """
     if path is None:
-        calendar_file = os.path.join(MARKET_DATA_DIR, market, asset, "trading_calendar.csv")
+        if market_data_dir is None:
+            from echolon.config.paths_config import PathsConfig
+            from echolon.config.settings import PROJECT_ROOT
+            market_data_dir = PathsConfig.from_project_root(PROJECT_ROOT).market_data_dir
+        calendar_file = os.path.join(str(market_data_dir), market, asset, "trading_calendar.csv")
     else:
         calendar_file = path
 
@@ -70,6 +79,8 @@ def get_trading_dates(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     path: Optional[str] = None,
+    *,
+    market_data_dir: Optional[Path] = None,
 ) -> List[datetime]:
     """
     Get list of trading dates for a market/asset.
@@ -80,15 +91,25 @@ def get_trading_dates(
         start_date: Optional start date filter
         end_date: Optional end date filter
         path: Optional explicit calendar file path (passed through to load_trading_calendar).
+        market_data_dir: Root directory for processed market data (passed through to
+              load_trading_calendar). See ``load_trading_calendar`` for details.
 
     Returns:
         List of datetime objects representing trading dates
     """
-    calendar = load_trading_calendar(market, asset, start_date, end_date, path=path)
+    calendar = load_trading_calendar(
+        market, asset, start_date, end_date, path=path, market_data_dir=market_data_dir
+    )
     return calendar['date'].tolist()
 
 
-def is_trading_day(market: str, asset: str, date: datetime) -> bool:
+def is_trading_day(
+    market: str,
+    asset: str,
+    date: datetime,
+    *,
+    market_data_dir: Optional[Path] = None,
+) -> bool:
     """
     Check if a specific date is a trading day.
 
@@ -96,16 +117,24 @@ def is_trading_day(market: str, asset: str, date: datetime) -> bool:
         market: Market code
         asset: Asset name
         date: Date to check (time component is ignored)
+        market_data_dir: Root directory for processed market data (passed through
+              to ``load_trading_calendar``).
 
     Returns:
         True if the date is a trading day
     """
-    calendar = load_trading_calendar(market, asset)
+    calendar = load_trading_calendar(market, asset, market_data_dir=market_data_dir)
     date_normalized = pd.Timestamp(date).normalize()
     return date_normalized in calendar['date'].values
 
 
-def is_night_market_open(market: str, asset: str, date: datetime) -> bool:
+def is_night_market_open(
+    market: str,
+    asset: str,
+    date: datetime,
+    *,
+    market_data_dir: Optional[Path] = None,
+) -> bool:
     """
     Check if the night trading session is open for a given date.
 
@@ -117,11 +146,18 @@ def is_night_market_open(market: str, asset: str, date: datetime) -> bool:
         market: Market code (e.g., "SHFE")
         asset: Asset name (e.g., "aluminum")
         date: Date to check (time component is ignored)
+        market_data_dir: Root directory for processed market data. When None,
+              falls back to a PathsConfig built from ECHOLON_PROJECT_ROOT
+              (deprecated — callers SHOULD supply market_data_dir).
 
     Returns:
         True if night market is open (defaults to True on missing data).
     """
-    calendar_file = os.path.join(MARKET_DATA_DIR, market, asset, "trading_calendar.csv")
+    if market_data_dir is None:
+        from echolon.config.paths_config import PathsConfig
+        from echolon.config.settings import PROJECT_ROOT
+        market_data_dir = PathsConfig.from_project_root(PROJECT_ROOT).market_data_dir
+    calendar_file = os.path.join(str(market_data_dir), market, asset, "trading_calendar.csv")
 
     if not os.path.exists(calendar_file):
         logger.warning(f"[CALENDAR_LOADER] File not found: {calendar_file} — defaulting night market open")
@@ -155,6 +191,8 @@ def is_night_market_open(market: str, asset: str, date: datetime) -> bool:
 def get_trading_calendar_instance(
     market: str,
     asset: str,
+    *,
+    market_data_dir: Optional[Path] = None,
 ) -> TradingCalendar:
     """
     Get a TradingCalendar instance loaded with the market/asset calendar.
@@ -165,11 +203,18 @@ def get_trading_calendar_instance(
     Args:
         market: Market code (e.g., "SHFE")
         asset: Asset name (e.g., "aluminum")
+        market_data_dir: Root directory for processed market data. When None,
+              falls back to a PathsConfig built from ECHOLON_PROJECT_ROOT
+              (deprecated — callers SHOULD supply market_data_dir).
 
     Returns:
         TradingCalendar instance (loaded from file or with weekend-only fallback)
     """
-    calendar_file = Path(MARKET_DATA_DIR) / market.upper() / asset / "trading_calendar.csv"
+    if market_data_dir is None:
+        from echolon.config.paths_config import PathsConfig
+        from echolon.config.settings import PROJECT_ROOT
+        market_data_dir = PathsConfig.from_project_root(PROJECT_ROOT).market_data_dir
+    calendar_file = Path(market_data_dir) / market.upper() / asset / "trading_calendar.csv"
 
     calendar = TradingCalendar()
 

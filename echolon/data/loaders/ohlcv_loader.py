@@ -12,7 +12,7 @@ import pandas as pd
 from typing import Optional, List
 from pathlib import Path
 
-from echolon.config.settings import MARKET_DATA_DIR
+from echolon.config.settings import MARKET_DATA_DIR  # deprecated — use PathsConfig injection
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +68,8 @@ def load_ohlcv(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     path: Optional[str] = None,
+    *,
+    market_data_dir: Optional[Path] = None,
 ) -> pd.DataFrame:
     """
     Load standardized OHLCV data for a market/asset.
@@ -78,14 +80,21 @@ def load_ohlcv(
         start_date: Optional start date filter (YYYY-MM-DD)
         end_date: Optional end date filter (YYYY-MM-DD)
         path: Optional explicit file path. When provided, bypasses the
-              MARKET_DATA_DIR / {market} / {asset} / sort_by_date.csv convention.
+              market_data_dir / {market} / {asset} / sort_by_date.csv convention.
+        market_data_dir: Root directory for processed market data. When None,
+              falls back to a PathsConfig built from ECHOLON_PROJECT_ROOT
+              (deprecated — callers SHOULD supply market_data_dir).
 
     Returns:
         DataFrame with OHLCV data
     """
     # Path structure: workspace/data/market_data/{market}/{asset}/sort_by_date.csv
     if path is None:
-        data_file = os.path.join(MARKET_DATA_DIR, market.upper(), asset, "sort_by_date.csv")
+        if market_data_dir is None:
+            from echolon.config.paths_config import PathsConfig
+            from echolon.config.settings import PROJECT_ROOT
+            market_data_dir = PathsConfig.from_project_root(PROJECT_ROOT).market_data_dir
+        data_file = os.path.join(str(market_data_dir), market.upper(), asset, "sort_by_date.csv")
     else:
         data_file = path
 
@@ -114,6 +123,8 @@ def load_contract_ohlcv(
     asset: str,
     contract: str,
     path: Optional[str] = None,
+    *,
+    market_data_dir: Optional[Path] = None,
 ) -> Optional[pd.DataFrame]:
     """
     Load OHLCV data for a specific contract.
@@ -123,16 +134,23 @@ def load_contract_ohlcv(
         asset: Asset name (e.g., "aluminum")
         contract: Contract identifier (e.g., "al2403")
         path: Optional explicit file path. When provided, bypasses the
-              MARKET_DATA_DIR / {market} / {asset} / sort_by_contract / {contract}.csv
+              market_data_dir / {market} / {asset} / sort_by_contract / {contract}.csv
               convention.
+        market_data_dir: Root directory for processed market data. When None,
+              falls back to a PathsConfig built from ECHOLON_PROJECT_ROOT
+              (deprecated — callers SHOULD supply market_data_dir).
 
     Returns:
         DataFrame with contract OHLCV data, or None if not found
     """
     # Path structure: workspace/data/market_data/{market}/{asset}/sort_by_contract/{contract}.csv
     if path is None:
+        if market_data_dir is None:
+            from echolon.config.paths_config import PathsConfig
+            from echolon.config.settings import PROJECT_ROOT
+            market_data_dir = PathsConfig.from_project_root(PROJECT_ROOT).market_data_dir
         contract_file = os.path.join(
-            MARKET_DATA_DIR, market.upper(), asset, "sort_by_contract", f"{contract}.csv"
+            str(market_data_dir), market.upper(), asset, "sort_by_contract", f"{contract}.csv"
         )
     else:
         contract_file = path
@@ -150,19 +168,31 @@ def load_contract_ohlcv(
     return df
 
 
-def get_available_contracts(market: str, asset: str) -> List[str]:
+def get_available_contracts(
+    market: str,
+    asset: str,
+    *,
+    market_data_dir: Optional[Path] = None,
+) -> List[str]:
     """
     Get list of available contracts for a market/asset.
 
     Args:
         market: Market code (e.g., "SHFE")
         asset: Asset name (e.g., "aluminum")
+        market_data_dir: Root directory for processed market data. When None,
+              falls back to a PathsConfig built from ECHOLON_PROJECT_ROOT
+              (deprecated — callers SHOULD supply market_data_dir).
 
     Returns:
         List of contract identifiers
     """
     # Path structure: workspace/data/market_data/{market}/{asset}/sort_by_contract/
-    contract_dir = os.path.join(MARKET_DATA_DIR, market.upper(), asset, "sort_by_contract")
+    if market_data_dir is None:
+        from echolon.config.paths_config import PathsConfig
+        from echolon.config.settings import PROJECT_ROOT
+        market_data_dir = PathsConfig.from_project_root(PROJECT_ROOT).market_data_dir
+    contract_dir = os.path.join(str(market_data_dir), market.upper(), asset, "sort_by_contract")
 
     if not os.path.exists(contract_dir):
         return []

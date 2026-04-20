@@ -19,6 +19,7 @@ from typing import Optional
 import pandas as pd
 
 from echolon.config.settings import MARKET_DATA_DIR, RAW_DATA_DIR
+from echolon.config.paths_config import PathsConfig
 from echolon.config.markets.factory import MarketFactory
 from echolon.config.markets.core.context import TradingContext
 from .transformers.ohlcv_standardizer import OHLCVStandardizer
@@ -34,6 +35,8 @@ logger = logging.getLogger(__name__)
 
 def run_data_pipeline(
     ctx: TradingContext,
+    *,
+    paths: PathsConfig | None = None,
     input_dir: Optional[str] = None,
     output_dir: Optional[str] = None,
     start_date: Optional[str] = None,
@@ -63,6 +66,9 @@ def run_data_pipeline(
 
     Args:
         ctx: TradingContext with market, instrument, frequency configuration
+        paths: PathsConfig supplying library-owned directory layout.
+               When None the conventional layout rooted at ECHOLON_PROJECT_ROOT
+               is used (deprecated fallback — callers SHOULD supply paths).
         input_dir: Raw data input directory (optional, uses default)
         output_dir: Processed data output directory (optional, uses default)
         start_date: Start date for filtering (YYYY-MM-DD)
@@ -78,6 +84,10 @@ def run_data_pipeline(
         >>> ctx = MarketFactory.from_session()
         >>> run_data_pipeline(ctx, skip_extraction=True)
     """
+    if paths is None:
+        from echolon.config.settings import PROJECT_ROOT
+        paths = PathsConfig.from_project_root(PROJECT_ROOT)
+
     # Extract from TradingContext
     market = ctx.market_code
     instrument = ctx.instrument_name
@@ -91,7 +101,7 @@ def run_data_pipeline(
     )
 
     # Determine output directory: workspace/data/market_data/{market}/{instrument}/
-    output_path = Path(output_dir) if output_dir else MARKET_DATA_DIR / market / instrument
+    output_path = Path(output_dir) if output_dir else paths.market_data_dir / market / instrument
     output_path.mkdir(parents=True, exist_ok=True)
 
     # Map frequency for extractor: interday -> "day", intraday -> "minute"
@@ -132,7 +142,7 @@ def run_data_pipeline(
     else:
         # Load existing raw data from source directory
         logger.info("[DATA_PIPELINE] Step 1: Loading existing raw data (extraction skipped)")
-        raw_data = _load_source_data(market, instrument, extractor_frequency)
+        raw_data = _load_source_data(market, instrument, extractor_frequency, paths=paths)
         if raw_data is None or raw_data.empty:
             logger.error("[DATA_PIPELINE] No existing data found to process")
             return False
@@ -273,7 +283,13 @@ def _get_extractor(market: str, instrument: str, frequency: str):
         raise ValueError(f"Unsupported market: {market}")
 
 
-def _load_source_data(market: str, instrument: str, frequency: str) -> Optional[pd.DataFrame]:
+def _load_source_data(
+    market: str,
+    instrument: str,
+    frequency: str,
+    *,
+    paths: PathsConfig,
+) -> Optional[pd.DataFrame]:
     """
     Load existing raw data from source directory.
 
@@ -285,6 +301,7 @@ def _load_source_data(market: str, instrument: str, frequency: str) -> Optional[
         market: Market code (e.g., "SHFE")
         instrument: Instrument name (e.g., "aluminum")
         frequency: Data frequency ("day", "minute", etc.)
+        paths: PathsConfig supplying ``raw_data_dir``.
 
     Returns:
         DataFrame with combined data, or None if not found
@@ -296,7 +313,7 @@ def _load_source_data(market: str, instrument: str, frequency: str) -> Optional[
 
     if is_minute:
         # Load minute data: multiple per-contract files
-        source_dir = RAW_DATA_DIR / market / instrument_code / "minute_data"
+        source_dir = paths.raw_data_dir / market / instrument_code / "minute_data"
         if not source_dir.exists():
             logger.warning(f"[DATA_PIPELINE] Minute data directory not found: {source_dir}")
             return None
@@ -339,7 +356,7 @@ def _load_source_data(market: str, instrument: str, frequency: str) -> Optional[
 
     else:
         # Load pre-extracted day data from sort_by_date.csv
-        source_csv = RAW_DATA_DIR / market / instrument_code / "sort_by_date.csv"
+        source_csv = paths.raw_data_dir / market / instrument_code / "sort_by_date.csv"
         if source_csv.exists():
             logger.info(f"[DATA_PIPELINE] Loading day data from {source_csv}")
             return pd.read_csv(source_csv)
