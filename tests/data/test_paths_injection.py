@@ -59,3 +59,28 @@ def test_no_module_level_settings_import_in_extractors_markets_indicators():
                     if leaked:
                         offenders.append((str(py.relative_to(base)), leaked))
     assert not offenders, f"module-level settings imports: {offenders}"
+
+
+def test_no_module_level_settings_import_in_backtest_strategy_live():
+    """backtest/, strategy/, live/ must not import path constants at module scope."""
+    import ast
+    import pathlib
+
+    forbidden = {
+        "RAW_DATA_DIR", "MARKET_DATA_DIR", "INDICATOR_DIR",
+        "PROJECT_ROOT", "WORKSPACE_DIR", "OUTPUT_DIR", "SESSION_DIR",
+        "INDICATORS_BACKTEST_DIR", "INDICATORS_RESEARCH_DIR",
+        "PLATFORM_AGNOSTIC_DIR", "BEST_PARAMS_FILE", "BACKTEST_RESULTS_DIR",
+        "STRATEGY_LOG_DIR", "DEPLOY_CONFIG_DIR",
+    }
+    base = pathlib.Path(__file__).resolve().parent.parent.parent / "echolon"
+    offenders: list[tuple[str, list[str]]] = []
+    for group in ("backtest", "strategy", "live"):
+        for py in (base / group).rglob("*.py"):
+            tree = ast.parse(py.read_text())
+            for node in ast.iter_child_nodes(tree):
+                if isinstance(node, ast.ImportFrom) and node.module == "echolon.config.settings":
+                    leaked = sorted({alias.name for alias in node.names} & forbidden)
+                    if leaked:
+                        offenders.append((str(py.relative_to(base)), leaked))
+    assert not offenders, f"module-level settings imports: {offenders}"

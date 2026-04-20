@@ -60,7 +60,6 @@ from echolon.data.loaders.calendar_loader import (
     is_trading_day,
     is_night_market_open,
 )
-from echolon.config.settings import MARKET_DATA_DIR
 from echolon.config.markets.factory import MarketFactory
 from echolon.data.live_data import run_live_data_update
 from echolon.indicators.run import run_indicator_calculation
@@ -573,8 +572,10 @@ class PortfolioTradingRunner:
                 regime_params = regime_data.get('params', regime_data)
 
             # Output to per-slot indicator directory
-            from echolon.config.settings import INDICATORS_BACKTEST_DIR
-            slot_indicator_dir = os.path.join(INDICATORS_BACKTEST_DIR, sc.slot_id)
+            from echolon.config.paths_config import PathsConfig
+            from echolon.config.settings import PROJECT_ROOT
+            indicators_backtest_dir = PathsConfig.from_project_root(PROJECT_ROOT).indicators_backtest_dir
+            slot_indicator_dir = os.path.join(str(indicators_backtest_dir), sc.slot_id)
 
             self.log.info(f"Indicators: {sc.slot_id} -> {slot_indicator_dir}")
             try:
@@ -1242,6 +1243,10 @@ class PortfolioTradingRunner:
         iterates all unique (market, instrument) pairs from enabled slots.
         """
         from echolon.data.extractors.shfe.api_day_extractor import SHFEApiDayExtractor
+        from echolon.config.paths_config import PathsConfig
+        from echolon.config.settings import PROJECT_ROOT
+
+        market_data_dir = PathsConfig.from_project_root(PROJECT_ROOT).market_data_dir
 
         seen = set()
         for sc in self.config.get_enabled_slots():
@@ -1250,7 +1255,7 @@ class PortfolioTradingRunner:
                 continue
             seen.add(key)
 
-            calendar_dir = MARKET_DATA_DIR / sc.market / sc.instrument
+            calendar_dir = market_data_dir / sc.market / sc.instrument
             calendar_file = calendar_dir / "trading_calendar.csv"
             if calendar_file.exists():
                 continue

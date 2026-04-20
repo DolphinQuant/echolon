@@ -37,7 +37,7 @@ Usage:
 import json
 import logging
 import os
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional
@@ -49,21 +49,22 @@ from .enriched_pandas_data import EnrichedPandasData
 from echolon.backtest.engine_factory import EngineFactory
 from echolon.backtest.reporting import convert_to_serializable, save_trade_log, save_equity_curve
 from echolon.data.loaders.backtest_data_loader import load_backtest_data, load_indicator_metadata, load_best_params
-def _get_default_params():
-    """Lazy load DEFAULT_PARAMS from platform_agnostic (single-instrument mode only)."""
-    from pathlib import Path
+
+
+def _get_default_params(strategy_code_dir: Optional[Path] = None):
+    """Lazy load DEFAULT_PARAMS from the strategy code dir (single-instrument mode)."""
     from echolon.strategy.loader import StrategyLoader
-    from echolon.config.settings import PLATFORM_AGNOSTIC_DIR
-    loader = StrategyLoader(Path(PLATFORM_AGNOSTIC_DIR))
+    if strategy_code_dir is None:
+        from echolon.config.paths_config import PathsConfig
+        from echolon.config.settings import PROJECT_ROOT
+        strategy_code_dir = PathsConfig.from_project_root(PROJECT_ROOT).strategy_code_dir
+    loader = StrategyLoader(Path(strategy_code_dir))
     return loader.load_attr("strategy_params", "DEFAULT_PARAMS")
+
+
 from echolon.backtest.mfe_mae import enrich_trades_with_mfe_mae
 from echolon.backtest.schemas import BacktestResultsSchemaV4
 from .backtrader_strategy import get_strategy_class
-from echolon.config.settings import PROJECT_ROOT
-from echolon.config.settings import (
-    INDICATOR_DIR,
-    MARKET_DATA_DIR,
-)
 from echolon.config.markets.core.context import TradingContext
 from echolon.config.backtest_config import BacktestConfig
 from echolon.backtest.logging_utils import (
@@ -89,11 +90,14 @@ class _RunnerConfig:
 
     Not part of the public API — use the Pydantic ``BacktestConfig`` from
     ``echolon.config.backtest_config`` for external configuration.
+
+    Path fields default to ``None`` and are lazily filled from
+    ``PathsConfig.from_project_root(PROJECT_ROOT)`` in ``BacktestRunner.__init__``.
     """
-    # Paths - use centralized config from config/quant_engine.py
-    indicator_dir: str = INDICATOR_DIR  # workspace/data/indicators/backtest/
-    market_data_dir: str = MARKET_DATA_DIR  # workspace/data/market_data/
-    output_dir: str = "workspace/current/backtest"
+    # Paths — None means "resolve from PathsConfig lazily"
+    indicator_dir: Optional[str] = None  # workspace/data/indicators/backtest/
+    market_data_dir: Optional[str] = None  # workspace/data/market_data/
+    output_dir: Optional[str] = None  # workspace/current/backtest
 
     # Features
     enable_strategy_logging: bool = True
@@ -132,8 +136,8 @@ class BacktestRunner:
             config: Optional _RunnerConfig for internal paths and feature flags.
             strategy_code_dir: Optional path to strategy code directory.
                 If provided, strategy is loaded from this directory via importlib
-                instead of from strategy/platform_agnostic/. Used by portfolio
-                backtest to run per-slot strategies.
+                instead of from the default ``PathsConfig.strategy_code_dir``.
+                Used by portfolio backtest to run per-slot strategies.
             backtest_config: Pydantic ``BacktestConfig`` providing date
                 ranges, data paths, and drawdown thresholds.  Required.
         """
@@ -146,6 +150,19 @@ class BacktestRunner:
 
         self.ctx = ctx
         self.config = config or _RunnerConfig()
+        # Lazy-fill path fields from PathsConfig if caller left them as None
+        if (self.config.indicator_dir is None
+                or self.config.market_data_dir is None
+                or self.config.output_dir is None):
+            from echolon.config.paths_config import PathsConfig
+            from echolon.config.settings import PROJECT_ROOT
+            paths = PathsConfig.from_project_root(PROJECT_ROOT)
+            if self.config.indicator_dir is None:
+                self.config.indicator_dir = str(paths.indicators_backtest_dir)
+            if self.config.market_data_dir is None:
+                self.config.market_data_dir = str(paths.market_data_dir)
+            if self.config.output_dir is None:
+                self.config.output_dir = str(paths.backtest_results_dir)
         self.strategy_code_dir = strategy_code_dir
 
         # State
@@ -292,7 +309,7 @@ class BacktestRunner:
         )
 
         # Setup paths
-        output_dir = PROJECT_ROOT / self.config.output_dir
+        output_dir = Path(self.config.output_dir)
         # Indicator directory for contract-aware broker
         # Default: {indicator_dir}/{instrument}/by_contract/
         # Per-slot: {indicator_dir}/{slot_id}/by_contract/ (when strategy_code_dir set)
@@ -577,13 +594,17 @@ class BacktestRunner:
             backtest_config=backtest_config,
         )
 
-        # Default params path — from slot dir if provided, else platform_agnostic
+        # Default params path — from slot dir if provided, else from
+        # PathsConfig.best_params_file (lazily derived from PROJECT_ROOT)
         if params_path is None:
             if strategy_code_dir:
                 params_path = str(Path(strategy_code_dir) / "selected_robust_trial.json")
             else:
-                from echolon.config.settings import BEST_PARAMS_FILE
-                params_path = BEST_PARAMS_FILE
+                from echolon.config.paths_config import PathsConfig
+                from echolon.config.settings import PROJECT_ROOT
+                params_path = str(
+                    PathsConfig.from_project_root(PROJECT_ROOT).best_params_file
+                )
 
         # Load and map parameters using shared utility
         params_data = load_best_params(params_path)

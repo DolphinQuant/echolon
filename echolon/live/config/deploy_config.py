@@ -154,27 +154,30 @@ class DeployConfig:
 
     def resolve_paths(self) -> None:
         """
-        Fill in empty data paths from centralized config (config.settings).
+        Fill in empty data paths from the default PathsConfig layout.
 
         Called automatically after load(). Only overrides fields that are
         still empty strings.
         """
-        from echolon.config.settings import INDICATORS_BACKTEST_DIR, WORKSPACE_DIR
+        from echolon.config.paths_config import PathsConfig
+        from echolon.config.settings import PROJECT_ROOT
+
+        paths = PathsConfig.from_project_root(PROJECT_ROOT)
 
         if not self.indicator_dir:
-            self.indicator_dir = str(INDICATORS_BACKTEST_DIR)
+            self.indicator_dir = str(paths.indicators_backtest_dir)
 
         if not self.strategy_data_dir:
-            self.strategy_data_dir = str(WORKSPACE_DIR / "current" / "strategy")
+            self.strategy_data_dir = str(paths.workspace_dir / "current" / "strategy")
 
         if not self.trading_data_dir:
-            self.trading_data_dir = str(WORKSPACE_DIR / "deploy")
+            self.trading_data_dir = str(paths.workspace_dir / "deploy")
 
         # Resolve trial_params_path from best params file if not set
         if not self.trial_params_path:
-            from echolon.config.settings import BEST_PARAMS_FILE
-            if os.path.exists(BEST_PARAMS_FILE):
-                self.trial_params_path = BEST_PARAMS_FILE
+            best_params_file = str(paths.best_params_file)
+            if os.path.exists(best_params_file):
+                self.trial_params_path = best_params_file
 
     @property
     def calendar_path(self) -> str:

@@ -26,8 +26,6 @@ from typing import Dict, Any, Optional
 
 import pandas as pd
 
-from echolon.config.settings import WORKSPACE_DIR
-from echolon.config.settings import PLATFORM_AGNOSTIC_DIR
 from echolon.config.markets.core.context import TradingContext
 from echolon.config.optuna_config import OptunaConfig
 from echolon.config.backtest_config import BacktestConfig
@@ -53,6 +51,7 @@ class WFARunner:
         config: WFAConfig,
         optuna_config: Optional[OptunaConfig] = None,
         backtest_config: Optional[BacktestConfig] = None,
+        backtest_results_dir: Optional[Path] = None,
     ):
         if optuna_config is None:
             raise ValueError(
@@ -70,7 +69,11 @@ class WFARunner:
 
         self.ctx = ctx
         self.config = config
-        self.output_dir = Path(WORKSPACE_DIR) / "current/backtest"
+        if backtest_results_dir is None:
+            from echolon.config.paths_config import PathsConfig
+            from echolon.config.settings import PROJECT_ROOT
+            backtest_results_dir = PathsConfig.from_project_root(PROJECT_ROOT).backtest_results_dir
+        self.output_dir = Path(backtest_results_dir)
         self.wfa_dir = self.output_dir / "wfa_windows"
 
     def run(self) -> Dict[str, Any]:
@@ -206,8 +209,9 @@ class WFARunner:
             )
 
             # --- Step 4: Run OOS backtest ---
-            # TrialSelector saves selected_robust_trial.json to PLATFORM_AGNOSTIC_DIR
-            # which is what run_best_trial reads by default
+            # TrialSelector saves selected_robust_trial.json to the strategy
+            # code directory (PathsConfig.strategy_code_dir) — which is what
+            # run_best_trial reads by default.
             oos_results = run_best_trial(
                 ctx=self.ctx,
                 start_date=window.oos_start,
@@ -255,8 +259,9 @@ class WFARunner:
 
         # --- Step 7: Final full-period backtest with last window's params ---
         # Last window's TrialSelector already saved selected_robust_trial.json
-        # to PLATFORM_AGNOSTIC_DIR. run_best_trial() reads from there by default
-        # and backtests across the full BACKTEST_START_DATE → BACKTEST_END_DATE.
+        # to the strategy code directory (PathsConfig.strategy_code_dir).
+        # run_best_trial() reads from there by default and backtests across
+        # the full BACKTEST_START_DATE → BACKTEST_END_DATE.
         # This produces consistent performance_metrics, trades, and equity curve
         # all from one parameter set — no artificial stitching.
         logger.info(

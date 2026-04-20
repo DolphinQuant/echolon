@@ -24,7 +24,6 @@ import json
 from pathlib import Path
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
-from echolon.config.settings import WORKSPACE_DIR
 from echolon.config.indicator_config import IndicatorConfig
 
 
@@ -62,6 +61,7 @@ class StrategyParamsGenerator:
         params_file_path: str = None,
         frequency: str = "interday",
         indicator_config: Optional[IndicatorConfig] = None,
+        workspace_dir: Optional[Path] = None,
     ):
         """
         Initialize generator.
@@ -73,9 +73,16 @@ class StrategyParamsGenerator:
                       Affects which period caps are used.
             indicator_config: Optional IndicatorConfig with custom period caps.
                               When None, defaults are used.
+            workspace_dir: Optional injected workspace directory (used only when
+                          ``params_file_path`` is None to locate the default
+                          ``current/strategy/params_to_optimize.json``).
         """
         if params_file_path is None:
-            params_file_path = Path(WORKSPACE_DIR) / 'current' / 'strategy' / 'params_to_optimize.json'
+            if workspace_dir is None:
+                from echolon.config.paths_config import PathsConfig
+                from echolon.config.settings import PROJECT_ROOT
+                workspace_dir = PathsConfig.from_project_root(PROJECT_ROOT).workspace_dir
+            params_file_path = Path(workspace_dir) / 'current' / 'strategy' / 'params_to_optimize.json'
 
         self.params_file_path = Path(params_file_path)
         self.frequency = frequency

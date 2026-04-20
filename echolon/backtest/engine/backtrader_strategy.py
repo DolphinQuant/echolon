@@ -133,8 +133,10 @@ class BacktraderStrategyBridge(bt.Strategy):
         code_dir = self.p.strategy_code_dir
         if code_dir is not None:
             from pathlib import Path
-            from echolon.config.settings import INDICATOR_DIR
-            slot_meta = Path(INDICATOR_DIR) / Path(code_dir).name / "strategy_indicator_metadata.json"
+            from echolon.config.paths_config import PathsConfig
+            from echolon.config.settings import PROJECT_ROOT
+            indicators_backtest_dir = PathsConfig.from_project_root(PROJECT_ROOT).indicators_backtest_dir
+            slot_meta = indicators_backtest_dir / Path(code_dir).name / "strategy_indicator_metadata.json"
             metadata = load_indicator_metadata(ctx=ctx, metadata_path=str(slot_meta) if slot_meta.exists() else None)
         else:
             metadata = load_indicator_metadata(ctx=ctx)
@@ -179,22 +181,26 @@ class BacktraderStrategyBridge(bt.Strategy):
         - SessionAwareStrategyHook: For intraday trading (session context)
 
         If strategy_code_dir param is set, loads strategy from that directory
-        via StrategyLoader instead of the default platform_agnostic package.
+        via StrategyLoader instead of the default strategy code directory
+        (PathsConfig.strategy_code_dir).
         """
         from pathlib import Path
         from echolon.strategy.loader import StrategyLoader
-        from echolon.config.settings import PLATFORM_AGNOSTIC_DIR
 
         code_dir = self.p.strategy_code_dir
         if code_dir is not None:
             loader = StrategyLoader(Path(code_dir))
             strategy_main = loader.load_function("strategy", "strategy_main")
+            strategy_dir_path = str(code_dir)
         else:
-            loader = StrategyLoader(Path(PLATFORM_AGNOSTIC_DIR))
+            from echolon.config.paths_config import PathsConfig
+            from echolon.config.settings import PROJECT_ROOT
+            default_strategy_code_dir = PathsConfig.from_project_root(PROJECT_ROOT).strategy_code_dir
+            loader = StrategyLoader(default_strategy_code_dir)
             strategy_main = loader.load_function("strategy", "strategy_main")
+            strategy_dir_path = str(default_strategy_code_dir)
 
         # Pass strategy_dir so BaseStrategy resolves components via StrategyLoader.
-        strategy_dir_path = str(code_dir) if code_dir is not None else PLATFORM_AGNOSTIC_DIR
         extra_kwargs = {'strategy_dir': strategy_dir_path}
 
         self._agnostic_strategy = strategy_main(

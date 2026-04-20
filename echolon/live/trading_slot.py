@@ -322,17 +322,21 @@ class TradingSlot:
         Checks per-slot directory first (portfolio mode), falls back to
         per-instrument directory (single-instrument mode).
         """
-        from echolon.config.settings import INDICATORS_BACKTEST_DIR
+        from echolon.config.paths_config import PathsConfig
+        from echolon.config.settings import PROJECT_ROOT
+        indicators_backtest_dir = str(
+            PathsConfig.from_project_root(PROJECT_ROOT).indicators_backtest_dir
+        )
         slot_id = self.slot_config.slot_id
         instrument = self.slot_config.instrument
 
         # Per-slot path (written by PortfolioTradingRunner phase 0)
-        slot_path = os.path.join(INDICATORS_BACKTEST_DIR, slot_id, "strategy_indicators.csv")
+        slot_path = os.path.join(indicators_backtest_dir, slot_id, "strategy_indicators.csv")
         if os.path.exists(slot_path):
             return slot_path
 
         # Fallback: per-instrument path (single-instrument mode)
-        return os.path.join(INDICATORS_BACKTEST_DIR, instrument, "strategy_indicators.csv")
+        return os.path.join(indicators_backtest_dir, instrument, "strategy_indicators.csv")
 
     def _validate_indicators(self) -> None:
         """Validate that required indicators exist in the CSV.

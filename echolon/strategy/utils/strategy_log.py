@@ -19,7 +19,6 @@ import sys
 
 # Add project root to path for imports
 sys.path.insert(0, str(Path(__file__).parent.parent))
-from echolon.config.settings import OUTPUT_DIR
 
 
 class StrategyDevelopmentLogGenerator:
@@ -41,9 +40,15 @@ class StrategyDevelopmentLogGenerator:
         Initialize the log generator.
 
         Args:
-            strategy_bank_path: Path to strategy_bank directory (defaults to config)
+            strategy_bank_path: Path to strategy_bank directory (defaults to
+                ``PathsConfig.output_dir`` derived from ``ECHOLON_PROJECT_ROOT``)
         """
-        self.strategy_bank_path = Path(strategy_bank_path) if strategy_bank_path else OUTPUT_DIR
+        if strategy_bank_path is None:
+            from echolon.config.paths_config import PathsConfig
+            from echolon.config.settings import PROJECT_ROOT
+            self.strategy_bank_path = PathsConfig.from_project_root(PROJECT_ROOT).output_dir
+        else:
+            self.strategy_bank_path = Path(strategy_bank_path)
         self.mode_decisions_file = self.strategy_bank_path / "mode_decisions.json"
         self.log_file = self.strategy_bank_path / "STRATEGY_DEVELOPMENT_LOG.md"
 

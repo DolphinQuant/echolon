@@ -65,7 +65,6 @@ from echolon.backtest.engine_factory import EngineFactory
 from echolon.strategy.hooks.forced_exit_strategy_hook import ForcedExitStrategyHook
 from .data_logger import save_trading_data_snapshot, save_trade_execution
 from echolon.strategy.interfaces import OrderStatus
-from echolon.config.settings import MARKET_DATA_DIR
 from echolon.data.live_data import run_live_data_update
 from echolon.indicators.run import run_indicator_calculation
 
@@ -377,16 +376,17 @@ class TradingRunner:
 
     def _create_strategy(self, strategy_params: Dict[str, Any]):
         """Import and instantiate the platform-agnostic strategy."""
-        from pathlib import Path
         from echolon.strategy.loader import StrategyLoader
-        from echolon.config.settings import PLATFORM_AGNOSTIC_DIR
+        from echolon.config.paths_config import PathsConfig
+        from echolon.config.settings import PROJECT_ROOT
 
-        loader = StrategyLoader(Path(PLATFORM_AGNOSTIC_DIR))
+        strategy_code_dir = PathsConfig.from_project_root(PROJECT_ROOT).strategy_code_dir
+        loader = StrategyLoader(strategy_code_dir)
         strategy_main = loader.load_function("strategy", "strategy_main")
 
         self.strategy = strategy_main(
             trading_engine=self.engine,
-            strategy_dir=PLATFORM_AGNOSTIC_DIR,
+            strategy_dir=str(strategy_code_dir),
             **strategy_params,
         )
         self.logger.info("Strategy instance created")
@@ -634,11 +634,12 @@ class TradingRunner:
         Returns:
             Nested strategy parameter dictionary.
         """
-        from pathlib import Path
         from echolon.strategy.loader import StrategyLoader
-        from echolon.config.settings import PLATFORM_AGNOSTIC_DIR
+        from echolon.config.paths_config import PathsConfig
+        from echolon.config.settings import PROJECT_ROOT
 
-        loader = StrategyLoader(Path(PLATFORM_AGNOSTIC_DIR))
+        strategy_code_dir = PathsConfig.from_project_root(PROJECT_ROOT).strategy_code_dir
+        loader = StrategyLoader(strategy_code_dir)
         DEFAULT_PARAMS = loader.load_attr("strategy_params", "DEFAULT_PARAMS")
 
         if not trial_params:
@@ -1017,9 +1018,13 @@ class TradingRunner:
         Called before is_trading_day() to ensure the calendar CSV is
         available. Uses the static calendar shipped in deploy/config/.
         """
+        from echolon.config.paths_config import PathsConfig
+        from echolon.config.settings import PROJECT_ROOT
+
         market = self.ctx.market_code
         instrument = self.ctx.instrument_name
-        calendar_dir = MARKET_DATA_DIR / market / instrument
+        market_data_dir = PathsConfig.from_project_root(PROJECT_ROOT).market_data_dir
+        calendar_dir = market_data_dir / market / instrument
         calendar_file = calendar_dir / "trading_calendar.csv"
 
         if calendar_file.exists():

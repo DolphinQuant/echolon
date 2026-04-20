@@ -37,7 +37,6 @@ from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
 from echolon.backtest.schemas import SelectedTrialSchema
-from echolon.config.settings import PLATFORM_AGNOSTIC_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -110,6 +109,7 @@ class TrialSelector:
         default_params: Optional[Dict[str, Any]] = None,
         apply_shared_params_fn: Optional[Callable[[Dict], Dict]] = None,
         param_classifications: Optional[Dict[str, Any]] = None,
+        strategy_code_dir: Optional[Path] = None,
     ):
         self.trial_data_path = trial_data_path
         self.output_dir = Path(output_dir)
@@ -119,9 +119,13 @@ class TrialSelector:
         self.apply_shared_params_fn = apply_shared_params_fn
         self.param_classifications = param_classifications
 
-        # selected_robust_trial.json goes to platform_agnostic by default
+        # selected_robust_trial.json goes to strategy_code_dir by default
         # (stays with strategy code for hypothesis testing)
-        self.selected_trial_output_dir = Path(PLATFORM_AGNOSTIC_DIR)
+        if strategy_code_dir is None:
+            from echolon.config.paths_config import PathsConfig
+            from echolon.config.settings import PROJECT_ROOT
+            strategy_code_dir = PathsConfig.from_project_root(PROJECT_ROOT).strategy_code_dir
+        self.selected_trial_output_dir = Path(strategy_code_dir)
         self.selected_trial_output_dir.mkdir(exist_ok=True, parents=True)
 
         # Load and prepare data

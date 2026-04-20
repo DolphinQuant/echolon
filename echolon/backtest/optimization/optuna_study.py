@@ -60,7 +60,6 @@ from echolon.backtest.logging_utils import (
     log_workflow_success,
     log_workflow_failure,
 )
-from echolon.config.settings import INDICATOR_DIR
 from echolon.config.markets.core.context import TradingContext
 from echolon.config.optuna_config import OptunaConfig
 
@@ -173,6 +172,7 @@ class OptunaOptimizer:
         use_sequential: bool = False,
         run_context: str = "optimization",
         optuna_config: Optional[OptunaConfig] = None,
+        indicator_dir: Optional[Path] = None,
     ):
         if optuna_config is None:
             raise ValueError(
@@ -198,7 +198,11 @@ class OptunaOptimizer:
 
         # Extract from TradingContext
         self.instrument = ctx.instrument_name
-        self.indicators_dir = str(Path(INDICATOR_DIR) / ctx.instrument_name)
+        if indicator_dir is None:
+            from echolon.config.paths_config import PathsConfig
+            from echolon.config.settings import PROJECT_ROOT
+            indicator_dir = PathsConfig.from_project_root(PROJECT_ROOT).indicators_backtest_dir
+        self.indicators_dir = str(Path(indicator_dir) / ctx.instrument_name)
         # Note: commission and multiplier are retrieved from market_adapter.get_contract_spec()
 
     def run(

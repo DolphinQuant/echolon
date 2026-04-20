@@ -113,7 +113,7 @@ def run_data_pipeline(
     extractor_frequency = "minute" if is_intraday else "day"
 
     # Select extractor based on market and frequency (file-based only)
-    extractor = _get_extractor(market, instrument, extractor_frequency)
+    extractor = _get_extractor(market, instrument, extractor_frequency, paths=paths)
 
     raw_data = None
 
@@ -257,8 +257,18 @@ def _generate_calendar_if_needed(
     logger.info(f"[DATA_PIPELINE] Generated calendar with {len(calendar)} trading days")
 
 
-def _get_extractor(market: str, instrument: str, frequency: str):
+def _get_extractor(
+    market: str,
+    instrument: str,
+    frequency: str,
+    *,
+    paths: PathsConfig,
+):
     """Get the appropriate file-based extractor for market/frequency combination.
+
+    Forwards ``paths.raw_data_dir`` to the extractor constructor so raw input
+    paths respect the caller's ``PathsConfig`` rather than falling back to
+    the project-root-derived default.
 
     For live/incremental extraction (MiniQMT), use
     ``echolon.data.live_data._get_live_extractor`` instead.
@@ -267,16 +277,17 @@ def _get_extractor(market: str, instrument: str, frequency: str):
         market: Market code (e.g., "SHFE")
         instrument: Instrument name (e.g., "aluminum")
         frequency: Data frequency ("day", "minute", etc.)
+        paths: Injected PathsConfig (supplies ``raw_data_dir``).
     """
     market_upper = market.upper()
 
     if market_upper == "SHFE":
         if frequency == "day":
             from .extractors.shfe.file_day_extractor import SHFEFileDayExtractor
-            return SHFEFileDayExtractor(market, instrument)
+            return SHFEFileDayExtractor(market, instrument, raw_data_dir=paths.raw_data_dir)
         elif frequency in ("minute", "1m", "5m", "15m", "1h"):
             from .extractors.shfe.api_minute_extractor import SHFEApiMinuteExtractor
-            return SHFEApiMinuteExtractor(market, instrument)
+            return SHFEApiMinuteExtractor(market, instrument, raw_data_dir=paths.raw_data_dir)
         else:
             raise ValueError(f"Unsupported frequency: {frequency}")
 
