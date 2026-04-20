@@ -14,8 +14,27 @@ convenience methods that delegate to transformer classes. Subclasses
 can override if special handling is needed.
 """
 from abc import ABC, abstractmethod
-from typing import Optional, List
+from typing import Optional, List, Protocol, Dict, Any, ClassVar, Set
 import pandas as pd
+
+
+class XtdataClient(Protocol):
+    """Interface for MiniQMT / xtquant-style historical data clients.
+
+    Echolon does not import xtquant directly — callers provide an object
+    implementing this protocol. Typical implementations live in the consumer
+    repo (e.g. goingmerry or direct MiniQMT integration).
+    """
+
+    def download_history_data(self, stock_code: str, period: str) -> None:
+        """Trigger historical-data download for a given contract + period."""
+        ...
+
+    def get_market_data_ex(
+        self, fields: List[str], stock_list: List[str], period: str
+    ) -> Dict[str, Any]:
+        """Return downloaded data. Mirror of xtdata.get_market_data_ex signature."""
+        ...
 
 
 class BaseExtractor(ABC):
@@ -24,7 +43,13 @@ class BaseExtractor(ABC):
 
     Extractors should focus on data retrieval only.
     Transformation is handled by transformer classes.
+
+    Each subclass must declare a capabilities: ClassVar[Set[str]] indicating
+    which operations it supports (e.g., 'batch', 'incremental', 'calendar_generate').
+    Callers check capabilities rather than using hasattr() duck-typing.
     """
+
+    capabilities: ClassVar[Set[str]] = set()  # Subclasses must override
 
     def __init__(self, market: str, asset: str):
         """

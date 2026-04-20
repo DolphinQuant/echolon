@@ -40,7 +40,7 @@ from .observer import add_contract_expiry_observer
 if TYPE_CHECKING:
     from ...backtrader_engine import BacktraderEngine
     from echolon.markets.interface import IMarketAdapter
-    from echolon.data.loaders.contract_data import ContractIndicatorManager
+    from echolon.data.loaders.contract_loader import ContractIndicatorManager
 
 logger = logging.getLogger(__name__)
 

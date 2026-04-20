@@ -15,10 +15,12 @@ ALL contracts (not per-contract). For indicator calculations, use methods that
 return expected bar counts per bar_size (e.g., get_expected_total_bars).
 
 Data Source: workspace/data/market_data/{market}/{instrument}/session_availability.csv
+
+Data model and expected-bar computation live in:
+    echolon.data.transformers.session_availability_builder
 """
 
 import logging
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Dict, Optional
 
@@ -26,101 +28,18 @@ import pandas as pd
 
 from echolon.config.settings import MARKET_DATA_DIR
 from echolon.config.markets.shfe.phases import (
-    get_phase_trading_bars,
     get_tradeable_phases,
     is_aggregated_bar_size,
+)
+from echolon.data.transformers.session_availability_builder import (
+    SessionDayInfo,
+    build_expected_bars,
 )
 
 logger = logging.getLogger(__name__)
 
-
-@dataclass
-class SessionDayInfo:
-    """
-    Session availability information for a single trading date.
-
-    Supports both granular phases (night, morning, afternoon) and
-    aggregated phases (night_session, day_session) depending on bar_size.
-
-    Attributes:
-        trading_date: Trading date in YYYYMMDD format
-        phase_availability: Dict mapping phase_name -> bool (has session)
-        phase_bars: Dict mapping phase_name -> int (bar count)
-        total_bars: Total bars for the trading day
-        tradeable_phases: List of phase names for this schema
-    """
-    trading_date: str
-    phase_availability: Dict[str, bool]
-    phase_bars: Dict[str, int]
-    total_bars: int
-    tradeable_phases: list
-
-    # Backward compatibility properties for granular phases
-    @property
-    def has_night(self) -> bool:
-        """Whether night session exists (granular or aggregated)."""
-        return self.phase_availability.get('night', False) or \
-               self.phase_availability.get('night_session', False)
-
-    @property
-    def has_morning(self) -> bool:
-        """Whether morning session exists (granular only)."""
-        return self.phase_availability.get('morning', False)
-
-    @property
-    def has_afternoon(self) -> bool:
-        """Whether afternoon session exists (granular only)."""
-        return self.phase_availability.get('afternoon', False)
-
-    @property
-    def has_day_session(self) -> bool:
-        """Whether day session exists (aggregated only)."""
-        return self.phase_availability.get('day_session', False)
-
-    @property
-    def has_night_session(self) -> bool:
-        """Whether night session exists (aggregated only)."""
-        return self.phase_availability.get('night_session', False)
-
-    @property
-    def night_bars(self) -> int:
-        """Bar count in night session (granular or aggregated)."""
-        return self.phase_bars.get('night', 0) or \
-               self.phase_bars.get('night_session', 0)
-
-    @property
-    def morning_bars(self) -> int:
-        """Bar count in morning session (granular only)."""
-        return self.phase_bars.get('morning', 0)
-
-    @property
-    def afternoon_bars(self) -> int:
-        """Bar count in afternoon session (granular only)."""
-        return self.phase_bars.get('afternoon', 0)
-
-    @property
-    def day_session_bars(self) -> int:
-        """Bar count in day session (aggregated only)."""
-        return self.phase_bars.get('day_session', 0)
-
-    @property
-    def night_session_bars(self) -> int:
-        """Bar count in night session (aggregated only)."""
-        return self.phase_bars.get('night_session', 0)
-
-    @property
-    def sessions_active(self) -> list:
-        """Get list of active session names."""
-        return [phase for phase in self.tradeable_phases
-                if self.phase_availability.get(phase, False)]
-
-    def get_session_bars(self, session_phase: str) -> int:
-        """Get bar count for a specific session phase."""
-        return self.phase_bars.get(session_phase, 0)
-
-    def has_session(self, session_phase: str) -> bool:
-        """Check if a specific session phase is available."""
-        return self.phase_availability.get(session_phase, False)
+# Re-export SessionDayInfo so existing callers that imported it from here keep working
+__all__ = ['SessionDayInfo', 'SessionAvailabilityLoader', 'get_session_availability_loader']
 
 
 class SessionAvailabilityLoader:
@@ -160,7 +79,8 @@ class SessionAvailabilityLoader:
         market: str,
         instrument: str,
         bar_size_minutes: int,
-        bar_size: Optional[str] = None
+        bar_size: Optional[str] = None,
+        path: Optional[str] = None,
     ):
         """
         Initialize loader.
@@ -172,11 +92,15 @@ class SessionAvailabilityLoader:
             bar_size: Optional bar size string ('5m', '15m', '30m', '1h').
                       For 30m/1h, uses aggregated phases (night_session, day_session).
                       For 5m/15m or None, uses granular phases (night, morning, afternoon).
+            path: Optional explicit file path to session_availability.csv. When
+                  provided, bypasses the MARKET_DATA_DIR / {market} / {instrument} /
+                  session_availability.csv convention.
         """
         self.market = market.upper()
         self.instrument = instrument
         self.bar_size_minutes = bar_size_minutes
         self.bar_size = bar_size
+        self._path_override = path
         self._data: Dict[str, SessionDayInfo] = {}
         self._loaded = False
 
@@ -185,10 +109,7 @@ class SessionAvailabilityLoader:
         self.is_aggregated = is_aggregated_bar_size(bar_size) if bar_size else False
 
         # Pre-calculate expected bars per session (from SHFE phase config)
-        self._expected_bars = {
-            phase: get_phase_trading_bars(phase, bar_size_minutes, bar_size=bar_size)
-            for phase in self.tradeable_phases
-        }
+        self._expected_bars = build_expected_bars(bar_size_minutes, bar_size)
 
         # Calculate total expected bars (full day vs day-only)
         self._expected_full_day_bars = sum(self._expected_bars.values())
@@ -212,7 +133,10 @@ class SessionAvailabilityLoader:
 
     def _load(self) -> None:
         """Load session availability data from CSV."""
-        file_path = MARKET_DATA_DIR / self.market / self.instrument / "session_availability.csv"
+        if self._path_override is not None:
+            file_path = Path(self._path_override)
+        else:
+            file_path = MARKET_DATA_DIR / self.market / self.instrument / "session_availability.csv"
 
         if not file_path.exists():
             logger.warning(
@@ -449,7 +373,8 @@ def get_session_availability_loader(
     market: str,
     instrument: str,
     bar_size_minutes: int,
-    bar_size: Optional[str] = None
+    bar_size: Optional[str] = None,
+    path: Optional[str] = None,
 ) -> SessionAvailabilityLoader:
     """
     Get or create a SessionAvailabilityLoader instance.
@@ -462,16 +387,21 @@ def get_session_availability_loader(
         bar_size_minutes: Bar size in minutes for expected bar calculations (required)
         bar_size: Optional bar size string ('5m', '15m', '30m', '1h').
                   For 30m/1h, uses aggregated phases.
+        path: Optional explicit file path to session_availability.csv. When
+              provided, bypasses the MARKET_DATA_DIR convention. Note: a
+              non-None path produces a distinct cache key so it is not
+              confused with the default-path singleton.
 
     Returns:
         SessionAvailabilityLoader instance
     """
     bar_size_key = bar_size or "granular"
-    key = f"{market.upper()}_{instrument}_{bar_size_minutes}m_{bar_size_key}"
+    path_key = path or "default"
+    key = f"{market.upper()}_{instrument}_{bar_size_minutes}m_{bar_size_key}_{path_key}"
 
     if key not in _loaders:
         _loaders[key] = SessionAvailabilityLoader(
-            market, instrument, bar_size_minutes, bar_size=bar_size
+            market, instrument, bar_size_minutes, bar_size=bar_size, path=path
         )
 
     return _loaders[key]

@@ -55,7 +55,7 @@ try:
 except ImportError:
     MiniQMTClient = None  # Available only on QMT-enabled machines
 
-from echolon.data.loaders.contract_utils import get_main_contract
+from echolon.data.loaders.contract_loader import get_main_contract
 from echolon.data.loaders.calendar_loader import (
     get_trading_dates,
     is_trading_day,
@@ -66,7 +66,7 @@ from echolon.strategy.hooks.forced_exit_strategy_hook import ForcedExitStrategyH
 from .data_logger import save_trading_data_snapshot, save_trade_execution
 from echolon.strategy.interfaces import OrderStatus
 from echolon.config.settings import MARKET_DATA_DIR
-from echolon.data.run import run_data_pipeline
+from echolon.data.live import run_live_data_update
 from echolon.indicators.run import run_indicator_calculation
 
 class TradingRunner:
@@ -354,11 +354,11 @@ class TradingRunner:
 
         self.logger.info("Running data pipeline...")
 
-        success = run_data_pipeline(
+        success = run_live_data_update(
             ctx=self.ctx,
-            source="qmt",
             client=self.client,
             present_date=self.present_date,
+            trading_calendar_path=self.config.trading_calendar_path,
             skip_calendar=True,  # Calendar already ensured by _ensure_trading_calendar()
         )
 
@@ -1028,7 +1028,10 @@ class TradingRunner:
         self.logger.info("Trading calendar not found — generating from static source")
         from echolon.data.extractors.shfe.live_day_extractor import SHFELiveDayExtractor
         extractor = SHFELiveDayExtractor(market=market, asset=instrument)
-        extractor.generate_trading_calendar(output_dir=str(calendar_dir))
+        extractor.generate_trading_calendar(
+            source_path=self.config.trading_calendar_path,
+            output_dir=str(calendar_dir),
+        )
 
     def _wait_and_log_executions(self, logger_bar: dict, timeout: float = 600.0):
         """Wait for callback results and log trade executions.

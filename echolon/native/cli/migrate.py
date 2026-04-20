@@ -46,8 +46,8 @@ IMPORT_MIGRATIONS: dict[str, str] = {
     "echolon.quant_engine.schemas.selected_trial": "echolon.backtest.schemas",
     "echolon.quant_engine.schemas": "echolon.backtest.schemas",
     # ---- data_loader (merged into data/loaders) ----
-    "echolon.quant_engine.data_loader.SHFE_loader": "echolon.data.loaders.shfe_loader",
-    "echolon.quant_engine.data_loader.contract_data": "echolon.data.loaders.contract_data",
+    "echolon.quant_engine.data_loader.SHFE_loader": "echolon.data.loaders.backtest_data_loader",
+    "echolon.quant_engine.data_loader.contract_data": "echolon.data.loaders.contract_loader",
     "echolon.quant_engine.data_loader": "echolon.data.loaders",
     # ---- deploy → live ----
     "echolon.quant_engine.deploy.engine.trading_runner": "echolon.live.runner",
@@ -60,7 +60,7 @@ IMPORT_MIGRATIONS: dict[str, str] = {
     "echolon.quant_engine.deploy.engine.dashboard_data_generator": "echolon.live.dashboard",
     "echolon.quant_engine.deploy.engine.dashboard_data_sender": "echolon.live.dashboard",
     "echolon.quant_engine.deploy.engine.portfolio_risk_overlay": "echolon.live.portfolio_risk",
-    "echolon.quant_engine.deploy.data_pipeline.trading_util": "echolon.data.loaders.contract_utils",
+    "echolon.quant_engine.deploy.data_pipeline.trading_util": "echolon.data.loaders.contract_loader",
     "echolon.quant_engine.deploy.config": "echolon.live.config",
     "echolon.quant_engine.deploy.platforms": "echolon.live.platforms",
     "echolon.quant_engine.deploy": "echolon.live",

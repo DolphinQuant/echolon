@@ -86,7 +86,7 @@ class WFARunner:
         from echolon.backtest.runner import run_best_trial
         from echolon.backtest.engine_factory import EngineFactory
         from echolon.backtest.engine.backtrader_strategy import get_strategy_class
-        from echolon.data.loaders.shfe_loader import (
+        from echolon.data.loaders.backtest_data_loader import (
             load_backtest_data, load_indicator_metadata
         )
         from echolon.quant_engine.strategy.platform_agnostic.strategy_params import (

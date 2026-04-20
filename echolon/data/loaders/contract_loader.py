@@ -1,19 +1,17 @@
 """
-Contract Indicator Data Manager
-===============================
+Contract Loader
+===============
 
-Manages per-contract indicator data for futures trading.
+Provides contract-related data access utilities for futures trading.
 
-This module provides:
+This module consolidates:
 - ContractIndicatorManager: Load and cache contract-specific indicator data
-- Integration with ContractPriceCache for O(1) lookups during backtesting
-- Support for both pickle and CSV formats
+  (per-contract OHLCV + indicators, supports pickle and CSV formats)
+- get_main_contract: Thin wrapper around canonical main-contract resolution
+  that appends the ``.SF`` exchange suffix for MiniQMT / deploy callers
 
-CREATED FOR: Phase 8 data module completion
-Purpose:
-- Manage per-contract indicator data
-- Support contract-aware broker lookups
-- Cache contract data for optimization performance
+Previously split across contract_data.py + contract_utils.py; merged here
+for a single, focused import surface.
 """
 
 import logging
@@ -395,3 +393,41 @@ class ContractIndicatorManager:
             f"contracts={len(self.get_available_contracts())}, "
             f"cached={len(self._contract_cache)})"
         )
+
+
+# =============================================================================
+# Main-contract resolution helpers (formerly contract_utils.py)
+# =============================================================================
+
+from datetime import datetime as _datetime  # noqa: E402  (local import for clarity)
+
+from echolon.markets.shfe.contract_rules import (  # noqa: E402
+    get_main_contract as _get_main_contract_canonical,
+)
+
+# Default symbol used throughout the deploy pipeline
+_DEFAULT_SYMBOL = "al"
+
+
+def get_main_contract(ref_date: _datetime = None, symbol: str = _DEFAULT_SYMBOL) -> str:
+    """
+    Get the main futures contract code with ``.SF`` exchange suffix.
+
+    Delegates to the canonical CSV-based lookup in
+    ``market_adapters.shfe.contract_rules.get_main_contract``.
+
+    Args:
+        ref_date: Reference date. Defaults to ``datetime.now()`` if not provided.
+        symbol: Product symbol (e.g. ``'al'``, ``'cu'``). Defaults to ``'al'``.
+
+    Returns:
+        Main contract code with suffix (e.g. ``'al2508.SF'``).
+    """
+    current_date = ref_date if ref_date is not None else _datetime.now()
+    trading_date = current_date.date() if isinstance(current_date, _datetime) else current_date
+
+    bare_code = _get_main_contract_canonical(trading_date, symbol)
+    contract = f"{bare_code}.SF"
+
+    logger.debug(f"Main contract for {trading_date}: {contract}")
+    return contract

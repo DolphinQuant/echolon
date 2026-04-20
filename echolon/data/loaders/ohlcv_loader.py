@@ -66,7 +66,8 @@ def load_ohlcv(
     market: str,
     asset: str,
     start_date: Optional[str] = None,
-    end_date: Optional[str] = None
+    end_date: Optional[str] = None,
+    path: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Load standardized OHLCV data for a market/asset.
@@ -76,12 +77,17 @@ def load_ohlcv(
         asset: Asset name (e.g., "aluminum")
         start_date: Optional start date filter (YYYY-MM-DD)
         end_date: Optional end date filter (YYYY-MM-DD)
+        path: Optional explicit file path. When provided, bypasses the
+              MARKET_DATA_DIR / {market} / {asset} / sort_by_date.csv convention.
 
     Returns:
         DataFrame with OHLCV data
     """
     # Path structure: workspace/data/market_data/{market}/{asset}/sort_by_date.csv
-    data_file = os.path.join(MARKET_DATA_DIR, market.upper(), asset, "sort_by_date.csv")
+    if path is None:
+        data_file = os.path.join(MARKET_DATA_DIR, market.upper(), asset, "sort_by_date.csv")
+    else:
+        data_file = path
 
     if not os.path.exists(data_file):
         logger.error(f"[OHLCV_LOADER] File not found: {data_file}")
@@ -106,7 +112,8 @@ def load_ohlcv(
 def load_contract_ohlcv(
     market: str,
     asset: str,
-    contract: str
+    contract: str,
+    path: Optional[str] = None,
 ) -> Optional[pd.DataFrame]:
     """
     Load OHLCV data for a specific contract.
@@ -115,14 +122,20 @@ def load_contract_ohlcv(
         market: Market code (e.g., "SHFE")
         asset: Asset name (e.g., "aluminum")
         contract: Contract identifier (e.g., "al2403")
+        path: Optional explicit file path. When provided, bypasses the
+              MARKET_DATA_DIR / {market} / {asset} / sort_by_contract / {contract}.csv
+              convention.
 
     Returns:
         DataFrame with contract OHLCV data, or None if not found
     """
     # Path structure: workspace/data/market_data/{market}/{asset}/sort_by_contract/{contract}.csv
-    contract_file = os.path.join(
-        MARKET_DATA_DIR, market.upper(), asset, "sort_by_contract", f"{contract}.csv"
-    )
+    if path is None:
+        contract_file = os.path.join(
+            MARKET_DATA_DIR, market.upper(), asset, "sort_by_contract", f"{contract}.csv"
+        )
+    else:
+        contract_file = path
 
     if not os.path.exists(contract_file):
         logger.warning(f"[OHLCV_LOADER] Contract not found: {contract}")

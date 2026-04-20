@@ -82,7 +82,7 @@ from .hooks.base import IEngineHook
 from echolon.config.markets.core.context import TradingContext
 
 if TYPE_CHECKING:
-    from echolon.data.loaders.contract_data import ContractIndicatorManager
+    from echolon.data.loaders.contract_loader import ContractIndicatorManager
 logger = logging.getLogger(__name__)
 
 

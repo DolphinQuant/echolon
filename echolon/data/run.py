@@ -44,16 +44,12 @@ def run_data_pipeline(
     skip_calendar: bool = False,
     # Minute-specific options
     start_contract: Optional[str] = None,
-    # Live source options (for deploy / MiniQMT)
-    source: str = "file",
-    client=None,
-    present_date=None,
 ) -> bool:
     """
-    Run the complete data pipeline.
+    Run the complete file-based data pipeline.
 
     This orchestrates:
-    1. Raw data extraction from exchange files or API (Extractor)
+    1. Raw data extraction from exchange files (Extractor)
     1.5. Generate trading calendar (must happen before standardization)
     2. Data standardization (Transformer: OHLCVStandardizer)
     3. Session filtering - remove out-of-session bars (Transformer: SessionFilter)
@@ -65,8 +61,8 @@ def run_data_pipeline(
 
     For minute data from API, Step 1 also downloads OHLCV for each contract.
 
-    For live sources (source="qmt"), the pipeline uses incremental downloads
-    and API-based calendar updates instead of file-based extraction.
+    For live/incremental updates (MiniQMT), use ``run_live_data_update`` from
+    ``echolon.data.live`` instead.
 
     Args:
         ctx: TradingContext with market, instrument, frequency configuration
@@ -79,10 +75,6 @@ def run_data_pipeline(
         skip_splitting: Skip contract splitting step
         skip_calendar: Skip calendar generation step
         start_contract: For minute API data - starting contract code (e.g., "2301")
-        source: Data source - "file" for local files (default),
-                "qmt" for MiniQMT live connection
-        client: MiniQMT client instance (required when source="qmt")
-        present_date: Reference date for live pipeline (default: now)
 
     Returns:
         True if successful
@@ -112,62 +104,38 @@ def run_data_pipeline(
     # Map frequency for extractor: interday -> "day", intraday -> "minute"
     extractor_frequency = "minute" if is_intraday else "day"
 
-    # Select extractor based on market, frequency, and source
-    is_live = source != "file"
-    extractor = _get_extractor(market, instrument, extractor_frequency, source=source)
-
-    # Inject client and present_date for live extractors
-    if client is not None and hasattr(extractor, 'set_client'):
-        extractor.set_client(client)
-    if present_date is not None and hasattr(extractor, 'present_date'):
-        extractor.present_date = present_date
+    # Select extractor based on market and frequency (file-based only)
+    extractor = _get_extractor(market, instrument, extractor_frequency)
 
     raw_data = None
 
     # Step 1: Extract raw data (Extractor responsibility)
     if not skip_extraction:
-        if is_live and hasattr(extractor, 'update_incremental'):
-            # Live source: incremental update (only download new bars)
-            # Save per-contract CSVs into {futures_code}_by_contract/ subdirectory
-            # to match downstream expectations (indicator_calculator, data_loader)
-            contract_data_dir = str(
-                output_path / f"{extractor.futures_code}_by_contract"
-            )
-            logger.info(
-                f"[DATA_PIPELINE] Step 1: Incremental update via live source "
-                f"→ {contract_data_dir}"
-            )
-            raw_data = extractor.extract_raw(output_dir=contract_data_dir, save=False)
-            if raw_data is None or raw_data.empty:
-                logger.error("[DATA_PIPELINE] Live incremental update failed: no data")
-                return False
-            logger.info(f"[DATA_PIPELINE] Incremental update: {len(raw_data)} rows")
-        else:
-            # File source: full extraction
-            logger.info("[DATA_PIPELINE] Step 1: Extracting raw data")
-            raw_data = extractor.extract_raw(
-                input_dir=input_dir,
-                output_dir=str(output_path),
-                start_date=start_date,
-                end_date=end_date
-            )
-            if raw_data.empty:
-                logger.error("[DATA_PIPELINE] Extraction failed: no data")
-                return False
-            logger.info(f"[DATA_PIPELINE] Extracted {len(raw_data)} rows")
+        # File source: full extraction
+        logger.info("[DATA_PIPELINE] Step 1: Extracting raw data")
+        raw_data = extractor.extract_raw(
+            input_dir=input_dir,
+            output_dir=str(output_path),
+            start_date=start_date,
+            end_date=end_date
+        )
+        if raw_data.empty:
+            logger.error("[DATA_PIPELINE] Extraction failed: no data")
+            return False
+        logger.info(f"[DATA_PIPELINE] Extracted {len(raw_data)} rows")
 
-            # For minute API extraction, also download OHLCV data per contract
-            if is_intraday and hasattr(extractor, 'download_minute_data'):
-                logger.info("[DATA_PIPELINE] Step 1b: Downloading minute OHLCV data")
-                if start_contract:
-                    success = extractor.download_minute_data(
-                        start_contract=start_contract,
-                        period="1m",
-                        output_dir=str(output_path)
-                    )
-                    if not success:
-                        logger.error("[DATA_PIPELINE] Minute data download failed")
-                        return False
+        # For minute API extraction, also download OHLCV data per contract
+        if is_intraday and hasattr(extractor, 'download_minute_data'):
+            logger.info("[DATA_PIPELINE] Step 1b: Downloading minute OHLCV data")
+            if start_contract:
+                success = extractor.download_minute_data(
+                    start_contract=start_contract,
+                    period="1m",
+                    output_dir=str(output_path)
+                )
+                if not success:
+                    logger.error("[DATA_PIPELINE] Minute data download failed")
+                    return False
     else:
         # Load existing raw data from source directory
         logger.info("[DATA_PIPELINE] Step 1: Loading existing raw data (extraction skipped)")
@@ -178,29 +146,15 @@ def run_data_pipeline(
         logger.info(f"[DATA_PIPELINE] Loaded {len(raw_data)} rows from source")
 
     # Step 1.5: Generate trading calendar BEFORE standardization
-    if is_live and hasattr(extractor, 'generate_trading_calendar'):
-        # Live source: API-based calendar with historical/future merge
-        if not skip_calendar:
-            logger.info("[DATA_PIPELINE] Step 1.5: Updating trading calendar from live source")
-            calendar = extractor.generate_trading_calendar(
-                output_dir=str(output_path),
-            )
-            if not calendar.empty:
-                logger.info(
-                    f"[DATA_PIPELINE] Trading calendar updated: {len(calendar)} dates"
-                )
-            else:
-                logger.warning("[DATA_PIPELINE] Trading calendar update returned empty")
-    else:
-        # File source: derive calendar from data if it doesn't exist
-        _generate_calendar_if_needed(
-            raw_data=raw_data,
-            output_path=output_path,
-            start_date=start_date,
-            end_date=end_date,
-            skip_calendar=skip_calendar,
-            timezone=timezone
-        )
+    # File source: derive calendar from data if it doesn't exist
+    _generate_calendar_if_needed(
+        raw_data=raw_data,
+        output_path=output_path,
+        start_date=start_date,
+        end_date=end_date,
+        skip_calendar=skip_calendar,
+        timezone=timezone
+    )
 
     # Step 2: Standardize data (Transformer responsibility)
     if not skip_standardization and raw_data is not None:
@@ -299,23 +253,21 @@ def _generate_calendar_if_needed(
     logger.info(f"[DATA_PIPELINE] Generated calendar with {len(calendar)} trading days")
 
 
-def _get_extractor(market: str, instrument: str, frequency: str, source: str = "file"):
-    """Get the appropriate extractor for market/frequency combination.
+def _get_extractor(market: str, instrument: str, frequency: str):
+    """Get the appropriate file-based extractor for market/frequency combination.
+
+    For live/incremental extraction (MiniQMT), use
+    ``echolon.data.live._get_live_extractor`` instead.
 
     Args:
         market: Market code (e.g., "SHFE")
         instrument: Instrument name (e.g., "aluminum")
         frequency: Data frequency ("day", "minute", etc.)
-        source: Data source - "file" for local files (default),
-                "qmt" for MiniQMT live connection
     """
     market_upper = market.upper()
 
     if market_upper == "SHFE":
-        if frequency == "day" and source == "qmt":
-            from .extractors.shfe.live_day_extractor import SHFELiveDayExtractor
-            return SHFELiveDayExtractor(market, instrument)
-        elif frequency == "day":
+        if frequency == "day":
             from .extractors.shfe.day_extractor import SHFEDayExtractor
             return SHFEDayExtractor(market, instrument)
         elif frequency in ("minute", "1m", "5m", "15m", "1h"):

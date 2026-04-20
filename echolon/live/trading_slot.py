@@ -25,7 +25,7 @@ from echolon.backtest.engine_factory import EngineFactory
 from echolon.strategy.hooks.forced_exit_strategy_hook import ForcedExitStrategyHook
 from echolon.strategy.interfaces import Order, OrderStatus
 from .config.portfolio_deploy_config import SlotConfig
-from echolon.data.loaders.contract_utils import get_main_contract
+from echolon.data.loaders.contract_loader import get_main_contract
 from .capital_slot import CapitalSlot
 from .slot_aware_portfolio import SlotAwarePortfolio
 

@@ -50,7 +50,7 @@ try:
 except ImportError:
     MiniQMTClient = None  # Available only on QMT-enabled machines
 
-from echolon.data.loaders.contract_utils import get_main_contract
+from echolon.data.loaders.contract_loader import get_main_contract
 from echolon.strategy.interfaces import Order, OrderIntent, OrderStatus
 from .capital_slot import CapitalSlot
 from .trading_slot import TradingSlot
@@ -62,7 +62,7 @@ from echolon.data.loaders.calendar_loader import (
 )
 from echolon.config.settings import MARKET_DATA_DIR
 from echolon.config.markets.factory import MarketFactory
-from echolon.data.run import run_data_pipeline
+from echolon.data.live import run_live_data_update
 from echolon.indicators.run import run_indicator_calculation
 
 import logging
@@ -539,11 +539,11 @@ class PortfolioTradingRunner:
                 )
                 self.log.info(f"Data download: {instrument_code}/{bar_size}")
                 try:
-                    run_data_pipeline(
+                    run_live_data_update(
                         ctx=ctx,
-                        source="qmt",
                         client=xtdc,
                         present_date=self.present_date,
+                        trading_calendar_path=self.config.deploy.trading_calendar_path,
                         skip_calendar=True,
                     )
                 except Exception as e:
@@ -1257,7 +1257,10 @@ class PortfolioTradingRunner:
 
             self.log.info(f"Trading calendar not found for {sc.instrument} — generating from static source")
             extractor = SHFELiveDayExtractor(market=sc.market, asset=sc.instrument)
-            extractor.generate_trading_calendar(output_dir=str(calendar_dir))
+            extractor.generate_trading_calendar(
+                source_path=self.config.deploy.trading_calendar_path,
+                output_dir=str(calendar_dir),
+            )
 
     def _central_wait_if_night_market(self) -> None:
         """

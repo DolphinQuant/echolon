@@ -49,6 +49,10 @@ class DeployConfig:
     # Trial params path
     trial_params_path: Optional[str] = None
 
+    # Trading calendar (SHFE live deploy)
+    trading_calendar_path: str = ""   # Path to user-provided trading_calendar.csv;
+                                      # required when using SHFELiveDayExtractor.
+
     # Market/instrument/frequency (for building TradingContext)
     market: str = ""
     instrument: str = ""
@@ -100,6 +104,15 @@ class DeployConfig:
 
         # Trial params
         config.trial_params_path = data.get('trial_params_path')
+
+        # Trading calendar path
+        config.trading_calendar_path = data.get('trading_calendar_path', "")
+        # Resolve relative to config file's directory if not absolute
+        if config.trading_calendar_path and not os.path.isabs(config.trading_calendar_path):
+            config.trading_calendar_path = os.path.join(
+                os.path.dirname(os.path.abspath(config_path)),
+                config.trading_calendar_path,
+            )
 
         # Market/instrument/frequency fields
         config.market = data.get('market', config.market)

@@ -9,6 +9,7 @@ to slot definitions, deploy settings, and account configuration.
 
 import json
 import logging
+import os
 from collections import defaultdict
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -68,6 +69,7 @@ class DeploySettings:
     day_only_schedule_minute: int = 55
     misfire_grace_time: int = 3600
     portfolio_backtest_metrics: Dict[str, float] = field(default_factory=dict)
+    trading_calendar_path: str = ""
 
 
 @dataclass
@@ -131,6 +133,13 @@ class PortfolioDeployConfig:
         # Parse deploy settings
         deploy_data = data.get('deploy', {})
         config.deploy = DeploySettings(**deploy_data)
+
+        # Resolve deploy.trading_calendar_path relative to config file's directory if not absolute
+        if config.deploy.trading_calendar_path and not os.path.isabs(config.deploy.trading_calendar_path):
+            config.deploy.trading_calendar_path = os.path.join(
+                os.path.dirname(os.path.abspath(config_path)),
+                config.deploy.trading_calendar_path,
+            )
 
         # Parse account
         account_data = data.get('account', {})

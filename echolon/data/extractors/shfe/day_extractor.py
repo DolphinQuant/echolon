@@ -8,10 +8,10 @@ import pandas as pd
 import glob
 import os
 import logging
-from typing import Optional
+from typing import Optional, ClassVar, Set
 
 from ..base import BaseExtractor
-from echolon.config.settings import PROJECT_ROOT
+from echolon.config.settings import RAW_DATA_DIR
 from echolon.config.markets.factory import MarketFactory
 
 logger = logging.getLogger(__name__)
@@ -22,7 +22,13 @@ class SHFEDayExtractor(BaseExtractor):
     Extractor for SHFE daily futures data.
 
     Handles extraction from raw Excel files provided by the exchange.
+
+    Capabilities:
+    - batch: extract all data from source files
+    - calendar_generate: derives trading calendar from extracted data
     """
+
+    capabilities: ClassVar[Set[str]] = {"batch", "calendar_generate"}
 
     # Chinese to English column mapping
     COLUMN_MAPPING = {
@@ -57,18 +63,15 @@ class SHFEDayExtractor(BaseExtractor):
         return instrument_spec.code
 
     def _get_default_paths(self) -> dict:
-        """Get default input/output paths based on market and asset."""
-        from echolon.config.settings import MARKET_DATA_DIR
+        """Get default input/output paths based on market and asset.
 
-        dataset_root = os.path.join(PROJECT_ROOT, "data", self.market)
-        futures_dir = os.path.join(MARKET_DATA_DIR, self.asset)
-
+        Input paths default to RAW_DATA_DIR (caller-configured via env var or
+        echolon settings); output_dir must be supplied explicitly to extract_raw
+        — echolon no longer writes to the package install directory by default.
+        """
+        raw_data_dir = os.path.join(str(RAW_DATA_DIR), self.market)
         return {
-            "raw_data": os.path.join(dataset_root, "raw_data"),
-            "futures_dir": futures_dir,
-            "sort_by_date": futures_dir,
-            "sort_by_contract": os.path.join(futures_dir, "sort_by_contract"),
-            "trading_calendar": futures_dir,
+            "raw_data": os.path.join(raw_data_dir, "raw_data"),
         }
 
     def extract_raw(
@@ -83,20 +86,30 @@ class SHFEDayExtractor(BaseExtractor):
         Extract futures data from raw SHFE Excel files.
 
         Args:
-            input_dir: Directory containing raw Excel files
-            output_dir: Directory to save extracted CSV (None uses default)
+            input_dir: Directory containing raw Excel files.
+                       Defaults to RAW_DATA_DIR/{market}/raw_data when not provided.
+            output_dir: Directory to save extracted CSV. Required when save=True.
             start_date: Optional start date filter
             end_date: Optional end date filter
             save: Whether to save the extracted data to CSV (default True)
 
+        Raises:
+            ValueError: if save=True and output_dir is not provided.
+
         Returns:
             DataFrame with extracted OHLCV data
         """
+        if save and output_dir is None:
+            raise ValueError(
+                "output_dir is required for extraction. Pass an explicit path — "
+                "echolon no longer writes to the package install directory by default. "
+                "Typical convention: MARKET_DATA_DIR / market / instrument"
+            )
+
         paths = self._get_default_paths()
         input_dir = input_dir or paths["raw_data"]
 
         if save:
-            output_dir = output_dir or paths["sort_by_date"]
             os.makedirs(output_dir, exist_ok=True)
 
         # Get all Excel files

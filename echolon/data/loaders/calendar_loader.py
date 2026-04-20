@@ -21,7 +21,8 @@ def load_trading_calendar(
     market: str,
     asset: str,
     start_date: Optional[str] = None,
-    end_date: Optional[str] = None
+    end_date: Optional[str] = None,
+    path: Optional[str] = None,
 ) -> pd.DataFrame:
     """
     Load trading calendar for a market/asset.
@@ -31,11 +32,16 @@ def load_trading_calendar(
         asset: Asset name (e.g., "aluminum")
         start_date: Optional start date filter (YYYY-MM-DD)
         end_date: Optional end date filter (YYYY-MM-DD)
+        path: Optional explicit file path. When provided, bypasses the
+              MARKET_DATA_DIR / {market} / {asset} / trading_calendar.csv convention.
 
     Returns:
         DataFrame with trading calendar
     """
-    calendar_file = os.path.join(MARKET_DATA_DIR, market, asset, "trading_calendar.csv")
+    if path is None:
+        calendar_file = os.path.join(MARKET_DATA_DIR, market, asset, "trading_calendar.csv")
+    else:
+        calendar_file = path
 
     if not os.path.exists(calendar_file):
         logger.error(f"[CALENDAR_LOADER] File not found: {calendar_file}")
@@ -62,7 +68,8 @@ def get_trading_dates(
     market: str,
     asset: str,
     start_date: Optional[str] = None,
-    end_date: Optional[str] = None
+    end_date: Optional[str] = None,
+    path: Optional[str] = None,
 ) -> List[datetime]:
     """
     Get list of trading dates for a market/asset.
@@ -72,11 +79,12 @@ def get_trading_dates(
         asset: Asset name
         start_date: Optional start date filter
         end_date: Optional end date filter
+        path: Optional explicit calendar file path (passed through to load_trading_calendar).
 
     Returns:
         List of datetime objects representing trading dates
     """
-    calendar = load_trading_calendar(market, asset, start_date, end_date)
+    calendar = load_trading_calendar(market, asset, start_date, end_date, path=path)
     return calendar['date'].tolist()
 
 

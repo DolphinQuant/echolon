@@ -19,13 +19,12 @@ import os
 import re
 import time
 from datetime import datetime
-from typing import Dict, List, Optional, Set
+from typing import Dict, List, Optional, Set, ClassVar
 
 import pandas as pd
 
 from ..base import BaseExtractor
 from echolon.config.markets.factory import MarketFactory
-from echolon.config.settings import PROJECT_ROOT
 
 logger = logging.getLogger(__name__)
 
@@ -43,7 +42,20 @@ class SHFELiveDayExtractor(BaseExtractor):
         client: Optional MiniQMT client instance (can be set later via
             :meth:`set_client`)
         present_date: Reference "now" date for the pipeline run
+
+    Capabilities:
+    - batch: extract all daily data from source
+    - incremental: download only new bars since last extraction
+    - calendar_load: loads a pre-built trading calendar (not generated from data)
+    - main_contract: produce aggregated main contract from per-contract data
     """
+
+    capabilities: ClassVar[Set[str]] = {
+        "batch",
+        "incremental",
+        "calendar_load",
+        "main_contract",
+    }
 
     def __init__(
         self,
@@ -116,10 +128,19 @@ class SHFELiveDayExtractor(BaseExtractor):
             Combined DataFrame with all contracts' OHLCV data
         """
         _ = input_dir  # Not used for API extraction
+
+        if save and output_dir is None:
+            raise ValueError(
+                "output_dir is required for extraction. Pass an explicit path — "
+                "echolon no longer writes to the package install directory by default. "
+                "Typical convention: MARKET_DATA_DIR / market / instrument / futures_code_by_contract"
+            )
+
         self._require_client()
 
-        # Extract main contract
-        self.extract_main_contract()
+        # Extract main contract — save to the same output_dir parent
+        main_contract_dir = output_dir if output_dir else None
+        self.extract_main_contract(output_dir=main_contract_dir)
 
         contracts = self._discover_contracts()
         if not contracts:
@@ -212,13 +233,19 @@ class SHFELiveDayExtractor(BaseExtractor):
     # ------------------------------------------------------------------
     # Main contract
     # ------------------------------------------------------------------
-    def extract_main_contract(self):
+    def extract_main_contract(self, output_dir: Optional[str] = None):
         """Download main contract history via client.
 
         Requires a client with ``download_main_contract_history()``
         (e.g. XtdcClient for token-based API, or MiniQMTClient).
         The client manages the xtdata connection lifecycle externally,
         so no per-call connect/disconnect happens here.
+
+        Args:
+            output_dir: Directory to save main contract data. Required when
+                        a client that saves data is in use. Callers must supply
+                        this explicitly — echolon no longer defaults to the
+                        package install directory.
         """
         self._require_client()
 
@@ -231,8 +258,6 @@ class SHFELiveDayExtractor(BaseExtractor):
 
         logger.info(f"Futures code: {self.futures_code}")
         logger.info(f"xuntou code: {self.xuntou_code}")
-
-        output_dir = str(PROJECT_ROOT / "data" / self.market / self.futures_code)
 
         df = self.client.download_main_contract_history(
             futures_code=self.futures_code,
@@ -254,44 +279,51 @@ class SHFELiveDayExtractor(BaseExtractor):
 
     def generate_trading_calendar(
         self,
-        data: pd.DataFrame = None,
+        source_path: str,                       # required
         output_dir: Optional[str] = None,
-        start_date: Optional[str] = None,
+        data: pd.DataFrame = None,              # unused; base-class compat
+        start_date: Optional[str] = None,       # unused; base-class compat
     ) -> pd.DataFrame:
-        """
-        Load the static SHFE trading calendar and optionally save to output_dir.
+        """Load a pre-computed SHFE trading calendar and optionally copy to output_dir.
 
-        Reads from ``modules/quant_engine/deploy/config/trading_calendar.csv``.
+        SHFE does not publish a machine-readable trading-calendar API, so callers
+        MUST derive one from the official holiday schedule at shfe.com.cn and pass
+        its path here.
+
+        Expected CSV schema:
+            date            YYYY-MM-DD
+            is_trading_day  bool
+            night_market    bool    (whether the night session is open that day)
 
         Args:
-            data: Not used
-            output_dir: Directory to save ``trading_calendar.csv``
-            start_date: Not used
+            source_path: Path to a pre-computed trading_calendar.csv. Required.
+            output_dir:  Optional — when set, a copy is written to
+                         ``{output_dir}/trading_calendar.csv`` (for per-slot deploy dirs).
 
-        Returns:
-            DataFrame with columns: date, is_trading_day, night_market
+        Raises:
+            ValueError: if source_path is empty or missing.
         """
         _ = data, start_date
 
-        source_path = os.path.normpath(os.path.join(
-            os.path.dirname(__file__),
-            '..', '..', '..', 'quant_engine', 'deploy', 'config',
-            'trading_calendar.csv',
-        ))
+        if not source_path:
+            raise ValueError(
+                "SHFELiveDayExtractor.generate_trading_calendar requires an explicit "
+                "source_path. SHFE has no public trading-calendar API — derive one from "
+                "the official holiday schedule at shfe.com.cn and ship the CSV alongside "
+                "your deploy configuration (e.g. session/trading_calendar.csv), then "
+                "pass source_path=<that path>."
+            )
 
         calendar_df = pd.read_csv(source_path)
         logger.info(
-            f"[SHFE_LIVE_DAY] Loaded trading calendar "
-            f"({len(calendar_df)} rows) from {source_path}"
+            f"[SHFE_LIVE_DAY] Loaded trading calendar ({len(calendar_df)} rows) from {source_path}"
         )
 
         if output_dir:
             os.makedirs(output_dir, exist_ok=True)
             out_path = os.path.join(output_dir, 'trading_calendar.csv')
             calendar_df.to_csv(out_path, index=False)
-            logger.info(
-                f"[SHFE_LIVE_DAY] Saved trading calendar to {out_path}"
-            )
+            logger.info(f"[SHFE_LIVE_DAY] Saved trading calendar to {out_path}")
 
         return calendar_df
 

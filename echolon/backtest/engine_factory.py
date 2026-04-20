@@ -48,7 +48,7 @@ from echolon.markets.crypto.adapter import CryptoAdapter
 from echolon.backtest.engine.backtrader_engine import BacktraderEngine
 from echolon.backtest.engine.hooks.contract_aware.hook import ContractAwareHook
 from echolon.backtest.engine.hooks.session_aware import SessionAwareHook
-from echolon.data.loaders.contract_data import ContractIndicatorManager
+from echolon.data.loaders.contract_loader import ContractIndicatorManager
 from echolon.config.markets.core.context import TradingContext
 
 if TYPE_CHECKING:

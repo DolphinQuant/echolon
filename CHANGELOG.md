@@ -1,16 +1,80 @@
 # Changelog
 
-## Unreleased — Indicator API cleanup (pending release)
+## Unreleased — Indicator API + Data module cleanup (pending release)
 
-**Breaking changes.** The indicator subsystem's public surface has been
-tightened to remove hardcoded monorepo paths, silent file I/O, and dead
-flags. Callers now explicitly own configuration discovery.
+**Breaking changes.** The indicator subsystem and data module public
+surfaces have both been tightened — removing hardcoded monorepo paths,
+silent file I/O, dead flags, and vendor-SDK coupling. Callers now
+explicitly own configuration discovery for both indicators and data.
 
 Not published to PyPI yet — more adjustments expected before the next
 release. This `Unreleased` section will be renamed to the final version
 number when the release ships.
 
-### Breaking
+### Data module cleanup (breaking)
+
+- `SHFELiveDayExtractor.generate_trading_calendar` now requires
+  `source_path: str`. SHFE has no public trading-calendar API, so
+  callers must derive one from the official holiday schedule
+  (shfe.com.cn) and pass its path. Previously silently read from a
+  dead hardcoded path (`echolon/../../../quant_engine/deploy/config/
+  trading_calendar.csv`) that FileNotFound-errored on every live-deploy
+  call post-reorg. A `ValueError` with install guidance now fires when
+  `source_path` is missing.
+- `DeployConfig` gains `trading_calendar_path: str = ""` field;
+  `PortfolioDeployConfig.DeploySettings` gains the same. Both resolve
+  relative to the config file's directory.
+- `echolon/live/runner.py` + `echolon/live/portfolio_runner.py` now
+  pass `source_path=self.config(.deploy)?.trading_calendar_path` when
+  calling `generate_trading_calendar`.
+- Extractors no longer default `output_dir` to `PROJECT_ROOT / "data"
+  / ...`. Callers must pass `output_dir` explicitly (same pattern as
+  indicator `output_dir` in the indicator cleanup). Affects all four
+  extractors: SHFEDayExtractor, SHFELiveDayExtractor, SHFEMinuteExtractor,
+  BinancePerpetualExtractor.
+- `echolon` no longer imports `xtquant`. `SHFEMinuteExtractor`
+  requires an injected client conforming to the new `XtdataClient`
+  protocol defined in `echolon.data.extractors.base`.
+- `run_data_pipeline` signature stripped: removed `source`, `client`,
+  `present_date` params. It is file-based only. New
+  `echolon.data.run_live_data_update(ctx, client, ...)` handles live
+  incremental extraction. The `source="qmt"` string leak of
+  broker-specific vocabulary is gone.
+- `BaseExtractor.capabilities: ClassVar[Set[str]]` — every extractor
+  declares its capabilities explicitly (batch, incremental,
+  calendar_generate, calendar_load, main_contract). Callers check
+  `"incremental" in extractor.capabilities` instead of
+  `hasattr(extractor, "update_incremental")` duck-typing.
+- Loader functions gain optional `path=None` kwarg:
+  `load_ohlcv`, `load_contract_ohlcv`, `load_trading_calendar`,
+  `get_trading_dates`, `is_trading_day`, `SessionAvailabilityLoader`,
+  `get_session_availability_loader`. When `path` is set, loaders
+  bypass the `MARKET_DATA_DIR / {market} / {asset} / ...` convention.
+
+### Data module cleanup (polish / renames)
+
+- `echolon/data/loaders/shfe_loader.py` renamed to
+  `backtest_data_loader.py`. No compat shim (pre-1.0 hard rename);
+  update your imports accordingly.
+- `echolon/data/loaders/session_availability_loader.py` split:
+  `SessionDayInfo` dataclass and `build_expected_bars()` factory
+  relocated to the new `echolon/data/transformers/
+  session_availability_builder.py`. Loader file shrunk 476 → 330 LOC.
+- `echolon/data/loaders/contract_data.py` + `contract_utils.py`
+  merged into a single `contract_loader.py` (orthogonal concerns,
+  no duplicate logic; 446 total LOC).
+- `echolon/data/schemas.py` pruned from 569 → 139 LOC. Deleted:
+  `SchemaConfig`, `StandardSchema`, `SCHEMA_CONFIGS`, `get_schema`,
+  `validate_dataframe`, standalone `get_missing_columns` — all had
+  zero external callers. Kept: `MarketType`, `FrequencyType`,
+  `OHLCVSchema`, `OHLCV_COLUMNS` + related constants (live callers
+  across echolon + monorepo).
+- `echolon.data.__init__` expanded from 3 → 33 re-exports. The
+  public surface now includes entry points (`run_data_pipeline`,
+  `run_live_data_update`), extractors, loaders, and transformers —
+  all importable directly from `echolon.data`.
+
+### Indicator API cleanup (breaking)
 
 - `run_indicator_calculation` signature rewritten:
   - **Removed**: `selected_only`, `mode`, `optimize_regime`,

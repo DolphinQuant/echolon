@@ -23,13 +23,13 @@ import logging
 import time
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict, Any, ClassVar, Set
 
 import pandas as pd
 import requests
 
 from ..base import BaseExtractor
-from echolon.config.settings import WORKSPACE_DIR, RAW_DATA_DIR
+from echolon.config.settings import RAW_DATA_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +117,13 @@ class BinancePerpetualExtractor(BaseExtractor):
             end_date="2024-12-31",
             interval="4h"
         )
+
+    Capabilities:
+    - batch: extract all OHLCV data from source
+    - calendar_generate: derives trading calendar from extracted data
     """
+
+    capabilities: ClassVar[Set[str]] = {"batch", "calendar_generate"}
 
     def __init__(
         self,
@@ -365,8 +371,13 @@ class BinancePerpetualExtractor(BaseExtractor):
 
         # Save if requested
         if save:
-            paths = self._get_default_paths()
-            output_path = Path(output_dir) if output_dir else paths["ohlcv_data"]
+            if output_dir is None:
+                raise ValueError(
+                    "output_dir is required when save=True. Pass an explicit path — "
+                    "echolon no longer writes to the package install directory by default. "
+                    "Typical convention: MARKET_DATA_DIR / 'CRYPTO' / symbol"
+                )
+            output_path = Path(output_dir)
             output_path.mkdir(parents=True, exist_ok=True)
 
             # Filename includes symbol and interval
@@ -478,8 +489,12 @@ class BinancePerpetualExtractor(BaseExtractor):
             logger.warning("[BINANCE] No data provided for calendar generation")
             return pd.DataFrame()
 
-        paths = self._get_default_paths()
-        output_dir = Path(output_dir) if output_dir else paths["output_dir"]
+        if output_dir is None:
+            raise ValueError(
+                "output_dir is required for generate_trading_calendar. Pass an explicit path — "
+                "echolon no longer writes to the package install directory by default."
+            )
+        output_dir = Path(output_dir)
         output_dir.mkdir(parents=True, exist_ok=True)
 
         # Get unique dates from data
