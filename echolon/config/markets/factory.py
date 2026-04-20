@@ -61,9 +61,9 @@ class MarketFactory:
         Args:
             session_path: Path to session state JSON. Defaults to session/state.json
             session_dir: Optional base session directory. When None, falls back
-                to PathsConfig rooted at PROJECT_ROOT.
+                to PathsConfig rooted at get_project_root().
             output_dir: Optional output directory. When None, falls back to
-                PathsConfig rooted at PROJECT_ROOT.
+                PathsConfig rooted at get_project_root().
 
         Returns:
             Configured TradingContext
@@ -74,8 +74,8 @@ class MarketFactory:
         """
         if output_dir is None or session_dir is None:
             from echolon.config.paths_config import PathsConfig
-            from echolon.config.settings import PROJECT_ROOT
-            paths = PathsConfig.from_project_root(PROJECT_ROOT)
+            from echolon.config.settings import get_project_root
+            paths = PathsConfig.from_project_root(get_project_root())
             if output_dir is None:
                 output_dir = paths.output_dir
             if session_dir is None:
@@ -117,7 +117,7 @@ class MarketFactory:
         Args:
             frequency: 'intraday' or 'interday'
             session_dir: Optional base session directory. When None, falls back
-                to PathsConfig rooted at PROJECT_ROOT.
+                to PathsConfig rooted at get_project_root().
 
         Returns:
             Validated TradingTargetConfigSchema or None if file doesn't exist
@@ -132,8 +132,8 @@ class MarketFactory:
 
         if session_dir is None:
             from echolon.config.paths_config import PathsConfig
-            from echolon.config.settings import PROJECT_ROOT
-            session_dir = PathsConfig.from_project_root(PROJECT_ROOT).session_dir
+            from echolon.config.settings import get_project_root
+            session_dir = PathsConfig.from_project_root(get_project_root()).session_dir
 
         target_path = Path(session_dir) / target_file
 
@@ -166,17 +166,17 @@ class MarketFactory:
         Args:
             session_path: Path to session state JSON. Defaults to session/state.json
             session_dir: Optional base session directory. When None, falls back
-                to PathsConfig rooted at PROJECT_ROOT.
+                to PathsConfig rooted at get_project_root().
             output_dir: Optional output directory. When None, falls back to
-                PathsConfig rooted at PROJECT_ROOT.
+                PathsConfig rooted at get_project_root().
 
         Returns:
             Validated TradingTarget instance with target config
         """
         if output_dir is None or session_dir is None:
             from echolon.config.paths_config import PathsConfig
-            from echolon.config.settings import PROJECT_ROOT
-            paths = PathsConfig.from_project_root(PROJECT_ROOT)
+            from echolon.config.settings import get_project_root
+            paths = PathsConfig.from_project_root(get_project_root())
             if output_dir is None:
                 output_dir = paths.output_dir
             if session_dir is None:

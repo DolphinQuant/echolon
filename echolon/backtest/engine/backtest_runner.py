@@ -56,8 +56,8 @@ def _get_default_params(strategy_code_dir: Optional[Path] = None):
     from echolon.strategy.loader import StrategyLoader
     if strategy_code_dir is None:
         from echolon.config.paths_config import PathsConfig
-        from echolon.config.settings import PROJECT_ROOT
-        strategy_code_dir = PathsConfig.from_project_root(PROJECT_ROOT).strategy_code_dir
+        from echolon.config.settings import get_project_root
+        strategy_code_dir = PathsConfig.from_project_root(get_project_root()).strategy_code_dir
     loader = StrategyLoader(Path(strategy_code_dir))
     return loader.load_attr("strategy_params", "DEFAULT_PARAMS")
 
@@ -92,7 +92,7 @@ class _RunnerConfig:
     ``echolon.config.backtest_config`` for external configuration.
 
     Path fields default to ``None`` and are lazily filled from
-    ``PathsConfig.from_project_root(PROJECT_ROOT)`` in ``BacktestRunner.__init__``.
+    ``PathsConfig.from_project_root(get_project_root())`` in ``BacktestRunner.__init__``.
     """
     # Paths — None means "resolve from PathsConfig lazily"
     indicator_dir: Optional[str] = None  # workspace/data/indicators/backtest/
@@ -155,8 +155,8 @@ class BacktestRunner:
                 or self.config.market_data_dir is None
                 or self.config.backtest_results_dir is None):
             from echolon.config.paths_config import PathsConfig
-            from echolon.config.settings import PROJECT_ROOT
-            paths = PathsConfig.from_project_root(PROJECT_ROOT)
+            from echolon.config.settings import get_project_root
+            paths = PathsConfig.from_project_root(get_project_root())
             if self.config.indicator_dir is None:
                 self.config.indicator_dir = str(paths.indicators_backtest_dir)
             if self.config.market_data_dir is None:
@@ -595,15 +595,15 @@ class BacktestRunner:
         )
 
         # Default params path — from slot dir if provided, else from
-        # PathsConfig.best_params_file (lazily derived from PROJECT_ROOT)
+        # PathsConfig.best_params_file (lazily derived from get_project_root())
         if params_path is None:
             if strategy_code_dir:
                 params_path = str(Path(strategy_code_dir) / "selected_robust_trial.json")
             else:
                 from echolon.config.paths_config import PathsConfig
-                from echolon.config.settings import PROJECT_ROOT
+                from echolon.config.settings import get_project_root
                 params_path = str(
-                    PathsConfig.from_project_root(PROJECT_ROOT).best_params_file
+                    PathsConfig.from_project_root(get_project_root()).best_params_file
                 )
 
         # Load and map parameters using shared utility

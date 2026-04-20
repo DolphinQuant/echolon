@@ -12,8 +12,6 @@ import pandas as pd
 from typing import Optional, List
 from pathlib import Path
 
-from echolon.config.settings import MARKET_DATA_DIR  # noqa: F401 — deprecated, use PathsConfig injection  # pyright: ignore[reportUnusedImport]
-
 logger = logging.getLogger(__name__)
 
 # Columns that must be float64 for numeric computation (e.g., talib)
@@ -92,8 +90,8 @@ def load_ohlcv(
     if path is None:
         if market_data_dir is None:
             from echolon.config.paths_config import PathsConfig
-            from echolon.config.settings import PROJECT_ROOT
-            market_data_dir = PathsConfig.from_project_root(PROJECT_ROOT).market_data_dir
+            from echolon.config.settings import get_project_root
+            market_data_dir = PathsConfig.from_project_root(get_project_root()).market_data_dir
         data_file = os.path.join(str(market_data_dir), market.upper(), asset, "sort_by_date.csv")
     else:
         data_file = path
@@ -147,8 +145,8 @@ def load_contract_ohlcv(
     if path is None:
         if market_data_dir is None:
             from echolon.config.paths_config import PathsConfig
-            from echolon.config.settings import PROJECT_ROOT
-            market_data_dir = PathsConfig.from_project_root(PROJECT_ROOT).market_data_dir
+            from echolon.config.settings import get_project_root
+            market_data_dir = PathsConfig.from_project_root(get_project_root()).market_data_dir
         contract_file = os.path.join(
             str(market_data_dir), market.upper(), asset, "sort_by_contract", f"{contract}.csv"
         )
@@ -190,8 +188,8 @@ def get_available_contracts(
     # Path structure: workspace/data/market_data/{market}/{asset}/sort_by_contract/
     if market_data_dir is None:
         from echolon.config.paths_config import PathsConfig
-        from echolon.config.settings import PROJECT_ROOT
-        market_data_dir = PathsConfig.from_project_root(PROJECT_ROOT).market_data_dir
+        from echolon.config.settings import get_project_root
+        market_data_dir = PathsConfig.from_project_root(get_project_root()).market_data_dir
     contract_dir = os.path.join(str(market_data_dir), market.upper(), asset, "sort_by_contract")
 
     if not os.path.exists(contract_dir):

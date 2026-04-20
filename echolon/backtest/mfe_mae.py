@@ -53,8 +53,8 @@ def get_contract_data_dir(
     """
     if market_data_dir is None:
         from echolon.config.paths_config import PathsConfig
-        from echolon.config.settings import PROJECT_ROOT
-        market_data_dir = PathsConfig.from_project_root(PROJECT_ROOT).market_data_dir
+        from echolon.config.settings import get_project_root
+        market_data_dir = PathsConfig.from_project_root(get_project_root()).market_data_dir
     return os.path.join(str(market_data_dir), market.upper(), instrument, "sort_by_contract")
 
 
@@ -79,8 +79,8 @@ def get_intraday_data_path(
     """
     if indicator_dir is None:
         from echolon.config.paths_config import PathsConfig
-        from echolon.config.settings import PROJECT_ROOT
-        indicator_dir = PathsConfig.from_project_root(PROJECT_ROOT).indicators_backtest_dir
+        from echolon.config.settings import get_project_root
+        indicator_dir = PathsConfig.from_project_root(get_project_root()).indicators_backtest_dir
     return os.path.join(str(indicator_dir), instrument, "strategy_indicators.csv")
 
 
@@ -541,10 +541,10 @@ def calculate_mfe_mae_for_all_trades(
 def main():
     """Main function to run MFE/MAE calculation on backtest results."""
     from echolon.config.paths_config import PathsConfig
-    from echolon.config.settings import PROJECT_ROOT
+    from echolon.config.settings import get_project_root
     from echolon.config.markets.factory import MarketFactory
 
-    paths = PathsConfig.from_project_root(PROJECT_ROOT)
+    paths = PathsConfig.from_project_root(get_project_root())
 
     # Setup logging
     logging.basicConfig(

@@ -134,8 +134,8 @@ class BacktraderStrategyBridge(bt.Strategy):
         if code_dir is not None:
             from pathlib import Path
             from echolon.config.paths_config import PathsConfig
-            from echolon.config.settings import PROJECT_ROOT
-            indicators_backtest_dir = PathsConfig.from_project_root(PROJECT_ROOT).indicators_backtest_dir
+            from echolon.config.settings import get_project_root
+            indicators_backtest_dir = PathsConfig.from_project_root(get_project_root()).indicators_backtest_dir
             slot_meta = indicators_backtest_dir / Path(code_dir).name / "strategy_indicator_metadata.json"
             metadata = load_indicator_metadata(ctx=ctx, metadata_path=str(slot_meta) if slot_meta.exists() else None)
         else:
@@ -194,8 +194,8 @@ class BacktraderStrategyBridge(bt.Strategy):
             strategy_dir_path = str(code_dir)
         else:
             from echolon.config.paths_config import PathsConfig
-            from echolon.config.settings import PROJECT_ROOT
-            default_strategy_code_dir = PathsConfig.from_project_root(PROJECT_ROOT).strategy_code_dir
+            from echolon.config.settings import get_project_root
+            default_strategy_code_dir = PathsConfig.from_project_root(get_project_root()).strategy_code_dir
             loader = StrategyLoader(default_strategy_code_dir)
             strategy_main = loader.load_function("strategy", "strategy_main")
             strategy_dir_path = str(default_strategy_code_dir)

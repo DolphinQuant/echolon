@@ -45,8 +45,8 @@ class StrategyDevelopmentLogGenerator:
         """
         if strategy_bank_path is None:
             from echolon.config.paths_config import PathsConfig
-            from echolon.config.settings import PROJECT_ROOT
-            self.strategy_bank_path = PathsConfig.from_project_root(PROJECT_ROOT).output_dir
+            from echolon.config.settings import get_project_root
+            self.strategy_bank_path = PathsConfig.from_project_root(get_project_root()).output_dir
         else:
             self.strategy_bank_path = Path(strategy_bank_path)
         self.mode_decisions_file = self.strategy_bank_path / "mode_decisions.json"

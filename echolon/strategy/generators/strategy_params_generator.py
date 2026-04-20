@@ -80,8 +80,8 @@ class StrategyParamsGenerator:
         if params_file_path is None:
             if workspace_dir is None:
                 from echolon.config.paths_config import PathsConfig
-                from echolon.config.settings import PROJECT_ROOT
-                workspace_dir = PathsConfig.from_project_root(PROJECT_ROOT).workspace_dir
+                from echolon.config.settings import get_project_root
+                workspace_dir = PathsConfig.from_project_root(get_project_root()).workspace_dir
             params_file_path = Path(workspace_dir) / 'current' / 'strategy' / 'params_to_optimize.json'
 
         self.params_file_path = Path(params_file_path)

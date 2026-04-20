@@ -26,7 +26,6 @@ from typing import Dict, Optional
 
 import pandas as pd
 
-from echolon.config.settings import MARKET_DATA_DIR  # noqa: F401 — deprecated, use PathsConfig injection  # pyright: ignore[reportUnusedImport]
 from echolon.config.markets.shfe.phases import (
     get_tradeable_phases,
     is_aggregated_bar_size,
@@ -145,8 +144,8 @@ class SessionAvailabilityLoader:
             market_data_dir = self._market_data_dir
             if market_data_dir is None:
                 from echolon.config.paths_config import PathsConfig
-                from echolon.config.settings import PROJECT_ROOT
-                market_data_dir = PathsConfig.from_project_root(PROJECT_ROOT).market_data_dir
+                from echolon.config.settings import get_project_root
+                market_data_dir = PathsConfig.from_project_root(get_project_root()).market_data_dir
             file_path = Path(market_data_dir) / self.market / self.instrument / "session_availability.csv"
 
         if not file_path.exists():

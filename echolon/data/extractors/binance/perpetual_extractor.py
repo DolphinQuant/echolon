@@ -139,7 +139,7 @@ class BinancePerpetualExtractor(BaseExtractor):
             asset: Asset name (e.g., "btc", "eth", "sol") or full symbol (e.g., "BTCUSDT")
             interval: Default kline interval (default "4h")
             raw_data_dir: Base raw-data directory used for default output paths.
-                When None, falls back to PathsConfig rooted at PROJECT_ROOT.
+                When None, falls back to PathsConfig rooted at get_project_root().
         """
         super().__init__(market, asset)
         self.symbol = self._normalize_symbol(asset)
@@ -151,8 +151,8 @@ class BinancePerpetualExtractor(BaseExtractor):
         })
         if raw_data_dir is None:
             from echolon.config.paths_config import PathsConfig
-            from echolon.config.settings import PROJECT_ROOT
-            raw_data_dir = PathsConfig.from_project_root(PROJECT_ROOT).raw_data_dir
+            from echolon.config.settings import get_project_root
+            raw_data_dir = PathsConfig.from_project_root(get_project_root()).raw_data_dir
         self._raw_data_dir = Path(raw_data_dir)
 
     def _normalize_symbol(self, asset: str) -> str:

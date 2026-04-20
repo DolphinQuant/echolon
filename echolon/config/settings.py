@@ -1,69 +1,24 @@
-"""Engine configuration — data paths and directory structure.
+"""ECHOLON_PROJECT_ROOT resolver.
 
-This file contains ONLY path configuration needed by the engine.
-API keys and LLM configuration belong in the CLI product, not here.
+This module is deliberately minimal. Library callers should construct
+``echolon.config.paths_config.PathsConfig`` explicitly at their entry points;
+``get_project_root()`` here is the fallback used only when a caller supplies
+no paths at all.
 
-All paths are derived from ECHOLON_PROJECT_ROOT (defaults to cwd) —
-callers should prefer constructing an echolon.config.paths_config.PathsConfig
-rather than importing these constants directly.
+``PROJECT_ROOT`` remains as a module attribute (eager at import time) for
+backwards compatibility with callers that historically imported it. New code
+should prefer ``get_project_root()`` — the function re-reads the env var on
+every call, so env-var changes after import are honored.
 """
-
 import os
 from pathlib import Path
 
-# =============================================================================
-# Project Root
-# =============================================================================
-PROJECT_ROOT = Path(os.getenv("ECHOLON_PROJECT_ROOT", Path.cwd())).absolute()
 
-# =============================================================================
-# Top-Level Directories
-# =============================================================================
-SESSION_DIR = PROJECT_ROOT / "session"
-WORKSPACE_DIR = PROJECT_ROOT / "workspace"
-OUTPUT_DIR = PROJECT_ROOT / "output"
-RAW_DATA_DIR = PROJECT_ROOT / "data"
+def get_project_root() -> Path:
+    """Resolve ECHOLON_PROJECT_ROOT (defaults to cwd) at call time."""
+    return Path(os.getenv("ECHOLON_PROJECT_ROOT", Path.cwd())).absolute()
 
-# =============================================================================
-# Workspace Data Directories
-# =============================================================================
-MARKET_DATA_DIR = WORKSPACE_DIR / "data" / "market_data"
 
-INDICATORS_DIR = WORKSPACE_DIR / "data" / "indicators"
-INDICATORS_RESEARCH_DIR = INDICATORS_DIR / "research"
-INDICATORS_BACKTEST_DIR = INDICATORS_DIR / "backtest"
-
-CURRENT_DIR = WORKSPACE_DIR / "current"
-CURRENT_ANALYSIS_DIR = CURRENT_DIR / "analysis"
-
-# =============================================================================
-# Quant Engine Infrastructure Paths
-# =============================================================================
-# Business-logic configuration (backtest dates, IS/OOS split, WFA settings,
-# Optuna hyper-parameters, acceptable drawdown, etc.) lives in typed
-# Pydantic configs:
-#
-# - echolon.config.backtest_config.BacktestConfig
-# - echolon.config.optuna_config.OptunaConfig
-# - echolon.config.indicator_config.IndicatorConfig
-# - echolon.backtest.wfa.window.WFAConfig
-#
-# Build them manually or via echolon.quick_start for defaults.
-
-DEPLOY_CONFIG_DIR = os.path.join(
-    str(PROJECT_ROOT), "session", "deploy_config.json"
-)
-
-# Backtest results (in workspace/current for current iteration)
-BACKTEST_RESULTS_DIR = os.path.join(str(WORKSPACE_DIR), "current", "backtest")
-STRATEGY_LOG_DIR = BACKTEST_RESULTS_DIR
-
-# Strategy code directory - workspace location for generated strategy files.
-# The coding agent writes here; the backtest engine reads via StrategyLoader.
-PLATFORM_AGNOSTIC_DIR = os.path.join(str(WORKSPACE_DIR), "current", "code")
-
-# Selected robust trial (optimized parameters) - lives with strategy code
-BEST_PARAMS_FILE = os.path.join(PLATFORM_AGNOSTIC_DIR, "selected_robust_trial.json")
-
-# Indicator directory alias (MARKET_DATA_DIR already defined above as Path)
-INDICATOR_DIR = str(INDICATORS_BACKTEST_DIR)     # workspace/data/indicators/backtest/
+# Module-level eager resolution. Retained for back-compat with callers that
+# imported PROJECT_ROOT directly; new code should call get_project_root().
+PROJECT_ROOT = get_project_root()

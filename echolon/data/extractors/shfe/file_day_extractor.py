@@ -60,8 +60,8 @@ class SHFEFileDayExtractor(BaseExtractor):
         self.futures_code = self._get_futures_code(asset)
         if raw_data_dir is None:
             from echolon.config.paths_config import PathsConfig
-            from echolon.config.settings import PROJECT_ROOT
-            raw_data_dir = PathsConfig.from_project_root(PROJECT_ROOT).raw_data_dir
+            from echolon.config.settings import get_project_root
+            raw_data_dir = PathsConfig.from_project_root(get_project_root()).raw_data_dir
         self._raw_data_dir = Path(raw_data_dir)
 
     def _get_futures_code(self, asset: str) -> str:
@@ -76,7 +76,7 @@ class SHFEFileDayExtractor(BaseExtractor):
         """Get default input/output paths based on market and asset.
 
         Input paths default to the constructor-supplied ``raw_data_dir`` (or
-        the lazy fallback derived from ``PROJECT_ROOT``); output_dir must be
+        the lazy fallback derived from ``get_project_root()``); output_dir must be
         supplied explicitly to extract_raw — echolon no longer writes to the
         package install directory by default.
         """

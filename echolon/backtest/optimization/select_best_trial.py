@@ -123,8 +123,8 @@ class TrialSelector:
         # (stays with strategy code for hypothesis testing)
         if strategy_code_dir is None:
             from echolon.config.paths_config import PathsConfig
-            from echolon.config.settings import PROJECT_ROOT
-            strategy_code_dir = PathsConfig.from_project_root(PROJECT_ROOT).strategy_code_dir
+            from echolon.config.settings import get_project_root
+            strategy_code_dir = PathsConfig.from_project_root(get_project_root()).strategy_code_dir
         self.selected_trial_output_dir = Path(strategy_code_dir)
         self.selected_trial_output_dir.mkdir(exist_ok=True, parents=True)
 

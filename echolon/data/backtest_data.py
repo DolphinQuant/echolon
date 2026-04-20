@@ -23,7 +23,6 @@ from pathlib import Path
 from typing import Optional
 import pandas as pd
 
-from echolon.config.settings import MARKET_DATA_DIR, RAW_DATA_DIR  # noqa: F401 — deprecated, use PathsConfig injection  # pyright: ignore[reportUnusedImport]
 from echolon.config.paths_config import PathsConfig
 from echolon.config.markets.factory import MarketFactory
 from echolon.config.markets.core.context import TradingContext
@@ -90,8 +89,8 @@ def run_data_pipeline(
         >>> run_data_pipeline(ctx, skip_extraction=True)
     """
     if paths is None:
-        from echolon.config.settings import PROJECT_ROOT
-        paths = PathsConfig.from_project_root(PROJECT_ROOT)
+        from echolon.config.settings import get_project_root
+        paths = PathsConfig.from_project_root(get_project_root())
 
     # Extract from TradingContext
     market = ctx.market_code

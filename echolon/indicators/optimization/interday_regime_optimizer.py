@@ -1079,7 +1079,7 @@ def optimize_regime_params(
         paths: Optional :class:`~echolon.config.paths_config.PathsConfig`
             supplying library-owned directory layout.  Used to derive the
             default ``data_dir`` when the caller does not pass one.  When
-            *None* a PathsConfig is built from ``PROJECT_ROOT``.
+            *None* a PathsConfig is built from ``get_project_root()``.
 
     Returns:
         dict mapping regime-param names to optimized values.  Shape is
@@ -1098,8 +1098,8 @@ def optimize_regime_params(
 
     if data_dir is None:
         if paths is None:
-            from echolon.config.settings import PROJECT_ROOT
-            paths = PathsConfig.from_project_root(PROJECT_ROOT)
+            from echolon.config.settings import get_project_root
+            paths = PathsConfig.from_project_root(get_project_root())
         data_dir = str(
             paths.market_data_dir / ctx.market_code / ctx.instrument_name / "sort_by_contract"
         )

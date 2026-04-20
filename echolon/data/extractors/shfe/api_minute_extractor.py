@@ -72,8 +72,8 @@ class SHFEApiMinuteExtractor(BaseExtractor):
         self.client = client
         if raw_data_dir is None:
             from echolon.config.paths_config import PathsConfig
-            from echolon.config.settings import PROJECT_ROOT
-            raw_data_dir = PathsConfig.from_project_root(PROJECT_ROOT).raw_data_dir
+            from echolon.config.settings import get_project_root
+            raw_data_dir = PathsConfig.from_project_root(get_project_root()).raw_data_dir
         self._raw_data_dir = Path(raw_data_dir)
 
     def _get_futures_code(self, asset: str) -> str:
@@ -88,7 +88,7 @@ class SHFEApiMinuteExtractor(BaseExtractor):
         """Get default input paths for minute data.
 
         Returns only input-read paths rooted at the constructor-supplied
-        ``raw_data_dir`` (or the lazy fallback derived from ``PROJECT_ROOT``).
+        ``raw_data_dir`` (or the lazy fallback derived from ``get_project_root()``).
         Output paths must be supplied explicitly — echolon no longer writes to
         the package install directory.
         """
