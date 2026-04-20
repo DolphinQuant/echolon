@@ -68,16 +68,6 @@ class TradingContext:
         return self.market.timezone
 
     @property
-    def currency(self) -> str:
-        """Trading currency (e.g., 'CNY', 'USDT')."""
-        return self.market.currency
-
-    @property
-    def is_24h(self) -> bool:
-        """Whether market trades 24/7 (crypto)."""
-        return self.market.is_24h
-
-    @property
     def has_contract_expiry(self) -> bool:
         """Whether contracts expire (futures vs perpetuals)."""
         return self.market.has_contract_expiry
@@ -102,11 +92,6 @@ class TradingContext:
         return self.instrument.multiplier
 
     @property
-    def tick_size(self) -> float:
-        """Minimum price movement."""
-        return self.instrument.tick_size
-
-    @property
     def margin_rate(self) -> float:
         """Margin requirement (decimal, e.g., 0.08 = 8%)."""
         return self.instrument.margin_rate
@@ -126,11 +111,6 @@ class TradingContext:
     # =========================================================================
     # Session Access
     # =========================================================================
-
-    @property
-    def sessions(self) -> Dict[str, SessionWindow]:
-        """All session windows for this market."""
-        return self.market.sessions
 
     @property
     def phases(self) -> Dict[str, SessionPhaseSpec]:
@@ -173,17 +153,6 @@ class TradingContext:
 
         return 1  # Default for unknown markets
 
-    @property
-    def trading_minutes_per_day(self) -> int:
-        """Total trading minutes per day."""
-        if self.market_code == 'SHFE':
-            from echolon.config.markets.shfe.constants import TOTAL_TRADING_MINUTES, DAY_TRADING_MINUTES
-            return TOTAL_TRADING_MINUTES if self.has_night_session else DAY_TRADING_MINUTES
-        elif self.market_code == 'CRYPTO':
-            return 24 * 60  # 1440 minutes
-
-        return 24 * 60  # Default
-
     # =========================================================================
     # Frequency-Derived Parameters (for Indicators)
     # =========================================================================
@@ -213,13 +182,6 @@ class TradingContext:
         if 'd' in bar_size_lower:
             return 1440  # 24 * 60
 
-
-    @property
-    def bars_per_hour(self) -> int:
-        """Bars per hour for current frequency."""
-        if self.bar_size_minutes >= 60:
-            return 1
-        return 60 // self.bar_size_minutes
 
     def hours_to_bars(self, hours: float) -> int:
         """
@@ -365,25 +327,6 @@ class TradingContext:
             "volatility_low_pct": 25.0,
         }
 
-    def get_session_bars(self, session_phase: str) -> int:
-        """
-        Get expected bars for a session phase.
-
-        Args:
-            session_phase: 'night', 'morning', 'afternoon', 'day1', 'day2'
-
-        Returns:
-            Expected number of bars in that session
-        """
-        if self.market_code == 'SHFE':
-            from echolon.config.markets.shfe.constants import get_session_bars
-            return get_session_bars(self.bar_size, session_phase, self.has_night_session)
-        elif self.market_code == 'CRYPTO':
-            # Crypto has 24h continuous - divide by 3 for "sessions"
-            return self.bars_per_day // 3
-
-        return self.bars_per_day
-
     # =========================================================================
     # Phase Encoding (for Backtrader compatibility)
     # =========================================================================
@@ -421,52 +364,6 @@ class TradingContext:
         """
         return self._decode_phase(phase_code)
 
-    def get_phase_for_time(self, t: time) -> Optional[str]:
-        """
-        Get session phase name for a given time.
-
-        Args:
-            t: Time to check
-
-        Returns:
-            Phase name or None if outside trading hours
-        """
-        for name, phase in self.phases.items():
-            if phase.contains_time(t):
-                return name
-        return None
-
-    def is_trading_time(self, t: time) -> bool:
-        """
-        Check if time is during active trading (not in a break).
-
-        Args:
-            t: Time to check
-
-        Returns:
-            True if during trading hours
-        """
-        phase_name = self.get_phase_for_time(t)
-        if phase_name is None:
-            return False
-        return self.phases[phase_name].is_trading
-
-    # =========================================================================
-    # Calculations
-    # =========================================================================
-
-    def calculate_commission(self, price: float, size: int) -> float:
-        """Calculate commission for a trade."""
-        return self.instrument.calculate_commission(price, size)
-
-    def calculate_margin(self, price: float, size: int) -> float:
-        """Calculate required margin."""
-        return self.instrument.calculate_margin(price, size)
-
-    def calculate_contract_value(self, price: float, size: int) -> float:
-        """Calculate total contract value."""
-        return self.instrument.calculate_contract_value(price, size)
-
     # =========================================================================
     # Alternate Constructors
     # =========================================================================
@@ -501,29 +398,6 @@ class TradingContext:
             frequency=frequency,
             bar_size=bar_size,
         )
-
-    # =========================================================================
-    # Serialization
-    # =========================================================================
-
-    def to_dict(self) -> dict:
-        """Convert to dictionary for logging/serialization."""
-        return {
-            'market': self.market_code,
-            'instrument': self.instrument_code,
-            'instrument_name': self.instrument_name,
-            'frequency': self.frequency,
-            'bar_size': self.bar_size,
-            'timezone': self.timezone,
-            'currency': self.currency,
-            'multiplier': self.multiplier,
-            'tick_size': self.tick_size,
-            'margin_rate': self.margin_rate,
-            'has_night_session': self.has_night_session,
-            'is_24h': self.is_24h,
-            'bars_per_day': self.bars_per_day,
-            'initial_capital': self.initial_capital,
-        }
 
     def __repr__(self) -> str:
         return (
@@ -567,65 +441,3 @@ class TradingContext:
         # Default: return all trading phase names
         return [p.name for p in self.trading_phases]
 
-    def get_phase_bars(self, phase: str) -> int:
-        """
-        Get expected bars for a session phase, bar-size-aware.
-
-        Args:
-            phase: Phase name (granular or aggregated)
-
-        Returns:
-            Expected number of bars in that phase
-        """
-        if self.market_code == 'SHFE':
-            from echolon.config.markets.shfe.phases import get_phase_trading_bars
-            return get_phase_trading_bars(
-                phase, self.bar_size_minutes, bar_size=self.bar_size
-            )
-        return self.bars_per_day
-
-    def get_phase_buffer_bars(self, phase: str, buffer_type: str) -> int:
-        """
-        Get buffer bars for a phase (opening or closing), bar-size-aware.
-
-        Args:
-            phase: Phase name (granular or aggregated)
-            buffer_type: 'opening' or 'closing'
-
-        Returns:
-            Number of buffer bars
-        """
-        if self.market_code == 'SHFE':
-            from echolon.config.markets.shfe.phases import get_phase_buffer_bars
-            return get_phase_buffer_bars(
-                phase, buffer_type, self.bar_size_minutes, bar_size=self.bar_size
-            )
-        return 0
-
-    def get_phase_for_time_bar_aware(self, t: time) -> Optional[str]:
-        """
-        Get session phase name for a given time, bar-size-aware.
-
-        Args:
-            t: Time to check
-
-        Returns:
-            Phase name appropriate for current bar size, or None
-        """
-        if self.market_code == 'SHFE':
-            from echolon.config.markets.shfe.phases import get_phase_for_time
-            return get_phase_for_time(t, bar_size=self.bar_size)
-        return self.get_phase_for_time(t)
-
-    @property
-    def design_paradigm_description(self) -> str:
-        """
-        Get human-readable description of the design paradigm.
-
-        Returns:
-            Description of granular vs aggregated session design
-        """
-        if self.market_code == 'SHFE' and self.is_intraday:
-            from echolon.config.markets.shfe.phases import get_design_paradigm_description
-            return get_design_paradigm_description(self.bar_size)
-        return "Standard session-based design"

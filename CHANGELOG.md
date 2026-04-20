@@ -1,5 +1,101 @@
 # Changelog
 
+## Unreleased — Indicator API cleanup (pending release)
+
+**Breaking changes.** The indicator subsystem's public surface has been
+tightened to remove hardcoded monorepo paths, silent file I/O, and dead
+flags. Callers now explicitly own configuration discovery.
+
+Not published to PyPI yet — more adjustments expected before the next
+release. This `Unreleased` section will be renamed to the final version
+number when the release ships.
+
+### Breaking
+
+- `run_indicator_calculation` signature rewritten:
+  - **Removed**: `selected_only`, `mode`, `optimize_regime`,
+    `backtest_start_year`, `indicator_config`.
+  - **Required now**: `output_dir`, `indicator_list`.
+  - Retained: `ctx`, `trading_dates`, `use_parallel`, `regime_params`,
+    `start_date`, `end_date` (all keyword-only after the required positionals).
+- Schema change: `indicator_list` is now a flat dict
+  `{indicator_name: {param: scalar_or_list}}`. List-valued params trigger
+  Cartesian sweep across all value combinations. Legacy 3-bucket files
+  (`indicators_with_lookback` / `indicators_without_lookback` /
+  `indicators_with_special_params`) must be rewritten in the new format
+  at their source.
+- `echolon/indicators/config/` directory deleted. The library no longer
+  ships curated indicator lists — callers supply their own. Monorepo users:
+  files relocated to `DolphinQuantStrategy/modules/indicators/config/`.
+- Echolon no longer reads/writes `<install_dir>/output/regime_params.json`.
+  Regime params are required when `indicator_list` contains
+  `market_regime`; callers obtain them via
+  `echolon.indicators.optimize_regime_params()` or from their own
+  persistence layer.
+- `IndicatorProcessor._calculate_indicators_for_contract` and
+  `_calculate_all_indicators_with_defaults` merged into a single
+  flat-dict-driven compute path (`_compute_indicators_for_contract`).
+  Deleted: `DEFAULT_INTERDAY_REGIME_PARAMS`, `_initialize_regime_params`,
+  `_load_strategy_indicators` (hardcoded monorepo path).
+- `TradingContext` pruned of 17 dead methods:
+  `currency`, `is_24h`, `tick_size`, `sessions`,
+  `design_paradigm_description`, `bars_per_hour`,
+  `trading_minutes_per_day`, `get_session_bars`, `get_phase_for_time`,
+  `get_phase_for_time_bar_aware`, `is_trading_time`, `get_phase_bars`,
+  `get_phase_buffer_bars`, `calculate_commission`, `calculate_margin`,
+  `calculate_contract_value`, `to_dict`.
+
+### Added
+
+- `echolon.indicators.optimize_regime_params(ctx, n_trials, ...)` —
+  public helper for callers who need optimized regime-classification
+  hyperparameters. Replaces the silent first-call Optuna run.
+- `echolon.indicators.schema` — Pydantic v2 schema + expansion helpers
+  for the flat-dict `indicator_list` format, including Cartesian param
+  sweep (`expand_params_spec`, `expand_param`, `IndicatorList`).
+- `echolon indicators list` CLI subcommand — dumps the library's
+  indicator capabilities (name, cluster, supported frequencies). Useful
+  as a starting template when constructing your own `indicator_list`.
+
+### Removed
+
+- `echolon/config/feature_flags.py` (Qorka concern, never library
+  infrastructure).
+- `echolon/indicators/utils/indicator_loader.py` (library ships no
+  indicator configs to load — callers own their JSONs).
+- `echolon/indicators/config/` (6 files moved to consumer repo).
+
+### Migration guide (for when release ships)
+
+Before:
+```python
+run_indicator_calculation(
+    ctx, selected_only=True, use_parallel=True,
+    start_date="2020-01-01", end_date="2024-12-31",
+)
+```
+
+After:
+```python
+import json
+with open("strategy_indicator_list.json") as f:
+    indicator_list = json.load(f)
+    # File must already be in flat-dict form.
+
+from echolon.indicators import optimize_regime_params
+regime_params = optimize_regime_params(ctx) if "market_regime" in indicator_list else None
+
+run_indicator_calculation(
+    ctx=ctx,
+    output_dir="./data/indicators",
+    indicator_list=indicator_list,
+    regime_params=regime_params,
+    start_date="2020-01-01", end_date="2024-12-31",
+)
+```
+
+---
+
 ## 0.1.1 — Deployment CLI + public dashboard API (2026-04-18)
 
 v0.4.0 was deleted from PyPI; this release restarts the version series at the

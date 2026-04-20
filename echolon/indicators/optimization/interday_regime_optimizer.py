@@ -1037,3 +1037,72 @@ class InterdayRegimeOptimizer:
         }
 
         return comparison
+
+
+# =============================================================================
+# Public module-level helper
+# =============================================================================
+
+def optimize_regime_params(
+    ctx,
+    data_dir: Optional[str] = None,
+    n_trials: int = 400,
+    config: Optional[RegimeOptimizerConfig] = None,
+    backtest_start_year: Optional[int] = None,
+) -> Dict:
+    """Run regime-classifier hyperparameter optimization and return the winning dict.
+
+    Convenience wrapper around :class:`InterdayRegimeOptimizer` that accepts a
+    :class:`~echolon.config.markets.core.context.TradingContext` and resolves
+    market/instrument details automatically.  The caller should prefer this
+    function over constructing :class:`InterdayRegimeOptimizer` directly so
+    that future API changes are absorbed here.
+
+    Args:
+        ctx: TradingContext (interday daily bars expected).  Provides
+            ``market_code``, ``instrument_name``, and ``is_interday``.
+        data_dir: Directory containing contract CSV files
+            (``sort_by_contract/``).  When *None* the standard workspace path
+            ``{MARKET_DATA_DIR}/{market}/{instrument}/sort_by_contract`` is
+            used.
+        n_trials: Number of Optuna trials.  Defaults to 400 (same as the
+            historical implicit default).
+        config: Optional :class:`RegimeOptimizerConfig` to override
+            search bounds and weights.  When *None* a default config is built
+            with ``n_trials`` applied.
+        backtest_start_year: Earliest contract year to include (e.g. 2018).
+            Pass *None* to load all available contracts.
+
+    Returns:
+        dict mapping regime-param names to optimized values.  Shape is
+        identical to the ``regime_params`` kwarg accepted by
+        ``run_indicator_calculation``.
+
+    Raises:
+        ValueError: if ``ctx`` is not interday (regime optimization is
+            daily-bar-only; intraday uses session-phase + volatility_state).
+    """
+    if not ctx.is_interday:
+        raise ValueError(
+            f"optimize_regime_params requires an interday ctx; "
+            f"got frequency={ctx.frequency!r}"
+        )
+
+    if data_dir is None:
+        from echolon.config.settings import MARKET_DATA_DIR
+        data_dir = str(MARKET_DATA_DIR / ctx.market_code / ctx.instrument_name / "sort_by_contract")
+
+    if config is None:
+        config = RegimeOptimizerConfig(n_trials=n_trials)
+
+    optimizer = InterdayRegimeOptimizer(
+        data_dir=data_dir,
+        config=config,
+        futures=ctx.instrument_name,
+        market=ctx.market_code,
+        backtest_start_year=backtest_start_year,
+    )
+
+    # optimize() returns Tuple[Dict, optuna.Study]; we return only the params dict
+    best_params, _study = optimizer.optimize(n_trials=n_trials)
+    return best_params

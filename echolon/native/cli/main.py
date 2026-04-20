@@ -23,6 +23,8 @@ def _callback() -> None:
     """Echolon CLI — multi-command entry point."""
 
 
+from echolon.indicators.cli import indicators_app
+
 app.command(name="validate")(validate_cmd.validate_command)
 app.command(name="init-strategy")(init_cmd.init_strategy_command)
 app.command(name="schema")(schema_cmd.schema_command)
@@ -31,6 +33,7 @@ app.command(name="migrate")(migrate_cmd.migrate_command)
 app.add_typer(examples_cmd.examples_app, name="examples")
 app.add_typer(deploy_app, name="deploy")
 app.add_typer(backtest_app, name="backtest")
+app.add_typer(indicators_app, name="indicators")
 
 
 if __name__ == "__main__":
