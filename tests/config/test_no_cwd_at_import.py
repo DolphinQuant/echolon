@@ -25,30 +25,17 @@ def test_get_project_root_reflects_cwd_changes_after_import(tmp_path, monkeypatc
     assert get_project_root() == other.resolve()
 
 
-def test_project_root_module_attribute_is_deprecated_shim():
-    """Back-compat: accessing PROJECT_ROOT still works but emits DeprecationWarning
-    and resolves lazily (not bound at import time)."""
+def test_project_root_module_attribute_is_removed():
+    """PROJECT_ROOT is gone; accessing it raises AttributeError."""
     import importlib
-    import warnings
-
-    # Force a fresh import so __getattr__ hook is freshly evaluated.
-    import sys
     for name in list(sys.modules):
         if name.startswith("echolon.config.settings"):
             del sys.modules[name]
 
     mod = importlib.import_module("echolon.config.settings")
-
-    # Access triggers the deprecation warning and lazy resolution.
-    with warnings.catch_warnings(record=True) as w:
-        warnings.simplefilter("always")
-        value = mod.PROJECT_ROOT
-        deprecation_warnings = [x for x in w if issubclass(x.category, DeprecationWarning)]
-
-    assert isinstance(value, Path)
-    assert value.is_absolute()
-    assert value == mod.get_project_root(), \
-        "PROJECT_ROOT should resolve to the same path as get_project_root()"
-    assert deprecation_warnings, "PROJECT_ROOT access must emit DeprecationWarning"
-    assert any("get_project_root" in str(x.message) for x in deprecation_warnings), \
-        "DeprecationWarning must point callers at get_project_root()"
+    try:
+        _ = mod.PROJECT_ROOT
+    except AttributeError:
+        pass
+    else:
+        raise AssertionError("PROJECT_ROOT should be removed, but is still accessible")

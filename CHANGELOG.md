@@ -11,7 +11,7 @@ Not published to PyPI yet — more adjustments expected before the next
 release. This `Unreleased` section will be renamed to the final version
 number when the release ships.
 
-### Paths / config migration (breaking surface; transitional shim retained)
+### Paths / config migration (breaking)
 
 - **New**: `echolon.config.paths_config.PathsConfig` — a single Pydantic model
   holding every library-owned directory and file path. Callers construct one
@@ -34,13 +34,10 @@ number when the release ships.
   `get_workspace_dir()` / `get_data_dir()` / `get_dataset_dir()` functions,
   and their `DOLPHIN_WORKSPACE` / `DOLPHIN_DATA_DIR` / `DOLPHIN_DATASET_DIR`
   env-var overrides. Library code does not silently consume `.env`; move
-  `load_dotenv()` to your CLI entry point.
-- **Transitional shim**: `echolon.config.settings.PROJECT_ROOT` remains
-  accessible via a module-level `__getattr__` that emits a `DeprecationWarning`
-  on each access and resolves lazily (no longer bound at import time). New
-  code should call `echolon.config.settings.get_project_root()` instead,
-  which re-reads the env var on every call and emits no warning. The
-  `PROJECT_ROOT` attribute will be removed in a future release.
+  `load_dotenv()` to your CLI entry point. The `PROJECT_ROOT` module
+  attribute is also deleted — callers must use
+  `echolon.config.settings.get_project_root()`, which re-reads the env
+  var on every call and does not bind cwd at import time.
 - **Optional dependency**: `platformdirs>=4.0.0` is now an optional extra,
   not a required dependency. Install via `pip install echolon[platformdirs]`
   if you plan to use `PathsConfig.from_platformdirs(...)` for XDG-style
