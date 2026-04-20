@@ -25,7 +25,7 @@ import pandas as pd
 
 from echolon.config.markets.core.context import TradingContext
 from echolon.config.paths_config import PathsConfig
-from echolon.config.settings import MARKET_DATA_DIR  # noqa: F401 — deprecated, use PathsConfig injection
+from echolon.config.settings import MARKET_DATA_DIR  # noqa: F401 — deprecated, use PathsConfig injection  # pyright: ignore[reportUnusedImport]
 from .transformers.ohlcv_standardizer import OHLCVStandardizer
 from .transformers.session_filter import SessionFilter
 from .transformers.ohlcv_resampler import OHLCVResampler

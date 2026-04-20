@@ -23,7 +23,7 @@ from pathlib import Path
 from typing import Optional
 import pandas as pd
 
-from echolon.config.settings import MARKET_DATA_DIR, RAW_DATA_DIR  # noqa: F401 — deprecated, use PathsConfig injection
+from echolon.config.settings import MARKET_DATA_DIR, RAW_DATA_DIR  # noqa: F401 — deprecated, use PathsConfig injection  # pyright: ignore[reportUnusedImport]
 from echolon.config.paths_config import PathsConfig
 from echolon.config.markets.factory import MarketFactory
 from echolon.config.markets.core.context import TradingContext
