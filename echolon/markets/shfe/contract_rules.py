@@ -4,11 +4,12 @@ SHFE Contract Rules
 
 Contract expiry and rollover logic for SHFE futures.
 
-Functions:
+Public functions:
 - parse_contract(contract_str): Parse "al2403" into (symbol, year, month)
 - get_expiry_date(contract_str): Calculate expiry date for contract
-- get_rollover_date(contract_str): Get date when position should roll
-- is_delivery_month(contract_str, check_date): Check if in delivery month
+- get_main_contract(trading_date, symbol): Resolve main contract from CSV
+- should_rollover(contract_str, check_date, position_size): Rollover decision
+- get_rollover_target(current_contract, check_date, position_size): Next contract
 
 SHFE expiry rules:
 - Delivery month: The month in the contract name (al2403 → March 2024)
@@ -84,55 +85,6 @@ def parse_contract(contract_str: str) -> Tuple[str, int, int]:
     return symbol, year, month
 
 
-def format_contract(symbol: str, year: int, month: int) -> str:
-    """
-    Format contract components into contract code.
-
-    Args:
-        symbol: Product code (e.g., 'al', 'cu')
-        year: Year (2-digit or 4-digit)
-        month: Month (1-12)
-
-    Returns:
-        Contract code (e.g., 'al2403')
-
-    Examples:
-        >>> format_contract('al', 2024, 3)
-        'al2403'
-        >>> format_contract('cu', 25, 12)
-        'cu2512'
-    """
-    # Convert to 2-digit year if needed
-    if year >= 2000:
-        year_2digit = year - 2000
-    elif year >= 1900:
-        year_2digit = year - 1900
-    else:
-        year_2digit = year
-
-    return f"{symbol.lower()}{year_2digit:02d}{month:02d}"
-
-
-def get_delivery_month(contract_str: str) -> Tuple[int, int]:
-    """
-    Get the delivery month (year, month) for a contract.
-
-    The delivery month is the month specified in the contract code.
-
-    Args:
-        contract_str: Contract code (e.g., 'al2403')
-
-    Returns:
-        Tuple of (year, month) for delivery
-
-    Examples:
-        >>> get_delivery_month('al2403')
-        (2024, 3)
-    """
-    _, year, month = parse_contract(contract_str)
-    return year, month
-
-
 def get_expiry_date(
     contract_str: str,
     calendar: Optional[TradingCalendar] = None
@@ -168,7 +120,7 @@ def get_expiry_date(
     return get_last_trading_day_of_month(expiry_year, expiry_month, calendar)
 
 
-def get_rollover_signal_date(
+def _get_rollover_signal_date(
     contract_str: str,
     days_before_expiry: int = 2,
     calendar: Optional[TradingCalendar] = None
@@ -178,18 +130,6 @@ def get_rollover_signal_date(
 
     This is typically 1-2 trading days before expiry to ensure
     the position can be rolled smoothly.
-
-    Args:
-        contract_str: Contract code
-        days_before_expiry: Trading days before expiry to signal
-        calendar: Optional trading calendar
-
-    Returns:
-        Date to signal rollover
-
-    Examples:
-        >>> get_rollover_signal_date('al2403', days_before_expiry=2)
-        date(2024, 2, 27)  # 2 trading days before Feb 29
     """
     expiry_date = get_expiry_date(contract_str, calendar)
 
@@ -305,142 +245,6 @@ def get_main_contract(
     return main_contract.lower()
 
 
-
-# from dateutil.relativedelta import relativedelta
-# def get_main_contract(trading_date: date, symbol: str = "aluminum"):
-#     """
-#     Get the main futures contract code for a given date.
-
-#     Rule: Main contract is two months ahead of given date's month.
-#     Format: {futures_code} + YYMM (without .SF extension for file lookup)
-
-#     Parameters
-#     ----------
-#     date : datetime
-#         The trading date for which to determine the main contract
-#     futures : str
-#         Futures variety (e.g., "aluminum", "copper")
-
-#     Returns
-#     -------
-#     str
-#         Main contract code (e.g., 'al2508' for aluminum, 'cu2508' for copper)
-
-#     Examples
-#     --------
-#     If given date is June 2025 (06):
-#     - aluminum: main contract will be 'al2508' (August 2025)
-#     - copper: main contract will be 'cu2508' (August 2025)
-#     """
-
-#     # Add 2 months to the given date
-#     main_contract_date = trading_date + relativedelta(months=2)
-
-#     # Extract year (last 2 digits) and month (2 digits)
-#     year_suffix = str(main_contract_date.year)[-2:]  # Last 2 digits of year
-#     month_str = f"{main_contract_date.month:02d}"    # Month with leading zero if needed
-
-#     # Format as contract: {futures_code} + YYMM (no .SF extension for file lookup)
-#     main_contract = f"{symbol}{year_suffix}{month_str}"
-
-#     return main_contract
-
-
-
-
-
-
-
-def is_delivery_month(contract_str: str, check_date: date) -> bool:
-    """
-    Check if the given date is in the contract's delivery month.
-
-    Args:
-        contract_str: Contract code
-        check_date: Date to check
-
-    Returns:
-        True if check_date is in the delivery month
-
-    Examples:
-        >>> is_delivery_month('al2403', date(2024, 3, 15))
-        True
-        >>> is_delivery_month('al2403', date(2024, 2, 28))
-        False
-    """
-    delivery_year, delivery_month = get_delivery_month(contract_str)
-    return check_date.year == delivery_year and check_date.month == delivery_month
-
-
-def is_approaching_expiry(
-    contract_str: str,
-    check_date: date,
-    days_threshold: int = 5,
-    calendar: Optional[TradingCalendar] = None
-) -> bool:
-    """
-    Check if contract is approaching expiry.
-
-    Args:
-        contract_str: Contract code
-        check_date: Current date
-        days_threshold: Number of days to consider "approaching"
-        calendar: Optional trading calendar
-
-    Returns:
-        True if within threshold of expiry
-
-    Examples:
-        >>> is_approaching_expiry('al2403', date(2024, 2, 25), days_threshold=5)
-        True  # If expiry is Feb 29
-    """
-    return days_until_expiry(contract_str, check_date, calendar) <= days_threshold
-
-
-def days_until_expiry(
-    contract_str: str,
-    from_date: date,
-    calendar: Optional[TradingCalendar] = None
-) -> int:
-    """
-    Calculate calendar days until contract expiry.
-
-    Args:
-        contract_str: Contract code
-        from_date: Starting date
-        calendar: Optional trading calendar
-
-    Returns:
-        Number of calendar days until expiry (negative if past expiry)
-
-    Examples:
-        >>> days_until_expiry('al2403', date(2024, 2, 20))
-        9  # If expiry is Feb 29
-    """
-    expiry_date = get_expiry_date(contract_str, calendar)
-    return (expiry_date - from_date).days
-
-
-def trading_days_until_expiry(
-    contract_str: str,
-    from_date: date,
-    calendar: TradingCalendar
-) -> int:
-    """
-    Calculate trading days until contract expiry.
-
-    Args:
-        contract_str: Contract code
-        from_date: Starting date
-        calendar: Trading calendar (required)
-
-    Returns:
-        Number of trading days until expiry
-    """
-    expiry_date = get_expiry_date(contract_str, calendar)
-    return calendar.count_trading_days_between(from_date, expiry_date, inclusive=False)
-
-
 def should_rollover(
     contract_str: str,
     check_date: date,
@@ -469,7 +273,7 @@ def should_rollover(
     if position_size == 0:
         return False
 
-    signal_date = get_rollover_signal_date(contract_str, days_before_expiry, calendar)
+    signal_date = _get_rollover_signal_date(contract_str, days_before_expiry, calendar)
     return check_date >= signal_date
 
 
