@@ -8,10 +8,10 @@ import pandas as pd
 import glob
 import os
 import logging
+from pathlib import Path
 from typing import Optional, ClassVar, Set
 
 from ..base import BaseExtractor
-from echolon.config.settings import RAW_DATA_DIR
 from echolon.config.markets.factory import MarketFactory
 
 logger = logging.getLogger(__name__)
@@ -50,9 +50,19 @@ class SHFEFileDayExtractor(BaseExtractor):
         '成交金额(万元)': 'turnover',
     }
 
-    def __init__(self, market: str, asset: str):
+    def __init__(
+        self,
+        market: str,
+        asset: str,
+        raw_data_dir: Optional[Path] = None,
+    ):
         super().__init__(market, asset)
         self.futures_code = self._get_futures_code(asset)
+        if raw_data_dir is None:
+            from echolon.config.paths_config import PathsConfig
+            from echolon.config.settings import PROJECT_ROOT
+            raw_data_dir = PathsConfig.from_project_root(PROJECT_ROOT).raw_data_dir
+        self._raw_data_dir = Path(raw_data_dir)
 
     def _get_futures_code(self, asset: str) -> str:
         """Get the futures code for an asset name using MarketFactory."""
@@ -65,13 +75,14 @@ class SHFEFileDayExtractor(BaseExtractor):
     def _get_default_paths(self) -> dict:
         """Get default input/output paths based on market and asset.
 
-        Input paths default to RAW_DATA_DIR (caller-configured via env var or
-        echolon settings); output_dir must be supplied explicitly to extract_raw
-        — echolon no longer writes to the package install directory by default.
+        Input paths default to the constructor-supplied ``raw_data_dir`` (or
+        the lazy fallback derived from ``PROJECT_ROOT``); output_dir must be
+        supplied explicitly to extract_raw — echolon no longer writes to the
+        package install directory by default.
         """
-        raw_data_dir = os.path.join(str(RAW_DATA_DIR), self.market)
+        market_dir = os.path.join(str(self._raw_data_dir), self.market)
         return {
-            "raw_data": os.path.join(raw_data_dir, "raw_data"),
+            "raw_data": os.path.join(market_dir, "raw_data"),
         }
 
     def extract_raw(

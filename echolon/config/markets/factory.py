@@ -30,7 +30,6 @@ from typing import Optional
 from echolon.config.markets.core.context import TradingContext
 from echolon.config.markets.core.types import MarketConfig, InstrumentSpec
 from echolon.config.markets.core.trading_target import TradingTarget, TradingTargetConfigSchema
-from echolon.config.settings import SESSION_DIR, OUTPUT_DIR
 
 
 class MarketFactory:
@@ -45,16 +44,26 @@ class MarketFactory:
     _market_configs: dict = {}
 
     @classmethod
-    def from_session(cls, session_path: Optional[str] = None) -> TradingContext:
+    def from_session(
+        cls,
+        session_path: Optional[str] = None,
+        *,
+        session_dir: Optional[Path] = None,
+        output_dir: Optional[Path] = None,
+    ) -> TradingContext:
         """
         Create TradingContext from session state file.
 
         Loading priority:
-        1. If OUTPUT_DIR/target.json exists, load it directly (already integrated)
-        2. Otherwise, load state.json and trading_target_*.json from SESSION_DIR
+        1. If output_dir/target.json exists, load it directly (already integrated)
+        2. Otherwise, load state.json and trading_target_*.json from session_dir
 
         Args:
             session_path: Path to session state JSON. Defaults to session/state.json
+            session_dir: Optional base session directory. When None, falls back
+                to PathsConfig rooted at PROJECT_ROOT.
+            output_dir: Optional output directory. When None, falls back to
+                PathsConfig rooted at PROJECT_ROOT.
 
         Returns:
             Configured TradingContext
@@ -63,10 +72,19 @@ class MarketFactory:
             FileNotFoundError: If session state file doesn't exist
             ValidationError: If required fields are missing or invalid
         """
-        # Check if integrated target exists in OUTPUT_DIR
-        output_target_path = Path(OUTPUT_DIR) / "target.json"
+        if output_dir is None or session_dir is None:
+            from echolon.config.paths_config import PathsConfig
+            from echolon.config.settings import PROJECT_ROOT
+            paths = PathsConfig.from_project_root(PROJECT_ROOT)
+            if output_dir is None:
+                output_dir = paths.output_dir
+            if session_dir is None:
+                session_dir = paths.session_dir
+
+        # Check if integrated target exists in output_dir
+        output_target_path = Path(output_dir) / "target.json"
         if output_target_path.exists():
-            # Load from OUTPUT_DIR/target.json (already has integrated target)
+            # Load from output_dir/target.json (already has integrated target)
             with open(output_target_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             target = TradingTarget.model_validate(data)
@@ -74,7 +92,9 @@ class MarketFactory:
             # Load from session/state.json
             target = TradingTarget.load(session_path)
             # Load and validate trading target config based on frequency
-            target.target = cls._load_trading_target_config(target.frequency)
+            target.target = cls._load_trading_target_config(
+                target.frequency, session_dir=session_dir
+            )
 
         return cls.create(
             market=target.market,
@@ -85,12 +105,19 @@ class MarketFactory:
         )
 
     @classmethod
-    def _load_trading_target_config(cls, frequency: str) -> Optional[TradingTargetConfigSchema]:
+    def _load_trading_target_config(
+        cls,
+        frequency: str,
+        *,
+        session_dir: Optional[Path] = None,
+    ) -> Optional[TradingTargetConfigSchema]:
         """
         Load and validate trading target config based on frequency.
 
         Args:
             frequency: 'intraday' or 'interday'
+            session_dir: Optional base session directory. When None, falls back
+                to PathsConfig rooted at PROJECT_ROOT.
 
         Returns:
             Validated TradingTargetConfigSchema or None if file doesn't exist
@@ -103,7 +130,12 @@ class MarketFactory:
         else:
             target_file = "trading_target_interday.json"
 
-        target_path = Path(SESSION_DIR) / target_file
+        if session_dir is None:
+            from echolon.config.paths_config import PathsConfig
+            from echolon.config.settings import PROJECT_ROOT
+            session_dir = PathsConfig.from_project_root(PROJECT_ROOT).session_dir
+
+        target_path = Path(session_dir) / target_file
 
         if not target_path.exists():
             return None
@@ -115,26 +147,45 @@ class MarketFactory:
         return TradingTargetConfigSchema.model_validate(raw_data)
 
     @classmethod
-    def load_target(cls, session_path: Optional[str] = None) -> TradingTarget:
+    def load_target(
+        cls,
+        session_path: Optional[str] = None,
+        *,
+        session_dir: Optional[Path] = None,
+        output_dir: Optional[Path] = None,
+    ) -> TradingTarget:
         """
         Load TradingTarget from session state file with trading target config.
 
         Loading priority:
-        1. If OUTPUT_DIR/target.json exists, load it directly (already integrated)
-        2. Otherwise, load state.json and trading_target_*.json from SESSION_DIR
+        1. If output_dir/target.json exists, load it directly (already integrated)
+        2. Otherwise, load state.json and trading_target_*.json from session_dir
 
         Use this when you need the full target info (including user_request).
 
         Args:
             session_path: Path to session state JSON. Defaults to session/state.json
+            session_dir: Optional base session directory. When None, falls back
+                to PathsConfig rooted at PROJECT_ROOT.
+            output_dir: Optional output directory. When None, falls back to
+                PathsConfig rooted at PROJECT_ROOT.
 
         Returns:
             Validated TradingTarget instance with target config
         """
-        # Check if integrated target exists in OUTPUT_DIR
-        output_target_path = Path(OUTPUT_DIR) / "target.json"
+        if output_dir is None or session_dir is None:
+            from echolon.config.paths_config import PathsConfig
+            from echolon.config.settings import PROJECT_ROOT
+            paths = PathsConfig.from_project_root(PROJECT_ROOT)
+            if output_dir is None:
+                output_dir = paths.output_dir
+            if session_dir is None:
+                session_dir = paths.session_dir
+
+        # Check if integrated target exists in output_dir
+        output_target_path = Path(output_dir) / "target.json"
         if output_target_path.exists():
-            # Load from OUTPUT_DIR/target.json (already has integrated target)
+            # Load from output_dir/target.json (already has integrated target)
             with open(output_target_path, 'r', encoding='utf-8') as f:
                 data = json.load(f)
             return TradingTarget.model_validate(data)
@@ -142,7 +193,9 @@ class MarketFactory:
         # Load from session/state.json
         target = TradingTarget.load(session_path)
         # Load and validate trading target config based on frequency
-        target.target = cls._load_trading_target_config(target.frequency)
+        target.target = cls._load_trading_target_config(
+            target.frequency, session_dir=session_dir
+        )
         return target
 
     @classmethod

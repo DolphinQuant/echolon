@@ -29,7 +29,6 @@ import pandas as pd
 import requests
 
 from ..base import BaseExtractor
-from echolon.config.settings import RAW_DATA_DIR
 
 logger = logging.getLogger(__name__)
 
@@ -129,7 +128,8 @@ class BinancePerpetualExtractor(BaseExtractor):
         self,
         market: str = "CRYPTO",
         asset: str = "btc",
-        interval: str = "4h"
+        interval: str = "4h",
+        raw_data_dir: Optional[Path] = None,
     ):
         """
         Initialize the Binance perpetual extractor.
@@ -138,6 +138,8 @@ class BinancePerpetualExtractor(BaseExtractor):
             market: Market code (default "CRYPTO")
             asset: Asset name (e.g., "btc", "eth", "sol") or full symbol (e.g., "BTCUSDT")
             interval: Default kline interval (default "4h")
+            raw_data_dir: Base raw-data directory used for default output paths.
+                When None, falls back to PathsConfig rooted at PROJECT_ROOT.
         """
         super().__init__(market, asset)
         self.symbol = self._normalize_symbol(asset)
@@ -147,6 +149,11 @@ class BinancePerpetualExtractor(BaseExtractor):
             "Content-Type": "application/json",
             "User-Agent": "DolphinQuantStrategy/1.0"
         })
+        if raw_data_dir is None:
+            from echolon.config.paths_config import PathsConfig
+            from echolon.config.settings import PROJECT_ROOT
+            raw_data_dir = PathsConfig.from_project_root(PROJECT_ROOT).raw_data_dir
+        self._raw_data_dir = Path(raw_data_dir)
 
     def _normalize_symbol(self, asset: str) -> str:
         """
@@ -182,7 +189,7 @@ class BinancePerpetualExtractor(BaseExtractor):
 
     def _get_default_paths(self) -> dict:
         """Get default paths for crypto data."""
-        output_base = RAW_DATA_DIR / "CRYPTO" / self.symbol
+        output_base = self._raw_data_dir / "CRYPTO" / self.symbol
         return {
             "output_dir": output_base,
             "ohlcv_data": output_base / "ohlcv",

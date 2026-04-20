@@ -16,7 +16,6 @@ from pathlib import Path
 import pandas as pd
 
 from ..base import BaseExtractor
-from echolon.config.settings import RAW_DATA_DIR
 from echolon.config.markets.factory import MarketFactory
 
 logger = logging.getLogger(__name__)
@@ -60,11 +59,22 @@ class SHFEApiMinuteExtractor(BaseExtractor):
         "main_contract",
     }
 
-    def __init__(self, market: str, asset: str, client=None):
+    def __init__(
+        self,
+        market: str,
+        asset: str,
+        client=None,
+        raw_data_dir: Optional[Path] = None,
+    ):
         super().__init__(market, asset)
         self.futures_code = self._get_futures_code(asset)
         self.xuntou_code = XUNTOU_MARKET_CODES.get(market.upper(), "SF")
         self.client = client
+        if raw_data_dir is None:
+            from echolon.config.paths_config import PathsConfig
+            from echolon.config.settings import PROJECT_ROOT
+            raw_data_dir = PathsConfig.from_project_root(PROJECT_ROOT).raw_data_dir
+        self._raw_data_dir = Path(raw_data_dir)
 
     def _get_futures_code(self, asset: str) -> str:
         """Get the futures code for an asset name using MarketFactory."""
@@ -77,11 +87,12 @@ class SHFEApiMinuteExtractor(BaseExtractor):
     def _get_default_paths(self) -> dict:
         """Get default input paths for minute data.
 
-        Returns only input-read paths rooted at RAW_DATA_DIR (caller-controlled
-        via the ECHOLON_PROJECT_ROOT env var).  Output paths must be supplied
-        explicitly — echolon no longer writes to the package install directory.
+        Returns only input-read paths rooted at the constructor-supplied
+        ``raw_data_dir`` (or the lazy fallback derived from ``PROJECT_ROOT``).
+        Output paths must be supplied explicitly — echolon no longer writes to
+        the package install directory.
         """
-        input_base = RAW_DATA_DIR / self.market / self.futures_code
+        input_base = self._raw_data_dir / self.market / self.futures_code
         return {
             "main_contract": input_base / "main_contract.csv",
         }

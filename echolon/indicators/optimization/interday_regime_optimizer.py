@@ -36,7 +36,7 @@ import numpy as np
 import pandas as pd
 import optuna
 from optuna.samplers import TPESampler
-from typing import Dict, List, Tuple, Optional
+from typing import Dict, List, Tuple, Optional, TYPE_CHECKING
 from dataclasses import dataclass
 from pathlib import Path
 import logging
@@ -45,6 +45,9 @@ from datetime import datetime
 
 from echolon.config.indicator_config import IndicatorConfig
 from echolon.config.markets.factory import MarketFactory
+
+if TYPE_CHECKING:
+    from echolon.config.paths_config import PathsConfig
 
 logger = logging.getLogger(__name__)
 
@@ -1048,6 +1051,7 @@ def optimize_regime_params(
     config: Optional[RegimeOptimizerConfig] = None,
     backtest_start_year: Optional[int] = None,
     indicator_config: Optional[IndicatorConfig] = None,
+    paths: Optional["PathsConfig"] = None,
 ) -> Dict:
     """Run regime-classifier hyperparameter optimization and return the winning dict.
 
@@ -1062,8 +1066,9 @@ def optimize_regime_params(
             ``market_code``, ``instrument_name``, and ``is_interday``.
         data_dir: Directory containing contract CSV files
             (``sort_by_contract/``).  When *None* the standard workspace path
-            ``{MARKET_DATA_DIR}/{market}/{instrument}/sort_by_contract`` is
-            used.
+            ``{paths.market_data_dir}/{market}/{instrument}/sort_by_contract``
+            is used.  If both ``data_dir`` and ``paths`` are supplied,
+            ``data_dir`` wins.
         n_trials: Number of Optuna trials.  Defaults to 400 (same as the
             historical implicit default).
         config: Optional :class:`RegimeOptimizerConfig` to override
@@ -1073,6 +1078,10 @@ def optimize_regime_params(
             Pass *None* to load all available contracts.
         indicator_config: Optional :class:`IndicatorConfig` to override
             indicator period caps.  When *None* defaults are used.
+        paths: Optional :class:`~echolon.config.paths_config.PathsConfig`
+            supplying library-owned directory layout.  Used to derive the
+            default ``data_dir`` when the caller does not pass one.  When
+            *None* a PathsConfig is built from ``PROJECT_ROOT``.
 
     Returns:
         dict mapping regime-param names to optimized values.  Shape is
@@ -1090,8 +1099,13 @@ def optimize_regime_params(
         )
 
     if data_dir is None:
-        from echolon.config.settings import MARKET_DATA_DIR
-        data_dir = str(MARKET_DATA_DIR / ctx.market_code / ctx.instrument_name / "sort_by_contract")
+        if paths is None:
+            from echolon.config.paths_config import PathsConfig
+            from echolon.config.settings import PROJECT_ROOT
+            paths = PathsConfig.from_project_root(PROJECT_ROOT)
+        data_dir = str(
+            paths.market_data_dir / ctx.market_code / ctx.instrument_name / "sort_by_contract"
+        )
 
     if config is None:
         config = RegimeOptimizerConfig(n_trials=n_trials)

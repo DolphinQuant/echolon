@@ -29,7 +29,6 @@ from pathlib import Path
 
 import pandas as pd
 
-from echolon.config.settings import RAW_DATA_DIR
 from .trading_calendar import TradingCalendar, get_last_trading_day_of_month
 
 # Cache for main contract data to avoid repeated file reads
@@ -206,12 +205,17 @@ def get_rollover_signal_date(
     return signal_date
 
 
-def _load_main_contract_data(symbol: str) -> pd.DataFrame:
+def _load_main_contract_data(
+    symbol: str,
+    raw_data_dir: Optional[Path] = None,
+) -> pd.DataFrame:
     """
     Load main contract data from CSV file.
 
     Args:
         symbol: Product symbol (e.g., 'al', 'cu', 'rb')
+        raw_data_dir: Optional base raw-data directory. When None, falls back
+            to PathsConfig rooted at PROJECT_ROOT.
 
     Returns:
         DataFrame with 'date' and 'main_contract' columns
@@ -225,7 +229,12 @@ def _load_main_contract_data(symbol: str) -> pd.DataFrame:
     if symbol_lower in _main_contract_cache:
         return _main_contract_cache[symbol_lower]
 
-    csv_path = RAW_DATA_DIR / "SHFE" / symbol_lower / "main_contract.csv"
+    if raw_data_dir is None:
+        from echolon.config.paths_config import PathsConfig
+        from echolon.config.settings import PROJECT_ROOT
+        raw_data_dir = PathsConfig.from_project_root(PROJECT_ROOT).raw_data_dir
+
+    csv_path = Path(raw_data_dir) / "SHFE" / symbol_lower / "main_contract.csv"
     if not csv_path.exists():
         raise FileNotFoundError(
             f"Main contract data not found for {symbol}: {csv_path}"
@@ -239,7 +248,11 @@ def _load_main_contract_data(symbol: str) -> pd.DataFrame:
     return df
 
 
-def get_main_contract(trading_date: date, symbol: str) -> str:
+def get_main_contract(
+    trading_date: date,
+    symbol: str,
+    raw_data_dir: Optional[Path] = None,
+) -> str:
     """
     Get the main contract code for a given trading date.
 
@@ -249,6 +262,8 @@ def get_main_contract(trading_date: date, symbol: str) -> str:
     Args:
         trading_date: The trading date
         symbol: Product symbol (e.g., 'al', 'cu', 'rb')
+        raw_data_dir: Optional base raw-data directory. When None, falls back
+            to PathsConfig rooted at PROJECT_ROOT.
 
     Returns:
         Main contract code (e.g., 'al2403', 'rb2410')
@@ -263,7 +278,7 @@ def get_main_contract(trading_date: date, symbol: str) -> str:
         >>> get_main_contract(date(2024, 9, 15), 'rb')
         'rb2501'  # rb has different rollover rules than al/cu
     """
-    df = _load_main_contract_data(symbol)
+    df = _load_main_contract_data(symbol, raw_data_dir=raw_data_dir)
 
     # Find the most recent entry on or before trading_date
     mask = df['date'] <= trading_date
@@ -458,7 +473,8 @@ def get_rollover_target(
     current_contract: str,
     check_date: date,
     position_size: int,
-    calendar: Optional[TradingCalendar] = None
+    calendar: Optional[TradingCalendar] = None,
+    raw_data_dir: Optional[Path] = None,
 ) -> Optional[str]:
     """
     Get the target contract for rollover.
@@ -468,6 +484,9 @@ def get_rollover_target(
         check_date: Current date
         position_size: Current position size
         calendar: Optional trading calendar
+        raw_data_dir: Optional base raw-data directory forwarded to
+            get_main_contract. When None, falls back to PathsConfig rooted at
+            PROJECT_ROOT.
 
     Returns:
         Target contract code, or None if no rollover needed
@@ -481,4 +500,4 @@ def get_rollover_target(
 
     # Get the main contract for current date (which would be the next contract)
     symbol, _, _ = parse_contract(current_contract)
-    return get_main_contract(check_date, symbol)
+    return get_main_contract(check_date, symbol, raw_data_dir=raw_data_dir)

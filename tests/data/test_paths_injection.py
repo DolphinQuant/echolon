@@ -26,3 +26,36 @@ def test_run_data_pipeline_accepts_paths():
 
 def test_run_live_data_update_accepts_paths():
     assert _accepts_paths(run_live_data_update)
+
+
+def test_no_module_level_settings_import_in_extractors_markets_indicators():
+    """Extractors, markets layer, and indicator optimizer must not import
+    path constants from echolon.config.settings at module scope."""
+    import ast
+    import pathlib
+
+    forbidden = {
+        "RAW_DATA_DIR", "MARKET_DATA_DIR", "INDICATOR_DIR",
+        "PROJECT_ROOT", "WORKSPACE_DIR", "OUTPUT_DIR", "SESSION_DIR",
+        "INDICATORS_BACKTEST_DIR", "INDICATORS_RESEARCH_DIR",
+        "PLATFORM_AGNOSTIC_DIR", "BEST_PARAMS_FILE", "BACKTEST_RESULTS_DIR",
+        "STRATEGY_LOG_DIR", "DEPLOY_CONFIG_DIR",
+    }
+    base = pathlib.Path(__file__).resolve().parent.parent.parent / "echolon"
+    targets = [
+        base / "data" / "extractors",
+        base / "markets",
+        base / "indicators" / "optimization",
+        base / "config" / "markets",
+    ]
+    offenders: list[tuple[str, list[str]]] = []
+    for root in targets:
+        for py in root.rglob("*.py"):
+            tree = ast.parse(py.read_text())
+            # Only top-level imports — function-scoped imports are fine (fallback pattern).
+            for node in ast.iter_child_nodes(tree):
+                if isinstance(node, ast.ImportFrom) and node.module == "echolon.config.settings":
+                    leaked = sorted({alias.name for alias in node.names} & forbidden)
+                    if leaked:
+                        offenders.append((str(py.relative_to(base)), leaked))
+    assert not offenders, f"module-level settings imports: {offenders}"
