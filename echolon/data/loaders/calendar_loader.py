@@ -11,7 +11,7 @@ from typing import Optional, List
 from datetime import datetime
 from pathlib import Path
 
-from echolon.config.settings import MARKET_DATA_DIR  # deprecated — use PathsConfig injection
+from echolon.config.settings import MARKET_DATA_DIR  # noqa: F401 — deprecated, use PathsConfig injection
 from echolon.markets.shfe.trading_calendar import TradingCalendar
 
 logger = logging.getLogger(__name__)

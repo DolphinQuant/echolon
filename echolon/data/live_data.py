@@ -11,6 +11,12 @@ Typical call from a live-deploy runner::
     from echolon.data.live_data import run_live_data_update
     run_live_data_update(ctx, client=xtdc, trading_calendar_path=config.trading_calendar_path)
 """
+# NOTE: Do NOT add `from __future__ import annotations` to this module.
+# The paths-injection smoke test (tests/data/test_paths_injection.py)
+# reads run_live_data_update's `paths` parameter annotation at runtime
+# via inspect.signature(); PEP 563 stringification makes the check silently
+# return False. If you want PEP 604 union syntax (`PathsConfig | None`),
+# Python 3.10+ already provides it at runtime without the __future__ import.
 import logging
 from pathlib import Path
 from typing import Optional
@@ -19,7 +25,7 @@ import pandas as pd
 
 from echolon.config.markets.core.context import TradingContext
 from echolon.config.paths_config import PathsConfig
-from echolon.config.settings import MARKET_DATA_DIR
+from echolon.config.settings import MARKET_DATA_DIR  # noqa: F401 — deprecated, use PathsConfig injection
 from .transformers.ohlcv_standardizer import OHLCVStandardizer
 from .transformers.session_filter import SessionFilter
 from .transformers.ohlcv_resampler import OHLCVResampler

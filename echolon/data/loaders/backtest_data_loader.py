@@ -22,7 +22,7 @@ import logging
 from pathlib import Path
 from typing import Dict, Any, Optional
 
-from echolon.config.settings import INDICATOR_DIR, MARKET_DATA_DIR  # deprecated — use PathsConfig injection
+from echolon.config.settings import INDICATOR_DIR, MARKET_DATA_DIR  # noqa: F401 — deprecated, use PathsConfig injection
 from echolon.config.markets.factory import MarketFactory
 from echolon.config.markets.core.context import TradingContext
 

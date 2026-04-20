@@ -26,7 +26,7 @@ from typing import Dict, Optional
 
 import pandas as pd
 
-from echolon.config.settings import MARKET_DATA_DIR  # deprecated — use PathsConfig injection
+from echolon.config.settings import MARKET_DATA_DIR  # noqa: F401 — deprecated, use PathsConfig injection
 from echolon.config.markets.shfe.phases import (
     get_tradeable_phases,
     is_aggregated_bar_size,

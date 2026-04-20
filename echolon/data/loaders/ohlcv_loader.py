@@ -12,7 +12,7 @@ import pandas as pd
 from typing import Optional, List
 from pathlib import Path
 
-from echolon.config.settings import MARKET_DATA_DIR  # deprecated — use PathsConfig injection
+from echolon.config.settings import MARKET_DATA_DIR  # noqa: F401 — deprecated, use PathsConfig injection
 
 logger = logging.getLogger(__name__)
 

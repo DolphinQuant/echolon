@@ -13,12 +13,17 @@ Separation of Concerns:
 - Transformers: Process and standardize data
 - Loaders: Provide data access for downstream consumers
 """
+# NOTE: Do NOT add `from __future__ import annotations` to this module.
+# The paths-injection smoke test (tests/data/test_paths_injection.py)
+# reads run_data_pipeline's `paths` parameter annotation at runtime
+# via inspect.signature(); PEP 563 stringification makes the check silently
+# return False.
 import logging
 from pathlib import Path
 from typing import Optional
 import pandas as pd
 
-from echolon.config.settings import MARKET_DATA_DIR, RAW_DATA_DIR
+from echolon.config.settings import MARKET_DATA_DIR, RAW_DATA_DIR  # noqa: F401 — deprecated, use PathsConfig injection
 from echolon.config.paths_config import PathsConfig
 from echolon.config.markets.factory import MarketFactory
 from echolon.config.markets.core.context import TradingContext
