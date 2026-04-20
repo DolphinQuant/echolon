@@ -35,6 +35,7 @@ dependencies = [
     "pytz>=2023.3",
     "scipy>=1.11.0",
     "typer>=0.9.0",
+    "platformdirs>=4.0.0",
 ]
 
 [project.optional-dependencies]
