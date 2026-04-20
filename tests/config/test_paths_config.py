@@ -59,6 +59,45 @@ def test_platformdirs_factory(monkeypatch):
     assert "echolon-test" in str(paths.project_root)
 
 
+def test_from_env_with_env_var(tmp_path: Path, monkeypatch):
+    """from_env() respects ECHOLON_PROJECT_ROOT."""
+    monkeypatch.setenv("ECHOLON_PROJECT_ROOT", str(tmp_path))
+    paths = PathsConfig.from_env()
+    assert paths.project_root == tmp_path.resolve()
+
+
+def test_from_env_falls_back_to_cwd(tmp_path: Path, monkeypatch):
+    """from_env() falls back to cwd when env var is unset OR empty."""
+    monkeypatch.chdir(tmp_path)
+    monkeypatch.delenv("ECHOLON_PROJECT_ROOT", raising=False)
+    paths = PathsConfig.from_env()
+    assert paths.project_root == tmp_path.resolve()
+
+    # Empty string env var also falls back.
+    monkeypatch.setenv("ECHOLON_PROJECT_ROOT", "")
+    paths = PathsConfig.from_env()
+    assert paths.project_root == tmp_path.resolve()
+
+
+def test_from_env_reflects_cwd_changes_after_import(tmp_path: Path, monkeypatch):
+    """from_env() re-reads env + cwd on every call (not cached at import)."""
+    monkeypatch.delenv("ECHOLON_PROJECT_ROOT", raising=False)
+    monkeypatch.chdir(tmp_path)
+    assert PathsConfig.from_env().project_root == tmp_path.resolve()
+
+    other = tmp_path.parent
+    monkeypatch.chdir(other)
+    assert PathsConfig.from_env().project_root == other.resolve()
+
+
+def test_from_env_custom_env_var(tmp_path: Path, monkeypatch):
+    """from_env() honors a custom env var name."""
+    monkeypatch.setenv("MY_ROOT", str(tmp_path))
+    monkeypatch.delenv("ECHOLON_PROJECT_ROOT", raising=False)
+    paths = PathsConfig.from_env(env_var="MY_ROOT")
+    assert paths.project_root == tmp_path.resolve()
+
+
 def test_unknown_override_rejected(tmp_path: Path):
     """Typo'd override keys must raise ValidationError, not be silently dropped."""
     with pytest.raises(ValidationError):

@@ -45,8 +45,7 @@ def load_trading_calendar(
     if path is None:
         if market_data_dir is None:
             from echolon.config.paths_config import PathsConfig
-            from echolon.config.settings import get_project_root
-            market_data_dir = PathsConfig.from_project_root(get_project_root()).market_data_dir
+            market_data_dir = PathsConfig.from_env().market_data_dir
         calendar_file = os.path.join(str(market_data_dir), market, asset, "trading_calendar.csv")
     else:
         calendar_file = path
@@ -154,8 +153,7 @@ def is_night_market_open(
     """
     if market_data_dir is None:
         from echolon.config.paths_config import PathsConfig
-        from echolon.config.settings import get_project_root
-        market_data_dir = PathsConfig.from_project_root(get_project_root()).market_data_dir
+        market_data_dir = PathsConfig.from_env().market_data_dir
     calendar_file = os.path.join(str(market_data_dir), market, asset, "trading_calendar.csv")
 
     if not os.path.exists(calendar_file):
@@ -211,8 +209,7 @@ def get_trading_calendar_instance(
     """
     if market_data_dir is None:
         from echolon.config.paths_config import PathsConfig
-        from echolon.config.settings import get_project_root
-        market_data_dir = PathsConfig.from_project_root(get_project_root()).market_data_dir
+        market_data_dir = PathsConfig.from_env().market_data_dir
     calendar_file = Path(market_data_dir) / market.upper() / asset / "trading_calendar.csv"
 
     calendar = TradingCalendar()

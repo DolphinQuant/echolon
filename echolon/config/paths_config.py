@@ -91,6 +91,18 @@ class PathsConfig(BaseModel):
         return cls(**defaults)
 
     @classmethod
+    def from_env(cls, env_var: str = "ECHOLON_PROJECT_ROOT") -> "PathsConfig":
+        """Resolve project root from an env var (fallback cwd) and build config.
+
+        Used as the default fallback across the library's public entry points
+        when the caller supplies no ``paths=``. Callers with a known project
+        root should prefer ``from_project_root(root)`` directly.
+        """
+        import os
+        root = os.getenv(env_var) or Path.cwd()
+        return cls.from_project_root(root)
+
+    @classmethod
     def from_platformdirs(cls, app_name: str = "echolon") -> "PathsConfig":
         """Build using platformdirs (XDG on Linux, %APPDATA% on Windows).
 

@@ -200,8 +200,7 @@ class OptunaOptimizer:
         self.instrument = ctx.instrument_name
         if indicator_dir is None:
             from echolon.config.paths_config import PathsConfig
-            from echolon.config.settings import get_project_root
-            indicator_dir = PathsConfig.from_project_root(get_project_root()).indicators_backtest_dir
+            indicator_dir = PathsConfig.from_env().indicators_backtest_dir
         self.indicators_dir = str(Path(indicator_dir) / ctx.instrument_name)
         # Note: commission and multiplier are retrieved from market_adapter.get_contract_spec()
 

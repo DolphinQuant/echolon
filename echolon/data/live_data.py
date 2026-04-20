@@ -78,8 +78,7 @@ def run_live_data_update(
         True if successful.
     """
     if paths is None:
-        from echolon.config.settings import get_project_root
-        paths = PathsConfig.from_project_root(get_project_root())
+        paths = PathsConfig.from_env()
 
     market = ctx.market_code
     instrument = ctx.instrument_name

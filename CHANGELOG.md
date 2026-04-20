@@ -22,9 +22,13 @@ number when the release ships.
   `docs/CONFIG_REFERENCE.md#pathsconfig`.
 - **Library-internal code no longer imports module-level path constants from
   `echolon.config.settings`.** Every consumer accepts the relevant path as a
-  kwarg with a lazy `PathsConfig.from_project_root(get_project_root())` fallback
-  when omitted. An AST-level regression test (`tests/data/test_paths_injection.py`)
-  prevents regression.
+  kwarg with a lazy `PathsConfig.from_env()` fallback when omitted. An
+  AST-level regression test (`tests/data/test_paths_injection.py`) prevents
+  regression.
+- **`echolon/config/settings.py` is deleted entirely.** The old
+  `get_project_root()` function is now a `PathsConfig.from_env()`
+  classmethod co-located with the model. Fallback sites across the
+  library now call `PathsConfig.from_env()` directly.
 - **Deleted** from `echolon/config/settings.py`: `SESSION_DIR`, `WORKSPACE_DIR`,
   `OUTPUT_DIR`, `RAW_DATA_DIR`, `MARKET_DATA_DIR`, `INDICATORS_DIR`,
   `INDICATORS_RESEARCH_DIR`, `INDICATORS_BACKTEST_DIR`, `CURRENT_DIR`,
@@ -36,8 +40,9 @@ number when the release ships.
   env-var overrides. Library code does not silently consume `.env`; move
   `load_dotenv()` to your CLI entry point. The `PROJECT_ROOT` module
   attribute is also deleted — callers must use
-  `echolon.config.settings.get_project_root()`, which re-reads the env
-  var on every call and does not bind cwd at import time.
+  `PathsConfig.from_env()` (on `echolon.config.paths_config.PathsConfig`),
+  which re-reads the env var / cwd on every call and does not bind cwd
+  at import time.
 - **Optional dependency**: `platformdirs>=4.0.0` is now an optional extra,
   not a required dependency. Install via `pip install echolon[platformdirs]`
   if you plan to use `PathsConfig.from_platformdirs(...)` for XDG-style

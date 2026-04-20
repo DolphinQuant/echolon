@@ -163,6 +163,7 @@ run_data_pipeline(ctx, paths=paths)
 # explicitly uses paths.market_data_dir
 ```
 
-`echolon.config.settings.PROJECT_ROOT` still works but emits a
-`DeprecationWarning`. Use `echolon.config.settings.get_project_root()`
-for non-deprecated access.
+`echolon.config.settings` has been removed entirely. Use
+`PathsConfig.from_env()` (honors `ECHOLON_PROJECT_ROOT`, falls back to
+cwd) when you need a lazily-resolved root, or
+`PathsConfig.from_project_root(<root>)` for an explicit root.

@@ -71,8 +71,7 @@ class WFARunner:
         self.config = config
         if backtest_results_dir is None:
             from echolon.config.paths_config import PathsConfig
-            from echolon.config.settings import get_project_root
-            backtest_results_dir = PathsConfig.from_project_root(get_project_root()).backtest_results_dir
+            backtest_results_dir = PathsConfig.from_env().backtest_results_dir
         self.output_dir = Path(backtest_results_dir)
         self.wfa_dir = self.output_dir / "wfa_windows"
 

@@ -323,9 +323,8 @@ class TradingSlot:
         per-instrument directory (single-instrument mode).
         """
         from echolon.config.paths_config import PathsConfig
-        from echolon.config.settings import get_project_root
         indicators_backtest_dir = str(
-            PathsConfig.from_project_root(get_project_root()).indicators_backtest_dir
+            PathsConfig.from_env().indicators_backtest_dir
         )
         slot_id = self.slot_config.slot_id
         instrument = self.slot_config.instrument

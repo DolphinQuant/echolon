@@ -42,8 +42,9 @@ def test_import_indicators():
 
 
 def test_import_config():
-    from echolon.config import settings
-    assert settings is not None
+    from echolon.config import paths_config
+    assert paths_config is not None
+    assert paths_config.PathsConfig is not None
 
 
 def test_import_deploy():

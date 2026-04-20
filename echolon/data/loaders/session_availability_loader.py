@@ -144,8 +144,7 @@ class SessionAvailabilityLoader:
             market_data_dir = self._market_data_dir
             if market_data_dir is None:
                 from echolon.config.paths_config import PathsConfig
-                from echolon.config.settings import get_project_root
-                market_data_dir = PathsConfig.from_project_root(get_project_root()).market_data_dir
+                market_data_dir = PathsConfig.from_env().market_data_dir
             file_path = Path(market_data_dir) / self.market / self.instrument / "session_availability.csv"
 
         if not file_path.exists():

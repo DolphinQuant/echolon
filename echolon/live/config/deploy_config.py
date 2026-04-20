@@ -160,9 +160,8 @@ class DeployConfig:
         still empty strings.
         """
         from echolon.config.paths_config import PathsConfig
-        from echolon.config.settings import get_project_root
 
-        paths = PathsConfig.from_project_root(get_project_root())
+        paths = PathsConfig.from_env()
 
         if not self.indicator_dir:
             self.indicator_dir = str(paths.indicators_backtest_dir)

@@ -95,8 +95,7 @@ def load_backtest_data(
     if indicators_path is None:
         if indicator_dir is None:
             from echolon.config.paths_config import PathsConfig
-            from echolon.config.settings import get_project_root
-            indicator_dir = PathsConfig.from_project_root(get_project_root()).indicators_backtest_dir
+            indicator_dir = PathsConfig.from_env().indicators_backtest_dir
         indicators_path = os.path.join(str(indicator_dir), instrument, "strategy_indicators.csv")
     indicators_data = pd.read_csv(indicators_path)
 
@@ -142,8 +141,7 @@ def load_backtest_data(
     # --- Load trading calendar ---
     if market_data_dir is None:
         from echolon.config.paths_config import PathsConfig
-        from echolon.config.settings import get_project_root
-        market_data_dir = PathsConfig.from_project_root(get_project_root()).market_data_dir
+        market_data_dir = PathsConfig.from_env().market_data_dir
     calendar_path = os.path.join(str(market_data_dir), market.upper(), instrument, "trading_calendar.csv")
     trading_calendar = pd.read_csv(calendar_path)
     trading_calendar['date'] = pd.to_datetime(trading_calendar['date'])
@@ -194,8 +192,7 @@ def load_indicator_metadata(
     if metadata_path is None:
         if indicator_dir is None:
             from echolon.config.paths_config import PathsConfig
-            from echolon.config.settings import get_project_root
-            indicator_dir = PathsConfig.from_project_root(get_project_root()).indicators_backtest_dir
+            indicator_dir = PathsConfig.from_env().indicators_backtest_dir
         instrument = ctx.instrument_name
         metadata_path = os.path.join(str(indicator_dir), instrument, "strategy_indicator_metadata.json")
     with open(metadata_path, 'r') as f:

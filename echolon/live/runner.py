@@ -113,8 +113,7 @@ class TradingRunner:
 
         # Resolve library-owned paths once; per-method fallback retired
         from echolon.config.paths_config import PathsConfig
-        from echolon.config.settings import get_project_root
-        self._paths: PathsConfig = PathsConfig.from_project_root(get_project_root())
+        self._paths: PathsConfig = PathsConfig.from_env()
 
     # =========================================================================
     # Public API

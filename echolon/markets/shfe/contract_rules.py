@@ -217,7 +217,7 @@ def _load_main_contract_data(
     Args:
         symbol: Product symbol (e.g., 'al', 'cu', 'rb')
         raw_data_dir: Optional base raw-data directory. When None, falls back
-            to PathsConfig rooted at get_project_root().
+            to ``PathsConfig.from_env()``.
 
     Returns:
         DataFrame with 'date' and 'main_contract' columns
@@ -231,8 +231,7 @@ def _load_main_contract_data(
 
     if raw_data_dir is None:
         from echolon.config.paths_config import PathsConfig
-        from echolon.config.settings import get_project_root
-        raw_data_dir = PathsConfig.from_project_root(get_project_root()).raw_data_dir
+        raw_data_dir = PathsConfig.from_env().raw_data_dir
     raw_data_dir = Path(raw_data_dir).resolve()
 
     cache_key = (symbol_lower, str(raw_data_dir))
@@ -268,7 +267,7 @@ def get_main_contract(
         trading_date: The trading date
         symbol: Product symbol (e.g., 'al', 'cu', 'rb')
         raw_data_dir: Optional base raw-data directory. When None, falls back
-            to PathsConfig rooted at get_project_root().
+            to ``PathsConfig.from_env()``.
 
     Returns:
         Main contract code (e.g., 'al2403', 'rb2410')
@@ -490,8 +489,8 @@ def get_rollover_target(
         position_size: Current position size
         calendar: Optional trading calendar
         raw_data_dir: Optional base raw-data directory forwarded to
-            get_main_contract. When None, falls back to PathsConfig rooted at
-            get_project_root().
+            get_main_contract. When None, falls back to
+            ``PathsConfig.from_env()``.
 
     Returns:
         Target contract code, or None if no rollover needed

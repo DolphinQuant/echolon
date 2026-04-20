@@ -89,8 +89,7 @@ def run_data_pipeline(
         >>> run_data_pipeline(ctx, skip_extraction=True)
     """
     if paths is None:
-        from echolon.config.settings import get_project_root
-        paths = PathsConfig.from_project_root(get_project_root())
+        paths = PathsConfig.from_env()
 
     # Extract from TradingContext
     market = ctx.market_code

@@ -552,8 +552,7 @@ class PortfolioTradingRunner:
 
         # Build PathsConfig once outside the loop
         from echolon.config.paths_config import PathsConfig
-        from echolon.config.settings import get_project_root
-        paths = PathsConfig.from_project_root(get_project_root())
+        paths = PathsConfig.from_env()
         indicators_backtest_dir = paths.indicators_backtest_dir
 
         # Step 2: Indicator calculation — per slot with its own config + regime params
@@ -1247,9 +1246,8 @@ class PortfolioTradingRunner:
         """
         from echolon.data.extractors.shfe.api_day_extractor import SHFEApiDayExtractor
         from echolon.config.paths_config import PathsConfig
-        from echolon.config.settings import get_project_root
 
-        market_data_dir = PathsConfig.from_project_root(get_project_root()).market_data_dir
+        market_data_dir = PathsConfig.from_env().market_data_dir
 
         seen = set()
         for sc in self.config.get_enabled_slots():
