@@ -107,7 +107,7 @@ def run_backtest(
     )
 
     if output_dir:
-        config.output_dir = output_dir
+        config.backtest_results_dir = output_dir
 
     # Create runner with ctx and execute
     runner = BacktestRunner(ctx=ctx, config=config, backtest_config=backtest_config)

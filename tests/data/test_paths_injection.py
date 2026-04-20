@@ -28,41 +28,10 @@ def test_run_live_data_update_accepts_paths():
     assert _accepts_paths(run_live_data_update)
 
 
-def test_no_module_level_settings_import_in_extractors_markets_indicators():
-    """Extractors, markets layer, and indicator optimizer must not import
-    path constants from echolon.config.settings at module scope."""
-    import ast
-    import pathlib
-
-    forbidden = {
-        "RAW_DATA_DIR", "MARKET_DATA_DIR", "INDICATOR_DIR",
-        "PROJECT_ROOT", "WORKSPACE_DIR", "OUTPUT_DIR", "SESSION_DIR",
-        "INDICATORS_BACKTEST_DIR", "INDICATORS_RESEARCH_DIR",
-        "PLATFORM_AGNOSTIC_DIR", "BEST_PARAMS_FILE", "BACKTEST_RESULTS_DIR",
-        "STRATEGY_LOG_DIR", "DEPLOY_CONFIG_DIR",
-    }
-    base = pathlib.Path(__file__).resolve().parent.parent.parent / "echolon"
-    targets = [
-        base / "data" / "extractors",
-        base / "markets",
-        base / "indicators" / "optimization",
-        base / "config" / "markets",
-    ]
-    offenders: list[tuple[str, list[str]]] = []
-    for root in targets:
-        for py in root.rglob("*.py"):
-            tree = ast.parse(py.read_text())
-            # Only top-level imports — function-scoped imports are fine (fallback pattern).
-            for node in ast.iter_child_nodes(tree):
-                if isinstance(node, ast.ImportFrom) and node.module == "echolon.config.settings":
-                    leaked = sorted({alias.name for alias in node.names} & forbidden)
-                    if leaked:
-                        offenders.append((str(py.relative_to(base)), leaked))
-    assert not offenders, f"module-level settings imports: {offenders}"
-
-
-def test_no_module_level_settings_import_in_backtest_strategy_live():
-    """backtest/, strategy/, live/ must not import path constants at module scope."""
+def test_no_module_level_forbidden_settings_imports_anywhere():
+    """No module in echolon/ may import path constants from settings at top level,
+    except echolon/config/settings.py (the source) and files explicitly carrying
+    a `# noqa: F401 — deprecated, use PathsConfig injection` marker on the line."""
     import ast
     import pathlib
 
@@ -75,12 +44,23 @@ def test_no_module_level_settings_import_in_backtest_strategy_live():
     }
     base = pathlib.Path(__file__).resolve().parent.parent.parent / "echolon"
     offenders: list[tuple[str, list[str]]] = []
-    for group in ("backtest", "strategy", "live"):
-        for py in (base / group).rglob("*.py"):
-            tree = ast.parse(py.read_text())
-            for node in ast.iter_child_nodes(tree):
-                if isinstance(node, ast.ImportFrom) and node.module == "echolon.config.settings":
-                    leaked = sorted({alias.name for alias in node.names} & forbidden)
-                    if leaked:
-                        offenders.append((str(py.relative_to(base)), leaked))
+    for py in base.rglob("*.py"):
+        # The source file itself defines these — skip.
+        if py == base / "config" / "settings.py":
+            continue
+        src_lines = py.read_text().splitlines()
+        tree = ast.parse("\n".join(src_lines))
+        for node in ast.iter_child_nodes(tree):
+            if not isinstance(node, ast.ImportFrom):
+                continue
+            if node.module != "echolon.config.settings":
+                continue
+            # Check if this import line has the deprecation shim marker.
+            # node.lineno is 1-indexed.
+            line = src_lines[node.lineno - 1] if node.lineno - 1 < len(src_lines) else ""
+            if "# noqa: F401 — deprecated, use PathsConfig injection" in line:
+                continue
+            leaked = sorted({alias.name for alias in node.names} & forbidden)
+            if leaked:
+                offenders.append((str(py.relative_to(base)), leaked))
     assert not offenders, f"module-level settings imports: {offenders}"

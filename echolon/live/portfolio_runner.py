@@ -550,6 +550,12 @@ class PortfolioTradingRunner:
         finally:
             xtdc.disconnect()
 
+        # Build PathsConfig once outside the loop
+        from echolon.config.paths_config import PathsConfig
+        from echolon.config.settings import PROJECT_ROOT
+        paths = PathsConfig.from_project_root(PROJECT_ROOT)
+        indicators_backtest_dir = paths.indicators_backtest_dir
+
         # Step 2: Indicator calculation — per slot with its own config + regime params
         for sc in self.config.get_enabled_slots():
             ctx = MarketFactory.create(
@@ -572,9 +578,6 @@ class PortfolioTradingRunner:
                 regime_params = regime_data.get('params', regime_data)
 
             # Output to per-slot indicator directory
-            from echolon.config.paths_config import PathsConfig
-            from echolon.config.settings import PROJECT_ROOT
-            indicators_backtest_dir = PathsConfig.from_project_root(PROJECT_ROOT).indicators_backtest_dir
             slot_indicator_dir = os.path.join(str(indicators_backtest_dir), sc.slot_id)
 
             self.log.info(f"Indicators: {sc.slot_id} -> {slot_indicator_dir}")

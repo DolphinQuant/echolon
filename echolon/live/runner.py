@@ -111,6 +111,11 @@ class TradingRunner:
         init_logging(logs_dir)
         self.logger = get_deploy_logger("trading_runner")
 
+        # Resolve library-owned paths once; per-method fallback retired
+        from echolon.config.paths_config import PathsConfig
+        from echolon.config.settings import PROJECT_ROOT
+        self._paths: PathsConfig = PathsConfig.from_project_root(PROJECT_ROOT)
+
     # =========================================================================
     # Public API
     # =========================================================================
@@ -377,10 +382,8 @@ class TradingRunner:
     def _create_strategy(self, strategy_params: Dict[str, Any]):
         """Import and instantiate the platform-agnostic strategy."""
         from echolon.strategy.loader import StrategyLoader
-        from echolon.config.paths_config import PathsConfig
-        from echolon.config.settings import PROJECT_ROOT
 
-        strategy_code_dir = PathsConfig.from_project_root(PROJECT_ROOT).strategy_code_dir
+        strategy_code_dir = self._paths.strategy_code_dir
         loader = StrategyLoader(strategy_code_dir)
         strategy_main = loader.load_function("strategy", "strategy_main")
 
@@ -635,10 +638,8 @@ class TradingRunner:
             Nested strategy parameter dictionary.
         """
         from echolon.strategy.loader import StrategyLoader
-        from echolon.config.paths_config import PathsConfig
-        from echolon.config.settings import PROJECT_ROOT
 
-        strategy_code_dir = PathsConfig.from_project_root(PROJECT_ROOT).strategy_code_dir
+        strategy_code_dir = self._paths.strategy_code_dir
         loader = StrategyLoader(strategy_code_dir)
         DEFAULT_PARAMS = loader.load_attr("strategy_params", "DEFAULT_PARAMS")
 
@@ -1018,12 +1019,9 @@ class TradingRunner:
         Called before is_trading_day() to ensure the calendar CSV is
         available. Uses the static calendar shipped in deploy/config/.
         """
-        from echolon.config.paths_config import PathsConfig
-        from echolon.config.settings import PROJECT_ROOT
-
         market = self.ctx.market_code
         instrument = self.ctx.instrument_name
-        market_data_dir = PathsConfig.from_project_root(PROJECT_ROOT).market_data_dir
+        market_data_dir = self._paths.market_data_dir
         calendar_dir = market_data_dir / market / instrument
         calendar_file = calendar_dir / "trading_calendar.csv"
 

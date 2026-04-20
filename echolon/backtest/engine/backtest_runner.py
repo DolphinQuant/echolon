@@ -37,7 +37,7 @@ Usage:
 import json
 import logging
 import os
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Any, Optional
@@ -97,7 +97,7 @@ class _RunnerConfig:
     # Paths — None means "resolve from PathsConfig lazily"
     indicator_dir: Optional[str] = None  # workspace/data/indicators/backtest/
     market_data_dir: Optional[str] = None  # workspace/data/market_data/
-    output_dir: Optional[str] = None  # workspace/current/backtest
+    backtest_results_dir: Optional[str] = None  # workspace/current/backtest
 
     # Features
     enable_strategy_logging: bool = True
@@ -153,7 +153,7 @@ class BacktestRunner:
         # Lazy-fill path fields from PathsConfig if caller left them as None
         if (self.config.indicator_dir is None
                 or self.config.market_data_dir is None
-                or self.config.output_dir is None):
+                or self.config.backtest_results_dir is None):
             from echolon.config.paths_config import PathsConfig
             from echolon.config.settings import PROJECT_ROOT
             paths = PathsConfig.from_project_root(PROJECT_ROOT)
@@ -161,8 +161,8 @@ class BacktestRunner:
                 self.config.indicator_dir = str(paths.indicators_backtest_dir)
             if self.config.market_data_dir is None:
                 self.config.market_data_dir = str(paths.market_data_dir)
-            if self.config.output_dir is None:
-                self.config.output_dir = str(paths.backtest_results_dir)
+            if self.config.backtest_results_dir is None:
+                self.config.backtest_results_dir = str(paths.backtest_results_dir)
         self.strategy_code_dir = strategy_code_dir
 
         # State
@@ -309,7 +309,7 @@ class BacktestRunner:
         )
 
         # Setup paths
-        output_dir = Path(self.config.output_dir)
+        output_dir = Path(self.config.backtest_results_dir)
         # Indicator directory for contract-aware broker
         # Default: {indicator_dir}/{instrument}/by_contract/
         # Per-slot: {indicator_dir}/{slot_id}/by_contract/ (when strategy_code_dir set)
