@@ -36,7 +36,7 @@ import numpy as np
 import pandas as pd
 import optuna
 from optuna.samplers import TPESampler
-from typing import Dict, List, Tuple, Optional, TYPE_CHECKING
+from typing import Dict, List, Tuple, Optional
 from dataclasses import dataclass
 from pathlib import Path
 import logging
@@ -45,9 +45,7 @@ from datetime import datetime
 
 from echolon.config.indicator_config import IndicatorConfig
 from echolon.config.markets.factory import MarketFactory
-
-if TYPE_CHECKING:
-    from echolon.config.paths_config import PathsConfig
+from echolon.config.paths_config import PathsConfig
 
 logger = logging.getLogger(__name__)
 
@@ -1051,7 +1049,7 @@ def optimize_regime_params(
     config: Optional[RegimeOptimizerConfig] = None,
     backtest_start_year: Optional[int] = None,
     indicator_config: Optional[IndicatorConfig] = None,
-    paths: Optional["PathsConfig"] = None,
+    paths: Optional[PathsConfig] = None,
 ) -> Dict:
     """Run regime-classifier hyperparameter optimization and return the winning dict.
 
@@ -1100,7 +1098,6 @@ def optimize_regime_params(
 
     if data_dir is None:
         if paths is None:
-            from echolon.config.paths_config import PathsConfig
             from echolon.config.settings import PROJECT_ROOT
             paths = PathsConfig.from_project_root(PROJECT_ROOT)
         data_dir = str(

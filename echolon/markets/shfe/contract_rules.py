@@ -31,8 +31,10 @@ import pandas as pd
 
 from .trading_calendar import TradingCalendar, get_last_trading_day_of_month
 
-# Cache for main contract data to avoid repeated file reads
-_main_contract_cache: Dict[str, pd.DataFrame] = {}
+# Cache for main contract data to avoid repeated file reads.
+# Keyed by (symbol_lower, str(resolved raw_data_dir)) so different injected
+# raw-data directories don't collide on re-entry.
+_main_contract_cache: Dict[Tuple[str, str], pd.DataFrame] = {}
 
 
 def parse_contract(contract_str: str) -> Tuple[str, int, int]:
@@ -226,15 +228,18 @@ def _load_main_contract_data(
     global _main_contract_cache
 
     symbol_lower = symbol.lower()
-    if symbol_lower in _main_contract_cache:
-        return _main_contract_cache[symbol_lower]
 
     if raw_data_dir is None:
         from echolon.config.paths_config import PathsConfig
         from echolon.config.settings import PROJECT_ROOT
         raw_data_dir = PathsConfig.from_project_root(PROJECT_ROOT).raw_data_dir
+    raw_data_dir = Path(raw_data_dir).resolve()
 
-    csv_path = Path(raw_data_dir) / "SHFE" / symbol_lower / "main_contract.csv"
+    cache_key = (symbol_lower, str(raw_data_dir))
+    if cache_key in _main_contract_cache:
+        return _main_contract_cache[cache_key]
+
+    csv_path = raw_data_dir / "SHFE" / symbol_lower / "main_contract.csv"
     if not csv_path.exists():
         raise FileNotFoundError(
             f"Main contract data not found for {symbol}: {csv_path}"
@@ -244,7 +249,7 @@ def _load_main_contract_data(
     df['date'] = pd.to_datetime(df['date']).dt.date
     df = df.sort_values('date').reset_index(drop=True)
 
-    _main_contract_cache[symbol_lower] = df
+    _main_contract_cache[cache_key] = df
     return df
 
 
