@@ -11,6 +11,44 @@ Not published to PyPI yet — more adjustments expected before the next
 release. This `Unreleased` section will be renamed to the final version
 number when the release ships.
 
+### Paths / config migration (breaking surface; transitional shim retained)
+
+- **New**: `echolon.config.paths_config.PathsConfig` — a single Pydantic model
+  holding every library-owned directory and file path. Callers construct one
+  (via `PathsConfig.from_project_root(<root>)` or `PathsConfig.from_platformdirs(<app_name>)`)
+  and inject it via a new keyword-only `paths=` parameter on every public
+  entry point (`run_data_pipeline`, `run_live_data_update`, `run_backtest`,
+  `run_indicator_calculation`, `optimize_regime_params`, etc.). See
+  `docs/CONFIG_REFERENCE.md#pathsconfig`.
+- **Library-internal code no longer imports module-level path constants from
+  `echolon.config.settings`.** Every consumer accepts the relevant path as a
+  kwarg with a lazy `PathsConfig.from_project_root(get_project_root())` fallback
+  when omitted. An AST-level regression test (`tests/data/test_paths_injection.py`)
+  prevents regression.
+- **Deleted** from `echolon/config/settings.py`: `SESSION_DIR`, `WORKSPACE_DIR`,
+  `OUTPUT_DIR`, `RAW_DATA_DIR`, `MARKET_DATA_DIR`, `INDICATORS_DIR`,
+  `INDICATORS_RESEARCH_DIR`, `INDICATORS_BACKTEST_DIR`, `CURRENT_DIR`,
+  `CURRENT_ANALYSIS_DIR`, `DEPLOY_CONFIG_DIR`, `BACKTEST_RESULTS_DIR`,
+  `STRATEGY_LOG_DIR`, `PLATFORM_AGNOSTIC_DIR`, `BEST_PARAMS_FILE`,
+  `INDICATOR_DIR`. Also deleted: the `load_dotenv()` auto-call, the
+  `get_workspace_dir()` / `get_data_dir()` / `get_dataset_dir()` functions,
+  and their `DOLPHIN_WORKSPACE` / `DOLPHIN_DATA_DIR` / `DOLPHIN_DATASET_DIR`
+  env-var overrides. Library code does not silently consume `.env`; move
+  `load_dotenv()` to your CLI entry point.
+- **Transitional shim**: `echolon.config.settings.PROJECT_ROOT` remains
+  accessible via a module-level `__getattr__` that emits a `DeprecationWarning`
+  on each access and resolves lazily (no longer bound at import time). New
+  code should call `echolon.config.settings.get_project_root()` instead,
+  which re-reads the env var on every call and emits no warning. The
+  `PROJECT_ROOT` attribute will be removed in a future release.
+- **Optional dependency**: `platformdirs>=4.0.0` is now an optional extra,
+  not a required dependency. Install via `pip install echolon[platformdirs]`
+  if you plan to use `PathsConfig.from_platformdirs(...)` for XDG-style
+  path resolution.
+- **Host-project migration (qorka pattern)**: hosts should construct a
+  `PathsConfig` at entry points. See `qorka/config/quant_engine.py`'s
+  `build_paths_config()` for a reference implementation.
+
 ### Data module cleanup (breaking)
 
 - `SHFEApiDayExtractor.generate_trading_calendar` now requires
