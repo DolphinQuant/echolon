@@ -18,15 +18,14 @@ Or, for pip-installed end-users without a project layout::
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any
 
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, model_validator
 
 
 class PathsConfig(BaseModel):
     """Every directory and file path echolon writes to or reads from."""
 
-    model_config = {"arbitrary_types_allowed": True}
+    model_config = {"extra": "forbid"}
 
     # Root
     project_root: Path
@@ -52,17 +51,12 @@ class PathsConfig(BaseModel):
     best_params_file: Path             # strategy_code_dir / "selected_robust_trial.json"
     deploy_config_file: Path           # session_dir / "deploy_config.json"
 
-    @field_validator("*", mode="before")
-    @classmethod
-    def _coerce_to_path(cls, v: Any) -> Any:
-        return Path(v) if isinstance(v, str) else v
-
     @model_validator(mode="after")
     def _absolutise(self) -> "PathsConfig":
         for name in type(self).model_fields:
             value = getattr(self, name)
             if isinstance(value, Path) and not value.is_absolute():
-                object.__setattr__(self, name, value.resolve())
+                setattr(self, name, value.resolve())
         return self
 
     @classmethod
@@ -100,8 +94,15 @@ class PathsConfig(BaseModel):
     def from_platformdirs(cls, app_name: str = "echolon") -> "PathsConfig":
         """Build using platformdirs (XDG on Linux, %APPDATA% on Windows).
 
-        Requires the optional dependency ``platformdirs``. Suitable for
+        Requires the optional extra ``echolon[platformdirs]``. Suitable for
         pip-installed end-users without a project layout of their own.
         """
-        from platformdirs import user_data_dir
+        try:
+            from platformdirs import user_data_dir
+        except ImportError as exc:
+            raise ImportError(
+                "PathsConfig.from_platformdirs requires the optional "
+                "dependency `platformdirs`. Install it with "
+                "`pip install echolon[platformdirs]` or `pip install platformdirs`."
+            ) from exc
         return cls.from_project_root(user_data_dir(app_name, ensure_exists=False))

@@ -57,3 +57,24 @@ def test_platformdirs_factory(monkeypatch):
     paths = PathsConfig.from_platformdirs("echolon-test")
     assert paths.project_root.is_absolute()
     assert "echolon-test" in str(paths.project_root)
+
+
+def test_unknown_override_rejected(tmp_path: Path):
+    """Typo'd override keys must raise ValidationError, not be silently dropped."""
+    with pytest.raises(ValidationError):
+        PathsConfig.from_project_root(tmp_path, markte_data_dir=tmp_path / "x")
+
+
+def test_relative_override_resolved(tmp_path: Path, monkeypatch):
+    """Relative-path overrides are absolutised (against cwd, per Pydantic's semantics)."""
+    monkeypatch.chdir(tmp_path)
+    paths = PathsConfig.from_project_root(tmp_path, market_data_dir="rel/md")
+    assert paths.market_data_dir.is_absolute()
+    assert paths.market_data_dir == (tmp_path / "rel" / "md").resolve()
+
+
+def test_string_override_coerced_to_path(tmp_path: Path):
+    """String overrides are coerced to Path by Pydantic's native type handling."""
+    paths = PathsConfig.from_project_root(tmp_path, market_data_dir=str(tmp_path / "x"))
+    assert isinstance(paths.market_data_dir, Path)
+    assert paths.market_data_dir == tmp_path / "x"
