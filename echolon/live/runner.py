@@ -66,7 +66,7 @@ from echolon.strategy.hooks.forced_exit_strategy_hook import ForcedExitStrategyH
 from .data_logger import save_trading_data_snapshot, save_trade_execution
 from echolon.strategy.interfaces import OrderStatus
 from echolon.config.settings import MARKET_DATA_DIR
-from echolon.data.live import run_live_data_update
+from echolon.data.live_data import run_live_data_update
 from echolon.indicators.run import run_indicator_calculation
 
 class TradingRunner:
@@ -1026,8 +1026,8 @@ class TradingRunner:
             return
 
         self.logger.info("Trading calendar not found — generating from static source")
-        from echolon.data.extractors.shfe.live_day_extractor import SHFELiveDayExtractor
-        extractor = SHFELiveDayExtractor(market=market, asset=instrument)
+        from echolon.data.extractors.shfe.api_day_extractor import SHFEApiDayExtractor
+        extractor = SHFEApiDayExtractor(market=market, asset=instrument)
         extractor.generate_trading_calendar(
             source_path=self.config.trading_calendar_path,
             output_dir=str(calendar_dir),

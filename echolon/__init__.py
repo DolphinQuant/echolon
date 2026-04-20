@@ -23,7 +23,7 @@ from echolon.strategy.schemas import (
 
 # Convenience entry points
 from echolon.backtest.runner import run_backtest
-from echolon.data.run import run_data_pipeline
+from echolon.data.backtest_data import run_data_pipeline
 
 __all__ = [
     "__version__",

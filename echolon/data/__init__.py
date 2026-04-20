@@ -15,7 +15,7 @@ Loaders::
 
 Extractors::
 
-    from echolon.data import SHFEDayExtractor, BinancePerpetualExtractor
+    from echolon.data import SHFEFileDayExtractor, BinancePerpetualExtractor
 
 Transformers::
 
@@ -25,8 +25,8 @@ Transformers::
 # ---------------------------------------------------------------------------
 # Entry points
 # ---------------------------------------------------------------------------
-from echolon.data.run import run_data_pipeline
-from echolon.data.live import run_live_data_update
+from echolon.data.backtest_data import run_data_pipeline
+from echolon.data.live_data import run_live_data_update
 
 # Alias for the concise public name used in the top-level package.
 run_pipeline = run_data_pipeline
@@ -35,9 +35,9 @@ run_pipeline = run_data_pipeline
 # Extractors
 # ---------------------------------------------------------------------------
 from echolon.data.extractors.base import BaseExtractor, XtdataClient
-from echolon.data.extractors.shfe.day_extractor import SHFEDayExtractor
-from echolon.data.extractors.shfe.live_day_extractor import SHFELiveDayExtractor
-from echolon.data.extractors.shfe.minute_extractor import SHFEMinuteExtractor
+from echolon.data.extractors.shfe.file_day_extractor import SHFEFileDayExtractor
+from echolon.data.extractors.shfe.api_day_extractor import SHFEApiDayExtractor
+from echolon.data.extractors.shfe.api_minute_extractor import SHFEApiMinuteExtractor
 from echolon.data.extractors.binance.perpetual_extractor import BinancePerpetualExtractor
 
 # ---------------------------------------------------------------------------
@@ -84,9 +84,9 @@ __all__ = [
     # Extractors
     "BaseExtractor",
     "XtdataClient",
-    "SHFEDayExtractor",
-    "SHFELiveDayExtractor",
-    "SHFEMinuteExtractor",
+    "SHFEFileDayExtractor",
+    "SHFEApiDayExtractor",
+    "SHFEApiMinuteExtractor",
     "BinancePerpetualExtractor",
     # Loaders
     "load_ohlcv",

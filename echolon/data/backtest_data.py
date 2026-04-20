@@ -39,9 +39,6 @@ def run_data_pipeline(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     skip_extraction: bool = False,
-    skip_standardization: bool = False,
-    skip_splitting: bool = False,
-    skip_calendar: bool = False,
     # Minute-specific options
     start_contract: Optional[str] = None,
 ) -> bool:
@@ -62,7 +59,7 @@ def run_data_pipeline(
     For minute data from API, Step 1 also downloads OHLCV for each contract.
 
     For live/incremental updates (MiniQMT), use ``run_live_data_update`` from
-    ``echolon.data.live`` instead.
+    ``echolon.data.live_data`` instead.
 
     Args:
         ctx: TradingContext with market, instrument, frequency configuration
@@ -70,10 +67,7 @@ def run_data_pipeline(
         output_dir: Processed data output directory (optional, uses default)
         start_date: Start date for filtering (YYYY-MM-DD)
         end_date: End date for filtering (YYYY-MM-DD)
-        skip_extraction: Skip raw data extraction step
-        skip_standardization: Skip data standardization step
-        skip_splitting: Skip contract splitting step
-        skip_calendar: Skip calendar generation step
+        skip_extraction: Skip raw data extraction step (reuse existing raw data)
         start_contract: For minute API data - starting contract code (e.g., "2301")
 
     Returns:
@@ -97,7 +91,6 @@ def run_data_pipeline(
     )
 
     # Determine output directory: workspace/data/market_data/{market}/{instrument}/
-    raw_data_output_dir = input_dir
     output_path = Path(output_dir) if output_dir else MARKET_DATA_DIR / market / instrument
     output_path.mkdir(parents=True, exist_ok=True)
 
@@ -152,12 +145,11 @@ def run_data_pipeline(
         output_path=output_path,
         start_date=start_date,
         end_date=end_date,
-        skip_calendar=skip_calendar,
         timezone=timezone
     )
 
     # Step 2: Standardize data (Transformer responsibility)
-    if not skip_standardization and raw_data is not None:
+    if raw_data is not None:
         logger.info("[DATA_PIPELINE] Step 2: Standardizing data")
         # Load trading calendar for intraday trading_date calculation
         trading_calendar = get_trading_calendar_instance(market, instrument)
@@ -196,8 +188,7 @@ def run_data_pipeline(
         logger.info(f"[DATA_PIPELINE] Resampled to {len(raw_data)} rows")
 
     # Step 5: Split by contract (Transformer responsibility)
-    # Live extractors already save per-contract CSVs during extraction
-    if not skip_splitting and raw_data is not None:
+    if raw_data is not None:
         logger.info("[DATA_PIPELINE] Step 5: Splitting by contract")
         splitter = ContractSplitter(output_dir=str(output_path))
         contracts = splitter.split(raw_data)
@@ -215,7 +206,6 @@ def _generate_calendar_if_needed(
     output_path: Path,
     start_date: Optional[str],
     end_date: Optional[str],
-    skip_calendar: bool,
     timezone: str = None
 ) -> None:
     """
@@ -229,11 +219,10 @@ def _generate_calendar_if_needed(
         output_path: Directory to save calendar file
         start_date: Optional start date filter
         end_date: Optional end date filter
-        skip_calendar: If True, skip calendar generation
         timezone: Timezone for epoch timestamp conversion (e.g., 'Asia/Shanghai').
                   Required for intraday data with epoch millisecond timestamps.
     """
-    if skip_calendar or raw_data is None:
+    if raw_data is None:
         return
 
     calendar_file = output_path / "trading_calendar.csv"
@@ -257,7 +246,7 @@ def _get_extractor(market: str, instrument: str, frequency: str):
     """Get the appropriate file-based extractor for market/frequency combination.
 
     For live/incremental extraction (MiniQMT), use
-    ``echolon.data.live._get_live_extractor`` instead.
+    ``echolon.data.live_data._get_live_extractor`` instead.
 
     Args:
         market: Market code (e.g., "SHFE")
@@ -268,11 +257,11 @@ def _get_extractor(market: str, instrument: str, frequency: str):
 
     if market_upper == "SHFE":
         if frequency == "day":
-            from .extractors.shfe.day_extractor import SHFEDayExtractor
-            return SHFEDayExtractor(market, instrument)
+            from .extractors.shfe.file_day_extractor import SHFEFileDayExtractor
+            return SHFEFileDayExtractor(market, instrument)
         elif frequency in ("minute", "1m", "5m", "15m", "1h"):
-            from .extractors.shfe.minute_extractor import SHFEMinuteExtractor
-            return SHFEMinuteExtractor(market, instrument)
+            from .extractors.shfe.api_minute_extractor import SHFEApiMinuteExtractor
+            return SHFEApiMinuteExtractor(market, instrument)
         else:
             raise ValueError(f"Unsupported frequency: {frequency}")
 
@@ -349,29 +338,16 @@ def _load_source_data(market: str, instrument: str, frequency: str) -> Optional[
         return combined
 
     else:
-        # Load day data: try sort_by_date.csv first, then raw Excel files
-        # Check in instrument directory first
+        # Load pre-extracted day data from sort_by_date.csv
         source_csv = RAW_DATA_DIR / market / instrument_code / "sort_by_date.csv"
         if source_csv.exists():
             logger.info(f"[DATA_PIPELINE] Loading day data from {source_csv}")
             return pd.read_csv(source_csv)
 
-        # Fallback: load from raw Excel files in day_data directory
-        raw_data_dir = RAW_DATA_DIR / market / "day_data"
-        if raw_data_dir.exists():
-            logger.info(f"[DATA_PIPELINE] Loading day data from Excel files in {raw_data_dir}")
-            extractor = _get_extractor(market, instrument, frequency)
-            # Extract raw data but don't save (just loading for transformation)
-            return extractor.extract_raw(input_dir=str(raw_data_dir), save=False)
-
-        # Try raw_data as alternative directory name
-        raw_data_dir = RAW_DATA_DIR / market / "raw_data"
-        if raw_data_dir.exists():
-            logger.info(f"[DATA_PIPELINE] Loading day data from Excel files in {raw_data_dir}")
-            extractor = _get_extractor(market, instrument, frequency)
-            return extractor.extract_raw(input_dir=str(raw_data_dir), save=False)
-
-        logger.warning(f"[DATA_PIPELINE] No day data source found for {market}/{instrument}")
+        logger.warning(
+            f"[DATA_PIPELINE] Pre-extracted day data not found at {source_csv}. "
+            f"Run once with skip_extraction=False to populate it."
+        )
         return None
 
 

@@ -22,10 +22,10 @@ Benefits:
 
 import json
 from pathlib import Path
-from typing import List, Dict, Tuple
+from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass
 from echolon.config.settings import WORKSPACE_DIR
-from echolon.config.settings import INDICATOR_PERIOD_CAPS, INTRADAY_INDICATOR_PERIOD_CAPS
+from echolon.config.indicator_config import IndicatorConfig
 
 
 @dataclass
@@ -57,15 +57,12 @@ class StrategyParamsGenerator:
     # 'sizer' (not 'sizing') to match parameter_architecture.py framework
     COMPONENT_SEQUENCE = ['entry', 'exit', 'risk', 'sizer']
 
-    # Indicator-specific period caps
-    # Contracts have minimum 186 bars when becoming "main"
-    # Exceeding caps → NaN values → zero trades
-    # Interday: periods are in days (186 daily bars)
-    # Intraday: periods are in bars (~4000+ bars for 186 days)
-    INTERDAY_PERIOD_CAPS = INDICATOR_PERIOD_CAPS
-    INTRADAY_PERIOD_CAPS = INTRADAY_INDICATOR_PERIOD_CAPS
-
-    def __init__(self, params_file_path: str = None, frequency: str = "interday"):
+    def __init__(
+        self,
+        params_file_path: str = None,
+        frequency: str = "interday",
+        indicator_config: Optional[IndicatorConfig] = None,
+    ):
         """
         Initialize generator.
 
@@ -74,6 +71,8 @@ class StrategyParamsGenerator:
                             If None, uses default location.
             frequency: Trading frequency - "interday" (daily bars) or "intraday" (sub-daily bars).
                       Affects which period caps are used.
+            indicator_config: Optional IndicatorConfig with custom period caps.
+                              When None, defaults are used.
         """
         if params_file_path is None:
             params_file_path = Path(WORKSPACE_DIR) / 'current' / 'strategy' / 'params_to_optimize.json'
@@ -83,9 +82,12 @@ class StrategyParamsGenerator:
         self.components = self.COMPONENT_SEQUENCE
 
         # Select period caps based on frequency
+        # Interday: periods are in days (186 daily bars)
+        # Intraday: periods are in bars (~4000+ bars for 186 days)
+        self.indicator_config = indicator_config or IndicatorConfig()
         self.period_caps = (
-            self.INTRADAY_PERIOD_CAPS if frequency == "intraday"
-            else self.INTERDAY_PERIOD_CAPS
+            self.indicator_config.intraday_caps if frequency == "intraday"
+            else self.indicator_config.interday_caps
         )
 
         # Track auto-corrections for agent reporting

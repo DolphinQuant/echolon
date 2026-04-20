@@ -1,6 +1,6 @@
 """
-SHFE Day Data Extractor
-=======================
+SHFE File Day Data Extractor
+============================
 
 Extracts daily OHLCV data from SHFE (Shanghai Futures Exchange) raw files.
 """
@@ -17,9 +17,9 @@ from echolon.config.markets.factory import MarketFactory
 logger = logging.getLogger(__name__)
 
 
-class SHFEDayExtractor(BaseExtractor):
+class SHFEFileDayExtractor(BaseExtractor):
     """
-    Extractor for SHFE daily futures data.
+    Extractor for SHFE daily futures data from raw files.
 
     Handles extraction from raw Excel files provided by the exchange.
 

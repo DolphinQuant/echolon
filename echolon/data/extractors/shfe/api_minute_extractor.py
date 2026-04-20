@@ -1,6 +1,6 @@
 """
-SHFE Minute Data Extractor
-==========================
+SHFE API Minute Data Extractor
+==============================
 
 Extracts minute-level OHLCV data from SHFE via xuntou (迅投) API.
 
@@ -31,7 +31,7 @@ XUNTOU_MARKET_CODES = {
 }
 
 
-class SHFEMinuteExtractor(BaseExtractor):
+class SHFEApiMinuteExtractor(BaseExtractor):
     """
     Extractor for SHFE minute-level futures data via xuntou API.
 

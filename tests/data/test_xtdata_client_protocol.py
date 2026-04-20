@@ -1,10 +1,10 @@
-"""Echolon does not import xtquant; minute_extractor uses caller-injected client."""
+"""Echolon does not import xtquant; api_minute_extractor uses caller-injected client."""
 import sys
 from unittest.mock import MagicMock
 
 import pytest
 
-from echolon.data.extractors.shfe.minute_extractor import SHFEMinuteExtractor
+from echolon.data.extractors.shfe.api_minute_extractor import SHFEApiMinuteExtractor
 
 
 def test_echolon_never_imports_xtquant():
@@ -49,12 +49,12 @@ def test_echolon_never_imports_xtquant():
                 ), f"{mod_name} imports from xtquant (file: {f})"
 
 
-def test_minute_extractor_uses_injected_client():
-    """Verify SHFEMinuteExtractor accepts and uses injected client."""
+def test_api_minute_extractor_uses_injected_client():
+    """Verify SHFEApiMinuteExtractor accepts and uses injected client."""
     mock_client = MagicMock()
     mock_client.get_market_data_ex.return_value = {}
 
-    ex = SHFEMinuteExtractor(market="SHFE", asset="aluminum", client=mock_client)
+    ex = SHFEApiMinuteExtractor(market="SHFE", asset="aluminum", client=mock_client)
 
     # Verify client is stored
     assert ex.client is mock_client

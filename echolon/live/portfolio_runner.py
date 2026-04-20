@@ -62,7 +62,7 @@ from echolon.data.loaders.calendar_loader import (
 )
 from echolon.config.settings import MARKET_DATA_DIR
 from echolon.config.markets.factory import MarketFactory
-from echolon.data.live import run_live_data_update
+from echolon.data.live_data import run_live_data_update
 from echolon.indicators.run import run_indicator_calculation
 
 import logging
@@ -1241,7 +1241,7 @@ class PortfolioTradingRunner:
         available. Mirrors TradingRunner._ensure_trading_calendar() but
         iterates all unique (market, instrument) pairs from enabled slots.
         """
-        from echolon.data.extractors.shfe.live_day_extractor import SHFELiveDayExtractor
+        from echolon.data.extractors.shfe.api_day_extractor import SHFEApiDayExtractor
 
         seen = set()
         for sc in self.config.get_enabled_slots():
@@ -1256,7 +1256,7 @@ class PortfolioTradingRunner:
                 continue
 
             self.log.info(f"Trading calendar not found for {sc.instrument} — generating from static source")
-            extractor = SHFELiveDayExtractor(market=sc.market, asset=sc.instrument)
+            extractor = SHFEApiDayExtractor(market=sc.market, asset=sc.instrument)
             extractor.generate_trading_calendar(
                 source_path=self.config.deploy.trading_calendar_path,
                 output_dir=str(calendar_dir),

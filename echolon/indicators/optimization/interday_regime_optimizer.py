@@ -43,17 +43,10 @@ import logging
 import json
 from datetime import datetime
 
-from echolon.config.settings import INDICATOR_PERIOD_CAPS
+from echolon.config.indicator_config import IndicatorConfig
 from echolon.config.markets.factory import MarketFactory
 
 logger = logging.getLogger(__name__)
-
-
-# ============================================================================
-# INDICATOR PERIOD CAPS (from strategy_params_generator.py)
-# ============================================================================
-# Contracts have minimum ~186 bars when becoming "main contract"
-# Exceeding these caps causes NaN values and broken calculations
 
 
 @dataclass
@@ -133,7 +126,7 @@ class RegimeOptimizerConfig:
     weight_balance: float = 0.15
     weight_stability: float = 0.15
 
-    # Parameter bounds (respecting INDICATOR_PERIOD_CAPS)
+    # Parameter bounds (upper bounds intersected with IndicatorConfig caps at suggest-time)
     fast_ma_period_range: Tuple[int, int] = (10, 40)  # Narrowed to avoid overfitting
     slow_ma_period_range: Tuple[int, int] = (30, 180)  # Minimum 30 to ensure separation from fast
     adx_period_range: Tuple[int, int] = (10, 50)  # Narrowed: 7 is too responsive
@@ -188,7 +181,8 @@ class InterdayRegimeOptimizer:
                  config: Optional[RegimeOptimizerConfig] = None,
                  futures: str = "copper",
                  market: str = "SHFE",
-                 backtest_start_year: Optional[int] = None):
+                 backtest_start_year: Optional[int] = None,
+                 indicator_config: Optional[IndicatorConfig] = None):
         """
         Initialize regime optimizer.
 
@@ -206,9 +200,13 @@ class InterdayRegimeOptimizer:
             Earliest contract year (e.g. 2018) for filtering.  Required when
             contract filtering is desired; pass ``None`` to disable filtering
             (all contracts are loaded).
+        indicator_config : IndicatorConfig, optional
+            Period caps for technical indicators.  When *None* the default
+            :class:`IndicatorConfig` is used.
         """
         self.data_dir = Path(data_dir)
         self.config = config or RegimeOptimizerConfig()
+        self.indicator_config = indicator_config or IndicatorConfig()
         self.futures = futures
         self.market = market
         self._backtest_start_year = backtest_start_year
@@ -761,7 +759,7 @@ class InterdayRegimeOptimizer:
         adx_period = trial.suggest_int(
             'adx_period',
             cfg.adx_period_range[0],
-            min(cfg.adx_period_range[1], INDICATOR_PERIOD_CAPS['adx'])  # Respect ADX cap
+            min(cfg.adx_period_range[1], self.indicator_config.get_interday_cap('adx'))
         )
 
         adx_trend_threshold = trial.suggest_float(
@@ -773,7 +771,7 @@ class InterdayRegimeOptimizer:
         atr_period = trial.suggest_int(
             'atr_period',
             cfg.atr_period_range[0],
-            min(cfg.atr_period_range[1], INDICATOR_PERIOD_CAPS['default'])
+            min(cfg.atr_period_range[1], self.indicator_config.get_interday_cap('atr'))
         )
 
         vol_lookback = trial.suggest_int(
@@ -1049,6 +1047,7 @@ def optimize_regime_params(
     n_trials: int = 400,
     config: Optional[RegimeOptimizerConfig] = None,
     backtest_start_year: Optional[int] = None,
+    indicator_config: Optional[IndicatorConfig] = None,
 ) -> Dict:
     """Run regime-classifier hyperparameter optimization and return the winning dict.
 
@@ -1072,6 +1071,8 @@ def optimize_regime_params(
             with ``n_trials`` applied.
         backtest_start_year: Earliest contract year to include (e.g. 2018).
             Pass *None* to load all available contracts.
+        indicator_config: Optional :class:`IndicatorConfig` to override
+            indicator period caps.  When *None* defaults are used.
 
     Returns:
         dict mapping regime-param names to optimized values.  Shape is
@@ -1101,6 +1102,7 @@ def optimize_regime_params(
         futures=ctx.instrument_name,
         market=ctx.market_code,
         backtest_start_year=backtest_start_year,
+        indicator_config=indicator_config,
     )
 
     # optimize() returns Tuple[Dict, optuna.Study]; we return only the params dict

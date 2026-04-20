@@ -970,7 +970,7 @@ class MiniQMTClient:
         """
         Download full main contract history via QMT's xtdata connection.
 
-        Replicates the logic from SHFEMinuteExtractor._download_main_contract_history
+        Replicates the logic from SHFEApiMinuteExtractor._download_main_contract_history
         but uses the QMT desktop xtdata connection (no xtdc required).
 
         Args:

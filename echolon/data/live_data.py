@@ -8,7 +8,7 @@ that was previously handled inside ``run_data_pipeline`` (now file-only).
 
 Typical call from a live-deploy runner::
 
-    from echolon.data.live import run_live_data_update
+    from echolon.data.live_data import run_live_data_update
     run_live_data_update(ctx, client=xtdc, trading_calendar_path=config.trading_calendar_path)
 """
 from __future__ import annotations
@@ -38,8 +38,6 @@ def run_live_data_update(
     trading_calendar_path: Optional[str] = None,
     present_date=None,
     skip_calendar: bool = False,
-    skip_standardization: bool = False,
-    skip_splitting: bool = False,
 ) -> bool:
     """Incremental bar download + transform for a running live deploy.
 
@@ -63,9 +61,8 @@ def run_live_data_update(
         trading_calendar_path:  Path to user-supplied ``trading_calendar.csv``
                                 (SHFE live deploys require this).
         present_date:           Reference date; defaults to today.
-        skip_calendar:          Skip the live calendar update step.
-        skip_standardization:   Skip OHLCV standardisation.
-        skip_splitting:         Skip contract splitting.
+        skip_calendar:          Skip the live calendar update step (set when the
+                                caller has already ensured the calendar).
 
     Returns:
         True if successful.
@@ -123,17 +120,16 @@ def run_live_data_update(
             logger.warning("[LIVE_DATA] Trading calendar update returned empty")
 
     # Step 2: Standardise
-    if not skip_standardization:
-        logger.info("[LIVE_DATA] Step 2: Standardising data")
-        trading_calendar = get_trading_calendar_instance(market, instrument)
-        standardizer = OHLCVStandardizer(
-            fill_missing=True,
-            market=market,
-            trading_calendar=trading_calendar,
-            bar_size=bar_size,
-        )
-        raw_data = standardizer.standardize(raw_data, timezone=timezone)
-        logger.info(f"[LIVE_DATA] Standardised {len(raw_data)} rows")
+    logger.info("[LIVE_DATA] Step 2: Standardising data")
+    trading_calendar = get_trading_calendar_instance(market, instrument)
+    standardizer = OHLCVStandardizer(
+        fill_missing=True,
+        market=market,
+        trading_calendar=trading_calendar,
+        bar_size=bar_size,
+    )
+    raw_data = standardizer.standardize(raw_data, timezone=timezone)
+    logger.info(f"[LIVE_DATA] Standardised {len(raw_data)} rows")
 
     # Step 2.5: Analyse SHFE session availability (intraday only)
     if is_intraday and raw_data is not None and market.upper() == "SHFE":
@@ -158,9 +154,7 @@ def run_live_data_update(
         logger.info(f"[LIVE_DATA] Resampled to {len(raw_data)} rows")
 
     # Step 5: Split by contract
-    # Note: live extractors already write per-contract CSVs during Step 1, so
-    # splitting is typically skipped in practice (skip_splitting=True at call sites).
-    if not skip_splitting and raw_data is not None:
+    if raw_data is not None:
         logger.info("[LIVE_DATA] Step 5: Splitting by contract")
         splitter = ContractSplitter(output_dir=str(output_path))
         contracts = splitter.split(raw_data)
@@ -178,7 +172,7 @@ def _get_live_extractor(market: str, instrument: str, frequency: str):
     """Return a live-capable extractor for the given market/frequency.
 
     Currently only SHFE interday live extraction is supported
-    (``SHFELiveDayExtractor``).  Raise ``ValueError`` for unsupported
+    (``SHFEApiDayExtractor``).  Raise ``ValueError`` for unsupported
     combinations so callers get a clear error rather than a silent fallback
     to file-based extraction.
     """
@@ -186,12 +180,12 @@ def _get_live_extractor(market: str, instrument: str, frequency: str):
 
     if market_upper == "SHFE":
         if frequency == "day":
-            from .extractors.shfe.live_day_extractor import SHFELiveDayExtractor
-            return SHFELiveDayExtractor(market, instrument)
+            from .extractors.shfe.api_day_extractor import SHFEApiDayExtractor
+            return SHFEApiDayExtractor(market, instrument)
         else:
             raise ValueError(
                 f"Live extraction for SHFE frequency '{frequency}' is not yet supported. "
-                "Only 'day' (interday) is available via SHFELiveDayExtractor."
+                "Only 'day' (interday) is available via SHFEApiDayExtractor."
             )
 
     raise ValueError(

@@ -1,8 +1,8 @@
 """
-SHFE Live Day Data Extractor
-=============================
+SHFE API Day Data Extractor
+============================
 
-Extracts daily OHLCV data from SHFE via MiniQMT live connection.
+Extracts daily OHLCV data from SHFE via MiniQMT API.
 
 This extractor connects to a MiniQMT client to download per-contract
 daily OHLCV data for SHFE futures.  It provides both full extraction
@@ -29,9 +29,9 @@ from echolon.config.markets.factory import MarketFactory
 logger = logging.getLogger(__name__)
 
 
-class SHFELiveDayExtractor(BaseExtractor):
+class SHFEApiDayExtractor(BaseExtractor):
     """
-    Extractor for SHFE daily futures data via MiniQMT live connection.
+    Extractor for SHFE daily futures data via MiniQMT API.
 
     Downloads per-contract OHLCV data from a connected MiniQMT client.
     Supports both full extraction and incremental updates.
@@ -307,7 +307,7 @@ class SHFELiveDayExtractor(BaseExtractor):
 
         if not source_path:
             raise ValueError(
-                "SHFELiveDayExtractor.generate_trading_calendar requires an explicit "
+                "SHFEApiDayExtractor.generate_trading_calendar requires an explicit "
                 "source_path. SHFE has no public trading-calendar API — derive one from "
                 "the official holiday schedule at shfe.com.cn and ship the CSV alongside "
                 "your deploy configuration (e.g. session/trading_calendar.csv), then "

@@ -13,7 +13,7 @@ number when the release ships.
 
 ### Data module cleanup (breaking)
 
-- `SHFELiveDayExtractor.generate_trading_calendar` now requires
+- `SHFEApiDayExtractor.generate_trading_calendar` now requires
   `source_path: str`. SHFE has no public trading-calendar API, so
   callers must derive one from the official holiday schedule
   (shfe.com.cn) and pass its path. Previously silently read from a
@@ -30,9 +30,9 @@ number when the release ships.
 - Extractors no longer default `output_dir` to `PROJECT_ROOT / "data"
   / ...`. Callers must pass `output_dir` explicitly (same pattern as
   indicator `output_dir` in the indicator cleanup). Affects all four
-  extractors: SHFEDayExtractor, SHFELiveDayExtractor, SHFEMinuteExtractor,
+  extractors: SHFEFileDayExtractor, SHFEApiDayExtractor, SHFEApiMinuteExtractor,
   BinancePerpetualExtractor.
-- `echolon` no longer imports `xtquant`. `SHFEMinuteExtractor`
+- `echolon` no longer imports `xtquant`. `SHFEApiMinuteExtractor`
   requires an injected client conforming to the new `XtdataClient`
   protocol defined in `echolon.data.extractors.base`.
 - `run_data_pipeline` signature stripped: removed `source`, `client`,
@@ -51,8 +51,60 @@ number when the release ships.
   `get_session_availability_loader`. When `path` is set, loaders
   bypass the `MARKET_DATA_DIR / {market} / {asset} / ...` convention.
 
+### Config surface alignment (IndicatorConfig wired in)
+
+- `IndicatorConfig` is now the single source of truth for indicator
+  period caps. Previously the `IndicatorConfig` class existed but had
+  no production callers; `INDICATOR_PERIOD_CAPS` /
+  `INTRADAY_INDICATOR_PERIOD_CAPS` module-level dicts in
+  `echolon/config/settings.py` (and a duplicate pair in
+  `qorka/config/quant_engine.py`) were the authoritative values.
+- Call sites rewired to accept an injected `IndicatorConfig`:
+  `InterdayRegimeOptimizer.__init__` and the `optimize_regime_params`
+  wrapper gain an `indicator_config: Optional[IndicatorConfig] = None`
+  param; `StrategyParamsGenerator.__init__` gains the same.
+  When omitted, `IndicatorConfig()` defaults apply (identical values
+  to the old module constants).
+- Deleted: `INDICATOR_PERIOD_CAPS` / `INTRADAY_INDICATOR_PERIOD_CAPS`
+  from `echolon/config/settings.py` and from
+  `qorka/config/quant_engine.py`. Added `build_indicator_config()`
+  factory in `qorka/config/quant_engine.py` for symmetry with the
+  existing `build_backtest_config` / `build_optuna_config` /
+  `build_wfa_config` factories.
+
 ### Data module cleanup (polish / renames)
 
+- Unused skip-flags dropped from data-pipeline entry points:
+  `run_data_pipeline` loses `skip_standardization`, `skip_splitting`,
+  `skip_calendar` (no callers in echolon or qorka);
+  `run_live_data_update` loses `skip_standardization`, `skip_splitting`
+  (also no callers). `skip_extraction` stays on `run_data_pipeline`
+  (used by `qorka/orchestrator/strategy_dev.py`) and `skip_calendar`
+  stays on `run_live_data_update` (used by
+  `echolon/live/{runner,portfolio_runner}.py` where the calendar is
+  pre-ensured separately).
+- `skip_extraction=True` is now honest: `_load_source_data` only reads
+  pre-extracted `sort_by_date.csv` and returns `None` (with a helpful
+  warning) if absent. The old Excel fallbacks silently re-ran
+  `extract_raw(save=False)` — defeating the purpose of the flag.
+  Callers who want the fallback must run once with
+  `skip_extraction=False` to populate the CSV first.
+- Data-pipeline entry-point modules renamed to make the pair parallel
+  and self-describing: `echolon/data/run.py` → `backtest_data.py`
+  and `echolon/data/live.py` → `live_data.py`. Public function names
+  (`run_data_pipeline`, `run_live_data_update`) are unchanged, and the
+  preferred import path remains `from echolon.data import ...` — the
+  module-rename only affects callers that deep-imported from
+  `echolon.data.run` / `echolon.data.live`.
+- SHFE extractors renamed to mark source explicitly (file vs api):
+  `SHFEDayExtractor` → `SHFEFileDayExtractor`
+  (`day_extractor.py` → `file_day_extractor.py`),
+  `SHFELiveDayExtractor` → `SHFEApiDayExtractor`
+  (`live_day_extractor.py` → `api_day_extractor.py`),
+  `SHFEMinuteExtractor` → `SHFEApiMinuteExtractor`
+  (`minute_extractor.py` → `api_minute_extractor.py`). The old
+  "Day/Minute" names silently meant "file + Day" or "api + Minute",
+  and "Live" mixed source and mode axes. No compat shim.
 - `echolon/data/loaders/shfe_loader.py` renamed to
   `backtest_data_loader.py`. No compat shim (pre-1.0 hard rename);
   update your imports accordingly.

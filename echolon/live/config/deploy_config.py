@@ -51,7 +51,7 @@ class DeployConfig:
 
     # Trading calendar (SHFE live deploy)
     trading_calendar_path: str = ""   # Path to user-provided trading_calendar.csv;
-                                      # required when using SHFELiveDayExtractor.
+                                      # required when using SHFEApiDayExtractor.
 
     # Market/instrument/frequency (for building TradingContext)
     market: str = ""

@@ -76,7 +76,7 @@ IMPORT_MIGRATIONS: dict[str, str] = {
     "echolon.quant_engine.market_adapters.base_adapter": "echolon.markets.base",
     "echolon.quant_engine.market_adapters": "echolon.markets",
     # ---- data_pipeline → data ----
-    "echolon.data_pipeline.run_pipeline": "echolon.data.run",
+    "echolon.data_pipeline.run_pipeline": "echolon.data.backtest_data",
     "echolon.data_pipeline.schemas.ohlcv": "echolon.data.schemas",
     "echolon.data_pipeline.schemas.standard_schema": "echolon.data.schemas",
     "echolon.data_pipeline": "echolon.data",

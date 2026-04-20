@@ -1,26 +1,26 @@
 """Extractors raise when neither output_dir nor a default-paths override is supplied."""
 import pytest
 
-from echolon.data.extractors.shfe.day_extractor import SHFEDayExtractor
-from echolon.data.extractors.shfe.minute_extractor import SHFEMinuteExtractor
-from echolon.data.extractors.shfe.live_day_extractor import SHFELiveDayExtractor
+from echolon.data.extractors.shfe.file_day_extractor import SHFEFileDayExtractor
+from echolon.data.extractors.shfe.api_minute_extractor import SHFEApiMinuteExtractor
+from echolon.data.extractors.shfe.api_day_extractor import SHFEApiDayExtractor
 
 
-def test_day_extractor_requires_output_dir(tmp_path):
-    ex = SHFEDayExtractor(market="SHFE", asset="aluminum")
+def test_file_day_extractor_requires_output_dir(tmp_path):
+    ex = SHFEFileDayExtractor(market="SHFE", asset="aluminum")
     # extract_raw without any path-providing args must raise
     with pytest.raises(ValueError, match="output_dir"):
         ex.extract_raw()   # no input/output dirs
 
 
-def test_minute_extractor_requires_output_dir():
-    ex = SHFEMinuteExtractor(market="SHFE", asset="aluminum")
+def test_api_minute_extractor_requires_output_dir():
+    ex = SHFEApiMinuteExtractor(market="SHFE", asset="aluminum")
     with pytest.raises(ValueError, match="output_dir"):
         ex.extract_raw()
 
 
-def test_live_day_extractor_requires_output_dir():
-    ex = SHFELiveDayExtractor(market="SHFE", asset="aluminum")
+def test_api_day_extractor_requires_output_dir():
+    ex = SHFEApiDayExtractor(market="SHFE", asset="aluminum")
     with pytest.raises(ValueError, match="output_dir"):
         ex.extract_raw()
 
