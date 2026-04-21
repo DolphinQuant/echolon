@@ -17,7 +17,7 @@ DESIGN PRINCIPLE:
 """
 
 from typing import Dict, List, Union, Literal, Optional
-from pydantic import BaseModel, Field, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, field_validator, model_validator
 import json
 import os
 import math
@@ -106,9 +106,32 @@ class EntrySignalOutput(BaseModel):
             )
         return v
 
-    class Config:
-        extra = 'allow'  # Allow strategy-specific diagnostic fields
-        arbitrary_types_allowed = True  # Allow Enum types
+    @model_validator(mode="before")
+    @classmethod
+    def _check_required_fields(cls, values):
+        """Raise VAL-001 listing any missing required fields.
+
+        Runs before Pydantic's own per-field validation so LLM authors get a
+        catalog-coded error enumerating all missing fields at once, rather than
+        Pydantic's generic one-error-per-field output.
+        """
+        if not isinstance(values, dict):
+            return values
+        required = {
+            name for name, f in cls.model_fields.items()
+            if f.is_required()
+        }
+        missing = [f for f in required if f not in values]
+        if missing:
+            raise_error(
+                "VAL-001",
+                file=cls.__name__,
+                method="__init__",
+                missing=", ".join(sorted(missing)),
+            )
+        return values
+
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
 
 class ExitSignalOutput(BaseModel):
@@ -187,9 +210,31 @@ class ExitSignalOutput(BaseModel):
             )
         return v
 
-    class Config:
-        extra = 'allow'  # Allow strategy-specific diagnostic fields
-        arbitrary_types_allowed = True  # Allow Enum types
+    @model_validator(mode="before")
+    @classmethod
+    def _check_required_fields(cls, values):
+        """Raise VAL-001 listing any missing required fields.
+
+        Mirror of the ``EntrySignalOutput`` validator so both schemas deliver
+        catalog-coded missing-field errors to LLM authors.
+        """
+        if not isinstance(values, dict):
+            return values
+        required = {
+            name for name, f in cls.model_fields.items()
+            if f.is_required()
+        }
+        missing = [f for f in required if f not in values]
+        if missing:
+            raise_error(
+                "VAL-001",
+                file=cls.__name__,
+                method="__init__",
+                missing=", ".join(sorted(missing)),
+            )
+        return values
+
+    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
 
 
 class SizerOutput(BaseModel):
