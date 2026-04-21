@@ -79,3 +79,38 @@ def test_run_context_isolated_across_asyncio_tasks():
     asyncio.run(runner())
     assert results["a"] == "optimization"
     assert results["b"] == "debug"
+
+
+import importlib
+
+
+def test_setup_backtest_logging_references_real_loggers():
+    """setup_backtest_logging must not reference logger names that
+    correspond to non-existent modules (regression: previously referenced
+    modules.quant_engine.* which didn't exist post-reorg)."""
+    import ast
+    from pathlib import Path
+
+    src_path = Path(importlib.import_module("echolon.backtest.logging_utils").__file__)
+    tree = ast.parse(src_path.read_text())
+
+    # Collect every string literal inside setup_backtest_logging that looks
+    # like a dotted echolon.* logger name.
+    logger_names: list[str] = []
+    for node in ast.walk(tree):
+        if isinstance(node, ast.FunctionDef) and node.name == "setup_backtest_logging":
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Constant) and isinstance(sub.value, str):
+                    if sub.value.startswith("echolon."):
+                        logger_names.append(sub.value)
+
+    assert logger_names, "expected echolon.* logger names inside setup_backtest_logging"
+
+    for name in logger_names:
+        try:
+            importlib.import_module(name)
+        except ImportError as exc:
+            raise AssertionError(
+                f"Logger name {name!r} referenced in setup_backtest_logging "
+                f"does not resolve to an importable module: {exc}"
+            )

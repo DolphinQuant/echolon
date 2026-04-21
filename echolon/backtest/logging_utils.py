@@ -66,33 +66,25 @@ def setup_backtest_logging(run_context: RunContext) -> None:
     set_run_context(run_context)
 
     if run_context == "optimization":
-        # Minimal logging for high-throughput optimization
         root_logger = logging.getLogger()
         root_logger.setLevel(logging.WARNING)
 
-        # Allow ERROR and CRITICAL for all backtest components
-        # (important for debugging failed trials)
+        # Quiet high-volume bar-level / trial-level loggers (ERROR+).
+        # These are the modules that log inside tight loops.
         for logger_name in [
-            "backtest",
-            "backtesting",
-            "backtesting.engine",
-            "backtesting.engine.backtest_engine",
-            "backtesting.engine.analyzers",
-            "backtesting.engine.enhanced_position",
-            "backtrader_strategy",
-            "backtrader_strategy.core",
-            "prepare_data",
-            # quant_engine module loggers (suppress detailed bar-by-bar logs)
-            "modules.quant_engine",
-            "modules.quant_engine.backtest",
-            "modules.quant_engine.backtest.engine",
-            "modules.quant_engine.backtest.engine.backtrader_strategy",
-            "modules.quant_engine.backtest.engine.hooks",
-            "modules.quant_engine.core",
-            "modules.quant_engine.core.base",
-            "modules.quant_engine.core.base.base_component",
-            "modules.quant_engine.core.base.base_strategy",
-            "modules.quant_engine.data_loader",
+            "echolon.backtest",
+            "echolon.backtest.engine",
+            "echolon.backtest.engine.backtrader_strategy",
+            "echolon.backtest.engine.backtrader_engine",
+            "echolon.backtest.engine.backtest_runner",
+            "echolon.backtest.engine.hooks.contract_aware.broker",
+            "echolon.backtest.engine.hooks.contract_aware.hook",
+            "echolon.backtest.engine.hooks.session_aware",
+            "echolon.backtest.mfe_mae",
+            "echolon.backtest.optimization.optuna_study",
+            "echolon.backtest.wfa.runner",
+            "echolon.indicators.engine.processor",
+            "echolon.indicators.optimization.interday_regime_optimizer",
         ]:
             logging.getLogger(logger_name).setLevel(logging.ERROR)
 
@@ -100,37 +92,30 @@ def setup_backtest_logging(run_context: RunContext) -> None:
         logging.getLogger("backtrader").setLevel(logging.ERROR)
         logging.getLogger("backtrader.broker").setLevel(logging.ERROR)
         logging.getLogger("backtrader.cerebro").setLevel(logging.ERROR)
-
-        # Suppress third-party verbose loggers
         logging.getLogger("matplotlib").setLevel(logging.ERROR)
 
     elif run_context == "debug":
-        # Full visibility for development
         root_logger = logging.getLogger()
-        root_logger.setLevel(logging.DEBUG)
+        root_logger.setLevel(logging.INFO)  # NOT DEBUG — per-module opt-in via ECHOLON_DEBUG_MODULES (Phase 3)
 
-        # All backtest components at INFO level
-        for logger_name in ["backtest", "backtesting", "backtrader_strategy", "prepare_data"]:
+        for logger_name in [
+            "echolon.backtest",
+            "echolon.backtest.engine.backtrader_strategy",
+            "echolon.indicators.engine.processor",
+        ]:
             logging.getLogger(logger_name).setLevel(logging.INFO)
 
-        # Suppress matplotlib in debug too
         logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
     elif run_context == "best_trial":
-        # Balanced logging for production runs
         root_logger = logging.getLogger()
         root_logger.setLevel(logging.INFO)
 
-        # Backtest components at INFO
-        logging.getLogger("backtest").setLevel(logging.INFO)
-        logging.getLogger("backtesting").setLevel(logging.INFO)
-        logging.getLogger("backtrader_strategy").setLevel(logging.INFO)
+        logging.getLogger("echolon.backtest").setLevel(logging.INFO)
+        logging.getLogger("echolon.backtest.engine.backtrader_strategy").setLevel(logging.INFO)
 
         # Suppress noisy sub-components
-        logging.getLogger("backtesting.engine.analyzers").setLevel(logging.WARNING)
-        logging.getLogger("modules.quant_engine.backtest.engine.hooks.contract_aware.broker").setLevel(logging.WARNING)
-
-        # Suppress matplotlib
+        logging.getLogger("echolon.backtest.engine.hooks.contract_aware.broker").setLevel(logging.WARNING)
         logging.getLogger("matplotlib").setLevel(logging.ERROR)
 
 
