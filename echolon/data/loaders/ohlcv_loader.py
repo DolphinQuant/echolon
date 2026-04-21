@@ -12,6 +12,8 @@ import pandas as pd
 from typing import Optional, List
 from pathlib import Path
 
+from echolon.errors import raise_error
+
 logger = logging.getLogger(__name__)
 
 # Columns that must be float64 for numeric computation (e.g., talib)
@@ -97,7 +99,7 @@ def load_ohlcv(
 
     if not os.path.exists(data_file):
         logger.error(f"[OHLCV_LOADER] File not found: {data_file}")
-        raise FileNotFoundError(f"OHLCV data not found: {data_file}")
+        raise_error("DAT-001", path=data_file, field="market_data_dir")
 
     df = pd.read_csv(data_file)
 

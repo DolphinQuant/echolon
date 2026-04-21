@@ -24,8 +24,11 @@ def test_load_ohlcv_accepts_path_override(tmp_path):
 
 
 def test_load_ohlcv_path_override_missing_file_raises(tmp_path):
-    with pytest.raises(FileNotFoundError, match="OHLCV"):
+    from echolon.errors import DataError
+
+    with pytest.raises(DataError) as exc:
         load_ohlcv(market="SHFE", asset="aluminum", path=str(tmp_path / "does_not_exist.csv"))
+    assert exc.value.code == "DAT-001"
 
 
 def test_load_ohlcv_path_override_bypasses_market_data_dir(tmp_path):
