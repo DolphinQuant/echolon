@@ -1,0 +1,45 @@
+# Echolon Error Catalog
+
+Each page documents one error code with what/why/fix plus a worked example
+showing the typical LLM-author mistake. `EchelonError.docs_url` points here.
+
+## Strategy structure (STR-*)
+- [STR-001](STR-001.md): Missing required file
+- [STR-002](STR-002.md): Class not found
+- [STR-003](STR-003.md): Method not implemented
+
+## Parameter framework (PRM-*)
+- [PRM-001](PRM-001.md): Missing `printlog`
+- [PRM-002](PRM-002.md): Params structure mismatch
+
+## Component signal validation (VAL-*)
+- [VAL-001](VAL-001.md): Missing required field
+- [VAL-002](VAL-002.md): Invalid signal enum value
+- [VAL-003](VAL-003.md): Signature mismatch
+
+## Indicators (IND-*)
+- [IND-001](IND-001.md): Name casing mismatch
+- [IND-002](IND-002.md): Undeclared indicator
+- [IND-003](IND-003.md): All-NaN column
+- [IND-004](IND-004.md): Degenerate regime optimizer result
+- [IND-005](IND-005.md): Calculator missing required OHLCV column
+
+## Data loading (DAT-*)
+- [DAT-001](DAT-001.md): Required OHLCV file not found
+- [DAT-002](DAT-002.md): Corrupt state JSON
+- [DAT-003](DAT-003.md): Main contract data missing
+- [DAT-004](DAT-004.md): Empty calendar
+
+## Backtest (BT-*)
+- [BT-001](BT-001.md): Strategy on_bar exception
+- [BT-002](BT-002.md): Zero trades
+- [BT-003](BT-003.md): Optuna constraint violation
+
+## Live (LIV-*)
+- [LIV-001](LIV-001.md): Broker unavailable
+- [LIV-002](LIV-002.md): Order rejected
+- [LIV-003](LIV-003.md): QMT callback error
+
+## Config (CFG-*)
+- [CFG-001](CFG-001.md): end_date before start_date
+- [CFG-002](CFG-002.md): Required directory missing
