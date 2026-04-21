@@ -22,7 +22,29 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
+from echolon.errors import raise_error
+
 logger = logging.getLogger(__name__)
+
+
+REQUIRED_FILES = [
+    "entry.py",
+    "exit.py",
+    "risk.py",
+    "sizer.py",
+    "component.py",
+    "strategy_params.py",
+    "strategy_indicator_list.json",
+]
+
+# Mapping of strategy module file (without .py) to its required exported class name.
+# Used by load_strategy_from_dir() to verify each module exports the expected class.
+_REQUIRED_CLASSES: dict[str, str] = {
+    "entry": "entry_rule",
+    "exit": "exit_rule",
+    "risk": "risk_manager",
+    "sizer": "position_sizer",
+}
 
 
 class StrategyLoader:
@@ -128,3 +150,64 @@ class StrategyLoader:
     def has_module(self, module_name: str) -> bool:
         """Check if a strategy module file exists."""
         return (self.strategy_dir / f"{module_name}.py").exists()
+
+
+def load_strategy_from_dir(
+    strategy_dir: Path | str,
+    package_base: str = "echolon.quant_engine.strategy._dynamic",
+) -> dict[str, Any]:
+    """Load a complete strategy from a directory, validating structure.
+
+    This is the public, catalog-aware entry point for loading a strategy.
+    It performs up-front structural validation before delegating to
+    StrategyLoader, raising typed Echolon errors so an LLM author can
+    understand and fix malformed strategies.
+
+    Parameters
+    ----------
+    strategy_dir : Path | str
+        Directory containing the 7 required strategy files.
+    package_base : str, optional
+        Base package name for resolving relative imports.
+
+    Returns
+    -------
+    dict[str, Any]
+        Dict of loaded component classes keyed by module name:
+        {"entry_rule": ..., "exit_rule": ..., "risk_manager": ...,
+         "position_sizer": ...}
+
+    Raises
+    ------
+    StrategyStructureError
+        STR-001 if any of the 7 required files are missing.
+        STR-002 if a required class is not exported by its module.
+    """
+    strategy_dir = Path(strategy_dir)
+
+    # STR-001: verify all 7 required files exist
+    missing = [f for f in REQUIRED_FILES if not (strategy_dir / f).exists()]
+    if missing:
+        raise_error(
+            "STR-001",
+            strategy_dir=str(strategy_dir),
+            missing_files=", ".join(missing),
+        )
+
+    # STR-002: verify each module exports its required class
+    loader = StrategyLoader(strategy_dir, package_base=package_base)
+    components: dict[str, Any] = {}
+    for module_name, expected_class_name in _REQUIRED_CLASSES.items():
+        module = loader.load_module(module_name)
+        if not hasattr(module, expected_class_name):
+            module_path = strategy_dir / f"{module_name}.py"
+            found = [name for name in dir(module) if not name.startswith("_")]
+            raise_error(
+                "STR-002",
+                file=str(module_path),
+                expected_class=expected_class_name,
+                found_classes=", ".join(found),
+            )
+        components[expected_class_name] = getattr(module, expected_class_name)
+
+    return components

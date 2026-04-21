@@ -47,6 +47,7 @@ from .interfaces import (
     IPortfolio,
     ILogger,
 )
+from echolon.errors import raise_error
 from echolon.strategy.schemas import EntrySignalOutput, ExitSignalOutput, RiskOutput, SizerOutput, validate_position_size
 from .hooks.component_hook_base import IComponentHook
 from echolon.indicators.calculators.interday.market_regime import convert_regime_to_string
@@ -248,11 +249,14 @@ class BaseComponent(ABC):
         Entry component interface - Override in entry_rule component.
 
         Raises:
-            NotImplementedError: If called on non-entry component
+            StrategyStructureError (STR-003): If called on a subclass that
+            has not implemented ``generate_signal``.
         """
-        raise NotImplementedError(
-            f"{self.__class__.__name__} does not implement generate_signal(). "
-            f"This method is only for entry components."
+        raise_error(
+            "STR-003",
+            file=type(self).__module__,
+            class_name=type(self).__name__,
+            missing_method="generate_signal",
         )
 
     def should_exit(self) -> 'ExitSignalOutput':
@@ -260,11 +264,14 @@ class BaseComponent(ABC):
         Exit component interface - Override in exit_rule component.
 
         Raises:
-            NotImplementedError: If called on non-exit component
+            StrategyStructureError (STR-003): If called on a subclass that
+            has not implemented ``should_exit``.
         """
-        raise NotImplementedError(
-            f"{self.__class__.__name__} does not implement should_exit(). "
-            f"This method is only for exit components."
+        raise_error(
+            "STR-003",
+            file=type(self).__module__,
+            class_name=type(self).__name__,
+            missing_method="should_exit",
         )
 
     def can_trade(self) -> 'RiskOutput':
@@ -272,11 +279,14 @@ class BaseComponent(ABC):
         Risk component interface - Override in risk_manager component.
 
         Raises:
-            NotImplementedError: If called on non-risk component
+            StrategyStructureError (STR-003): If called on a subclass that
+            has not implemented ``can_trade``.
         """
-        raise NotImplementedError(
-            f"{self.__class__.__name__} does not implement can_trade(). "
-            f"This method is only for risk components."
+        raise_error(
+            "STR-003",
+            file=type(self).__module__,
+            class_name=type(self).__name__,
+            missing_method="can_trade",
         )
 
     def calculate_size(self, signal_data: 'EntrySignalOutput') -> 'SizerOutput':
@@ -287,11 +297,14 @@ class BaseComponent(ABC):
             signal_data: EntrySignalOutput BaseModel from entry component
 
         Raises:
-            NotImplementedError: If called on non-sizer component
+            StrategyStructureError (STR-003): If called on a subclass that
+            has not implemented ``calculate_size``.
         """
-        raise NotImplementedError(
-            f"{self.__class__.__name__} does not implement calculate_size(). "
-            f"This method is only for position sizer components."
+        raise_error(
+            "STR-003",
+            file=type(self).__module__,
+            class_name=type(self).__name__,
+            missing_method="calculate_size",
         )
 
     # =========================================================================
@@ -859,3 +872,18 @@ class BaseComponent(ABC):
         Default: no-op (stateless components need no reset).
         """
         pass
+
+
+# =============================================================================
+# Role-specific component aliases
+# =============================================================================
+# BaseComponent is the universal abstract class; Echolon strategies carry
+# specialised entry_rule / exit_rule / risk_manager / position_sizer subclasses
+# inside user strategy directories. The aliases below make the role-specific
+# contract discoverable by name for documentation, type-checking, and
+# catalog-error tests that refer to e.g. EntryComponent explicitly.
+
+EntryComponent = BaseComponent
+ExitComponent = BaseComponent
+RiskComponent = BaseComponent
+SizerComponent = BaseComponent

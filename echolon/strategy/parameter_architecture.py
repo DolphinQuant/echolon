@@ -24,6 +24,38 @@ from dataclasses import dataclass
 from enum import Enum
 import optuna
 
+from echolon.errors import raise_error
+
+
+def validate_component_params(component_key: str, params: Dict[str, Any]) -> None:
+    """Validate a single component's params sub-dict against framework contract.
+
+    Currently enforces the ``printlog`` framework requirement. This helper is
+    additive — it coexists with ``ComponentParameterTemplate.validate_structure``
+    (which collects errors as a list) and raises a structured PRM-001 so an LLM
+    agent gets a catalog error instead of an error-list return value.
+
+    Parameters
+    ----------
+    component_key : str
+        The params sub-dict key (``entry_params`` / ``exit_params`` /
+        ``risk_params`` / ``sizer_params``).
+    params : Dict[str, Any]
+        The component's params sub-dict.
+
+    Raises
+    ------
+    ParameterError
+        PRM-001 if ``'printlog'`` is missing from ``params``.
+    """
+    if "printlog" not in params:
+        raise_error(
+            "PRM-001",
+            file=__file__,
+            function="validate_component_params",
+            component_key=component_key,
+        )
+
 
 class ParameterType(Enum):
     """Framework for parameter data types."""
