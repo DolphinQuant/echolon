@@ -266,8 +266,8 @@ class IndicatorProcessor:
             logger.warning(f"[INDICATOR_PROCESSOR] No data for contract | name={contract_name}")
             return False
 
-        if logger.isEnabledFor(logging.INFO):
-            logger.info(f"[INDICATOR_PROCESSOR] Processing contract | name={contract_name}, rows={len(df)}")
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"[INDICATOR_PROCESSOR] Processing contract | name={contract_name}, rows={len(df)}")
 
         # Preprocess data: for rows with missing open/high/low values, use close price from same row
         if 'close' in df.columns:
@@ -316,8 +316,8 @@ class IndicatorProcessor:
         output_df.to_pickle(pickle_file)
         
         processing_time = time.time() - start_time
-        if logger.isEnabledFor(logging.INFO):
-            logger.info(f"[INDICATOR_PROCESSOR] Contract complete | name={contract_name}, time={processing_time:.2f}s, rows={len(output_df)}")
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.debug(f"[INDICATOR_PROCESSOR] Contract complete | name={contract_name}, time={processing_time:.2f}s, rows={len(output_df)}")
         
         return True
     
@@ -445,8 +445,8 @@ class IndicatorProcessor:
         unnamed_cols = [col for col in original_df.columns if col.startswith('Unnamed')]
         if unnamed_cols:
             base_df = original_df.drop(columns=unnamed_cols)
-            if logger.isEnabledFor(logging.INFO):
-                logger.info(f"[INDICATOR_PROCESSOR] Removed Unnamed columns | contract={contract_name}, count={len(unnamed_cols)}")
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.debug(f"[INDICATOR_PROCESSOR] Removed Unnamed columns | contract={contract_name}, count={len(unnamed_cols)}")
         else:
             base_df = original_df.copy()
 

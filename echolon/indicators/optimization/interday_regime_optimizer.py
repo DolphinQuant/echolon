@@ -738,7 +738,7 @@ class InterdayRegimeOptimizer:
         # Log trial start with process/thread info for parallel monitoring
         pid = os.getpid()
         tid = threading.current_thread().name
-        logger.info(f"[REGIME_OPTIMIZER] Trial {trial.number} STARTED | pid={pid}, thread={tid}")
+        logger.debug(f"[REGIME_OPTIMIZER] Trial {trial.number} STARTED | pid={pid}, thread={tid}")
 
         cfg = self.config
 
@@ -830,7 +830,7 @@ class InterdayRegimeOptimizer:
         })
 
         # Log trial completion
-        logger.info(f"[REGIME_OPTIMIZER] Trial {trial.number} COMPLETED | score={score:.4f}, pid={pid}, thread={tid}")
+        logger.debug(f"[REGIME_OPTIMIZER] Trial {trial.number} COMPLETED | score={score:.4f}, pid={pid}, thread={tid}")
 
         return score
 

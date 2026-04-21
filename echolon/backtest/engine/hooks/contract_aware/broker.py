@@ -266,9 +266,9 @@ class ContractAwareBroker(bt.brokers.BackBroker):
             logger.error(f"[CONTRACT_BROKER] Directory not found: {self.contract_indicators_dir}")
             raise FileNotFoundError(f"Directory not found: {self.contract_indicators_dir}")
 
-        if logger.isEnabledFor(logging.INFO):
+        if logger.isEnabledFor(logging.DEBUG):
             cache_status = "pre-loaded" if self._use_preloaded_cache else "on-demand"
-            logger.info(f"[CONTRACT_BROKER] Initialized | cache={cache_status}, market={market_adapter.market_code}")
+            logger.debug(f"[CONTRACT_BROKER] Initialized | cache={cache_status}, market={market_adapter.market_code}")
 
     @property
     def contract_prefix(self) -> str:
@@ -578,6 +578,6 @@ def create_contract_aware_broker(
         instrument=instrument,
         **broker_kwargs
     )
-    if logger.isEnabledFor(logging.INFO):
-        logger.info(f"[CONTRACT_BROKER] Factory | status=created, market={market_adapter.market_code}")
+    if logger.isEnabledFor(logging.DEBUG):
+        logger.debug(f"[CONTRACT_BROKER] Factory | status=created, market={market_adapter.market_code}")
     return broker
