@@ -7,6 +7,21 @@ Opt-in via env vars:
 
 Call ``install_structured_logging()`` once at CLI/application startup to honour
 the env vars; library modules never do this themselves.
+
+Timing caveat for ``ECHOLON_DEBUG_MODULES``
+-------------------------------------------
+Patterns are evaluated against ``logging.root.manager.loggerDict`` at the
+moment ``install_structured_logging()`` runs. Loggers created later — via
+``logging.getLogger(__name__)`` inside a module that is *lazily* imported
+after install — inherit the root level and will NOT match the pattern.
+
+If you rely on DEBUG for a module that is only imported on demand (e.g.
+``echolon.live.platforms.miniqmt.qmt_client`` loaded only when a deploy is
+started), eagerly import that module before calling
+``install_structured_logging()``, or call ``install_structured_logging()``
+again right after the import so the newly registered logger is picked up.
+A cleaner fix (installing a logger-class hook that applies patterns at
+``getLogger`` time) is deliberately deferred until a user hits this.
 """
 from __future__ import annotations
 
@@ -68,7 +83,13 @@ def _make_json_handler(stream: Optional[TextIO] = None) -> logging.Handler:
 
 
 def _configure_module_debug(patterns: list[str]) -> None:
-    """Enable DEBUG level on every existing logger whose name matches any pattern."""
+    """Enable DEBUG level on every existing logger whose name matches any pattern.
+
+    Only matches loggers that already exist in ``loggerDict``. Modules that
+    call ``logging.getLogger(__name__)`` AFTER this runs will miss the
+    pattern and inherit the root level — see the module docstring for the
+    workaround.
+    """
     for name in list(logging.root.manager.loggerDict):
         for pat in patterns:
             if fnmatch.fnmatch(name, pat):
