@@ -164,7 +164,7 @@ def _load_main_contract_data(
         DataFrame with 'date' and 'main_contract' columns
 
     Raises:
-        FileNotFoundError: If main_contract.csv doesn't exist for symbol
+        EchelonError (DAT-003): If main_contract.csv doesn't exist for symbol
     """
     global _main_contract_cache
 
