@@ -42,19 +42,19 @@ try:
 except ImportError:
     xtconstant = None  # Available only on QMT-enabled machines
 
-from .config.deploy_config import QMTAccountConfig
-from .config.portfolio_deploy_config import PortfolioDeployConfig, SlotConfig
-from .config.logging_config import get_deploy_logger, init_logging, shutdown_logging
+from ..config.deploy_config import QMTAccountConfig
+from ..config.portfolio_deploy_config import PortfolioDeployConfig, SlotConfig
+from ..config.logging_config import get_deploy_logger, init_logging, shutdown_logging
 try:
-    from .platforms.miniqmt.qmt_client import MiniQMTClient
+    from ..platforms.miniqmt.qmt_client import MiniQMTClient
 except ImportError:
     MiniQMTClient = None  # Available only on QMT-enabled machines
 
 from echolon.data.loaders.contract_loader import get_main_contract
 from echolon.strategy.interfaces import Order, OrderIntent, OrderStatus
-from .slot.capital_slot import CapitalSlot
-from .slot.trading_slot import TradingSlot
-from .slot.risk_overlay import PortfolioRiskOverlay
+from ..slot.capital_slot import CapitalSlot
+from ..slot.trading_slot import TradingSlot
+from ..slot.risk_overlay import PortfolioRiskOverlay
 from echolon.data.loaders.calendar_loader import (
     get_trading_dates,
     is_trading_day,
@@ -381,7 +381,7 @@ class PortfolioTradingRunner:
             results["drawdown_breached"] = True
 
         # Phase 5: Save trading data snapshot + state + health report
-        from .io.data_logger import save_trading_data_snapshot
+        from ..io.data_logger import save_trading_data_snapshot
         for slot in self.slots:
             if not slot.is_errored:
                 # Save daily trading data snapshot (equity curve source)
@@ -514,7 +514,7 @@ class PortfolioTradingRunner:
         """
         import json as _json
         from echolon.indicators.utils.merge_indicators import load_indicator_list
-        from .platforms.miniqmt.xtdc_client import XtdcClient
+        from ..platforms.miniqmt.xtdc_client import XtdcClient
 
         # Connect XtdcClient once for all instruments
         xtdc = XtdcClient()
@@ -821,7 +821,7 @@ class PortfolioTradingRunner:
                         )
 
                         # Write per-slot trade execution CSV
-                        from .io.data_logger import save_trade_execution
+                        from ..io.data_logger import save_trade_execution
                         sc = slot.slot_config
                         trade_data_dir = os.path.join(self.slots_dir, slot_id)
                         save_trade_execution(
@@ -878,7 +878,7 @@ class PortfolioTradingRunner:
                     })
 
                     # Write canceled trade to execution CSV
-                    from .io.data_logger import save_trade_execution
+                    from ..io.data_logger import save_trade_execution
                     sc = slot.slot_config
                     trade_data_dir = os.path.join(self.slots_dir, slot_id)
                     save_trade_execution(
@@ -923,7 +923,7 @@ class PortfolioTradingRunner:
                         })
 
                     # Write rejected trade to execution CSV
-                    from .io.data_logger import save_trade_execution
+                    from ..io.data_logger import save_trade_execution
                     sc = slot.slot_config
                     trade_data_dir = os.path.join(self.slots_dir, slot_id)
                     save_trade_execution(
@@ -1161,7 +1161,7 @@ class PortfolioTradingRunner:
 
     def _generate_dashboard(self) -> None:
         """Generate per-slot + portfolio aggregate dashboard and save locally."""
-        from .io.kpi_aggregator import generate_portfolio_dashboard, save_portfolio_dashboard
+        from ..io.kpi_aggregator import generate_portfolio_dashboard, save_portfolio_dashboard
 
         # Build slot statuses from runtime state
         slot_statuses = {}
@@ -1324,7 +1324,7 @@ class PortfolioTradingRunner:
 
     def _get_calendar_path(self) -> Optional[str]:
         """Get path to the deploy trading calendar."""
-        from .config.deploy_config import DeployConfig
+        from ..config.deploy_config import DeployConfig
         return str(
             Path(__file__).parent.parent / "config" / "trading_calendar.csv"
         )

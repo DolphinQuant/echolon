@@ -25,7 +25,7 @@ def test_migrate_rewrites_nested_import(tmp_path):
     )
     result = runner.invoke(app, ["migrate", str(tmp_path)])
     assert result.exit_code == 0
-    assert "from echolon.live.runner import TradingRunner" in (tmp_path / "a.py").read_text()
+    assert "from echolon.live.orchestrator.single import TradingRunner" in (tmp_path / "a.py").read_text()
 
 
 def test_migrate_dry_run_does_not_write(tmp_path):

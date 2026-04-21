@@ -7,8 +7,8 @@ from echolon.live.io.kpi_aggregator import (
     load_slot_state,
     save_portfolio_dashboard,
 )
-from echolon.live.portfolio_runner import PortfolioTradingRunner
-from echolon.live.runner import TradingRunner
+from echolon.live.orchestrator.portfolio import PortfolioTradingRunner
+from echolon.live.orchestrator.single import TradingRunner
 
 __all__ = [
     "TradingRunner",

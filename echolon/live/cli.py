@@ -6,8 +6,8 @@ import typer
 from echolon.config.markets.factory import MarketFactory
 from echolon.live.config.deploy_config import DeployConfig
 from echolon.live.config.portfolio_deploy_config import PortfolioDeployConfig
-from echolon.live.portfolio_runner import PortfolioTradingRunner
-from echolon.live.runner import TradingRunner
+from echolon.live.orchestrator.portfolio import PortfolioTradingRunner
+from echolon.live.orchestrator.single import TradingRunner
 
 logger = logging.getLogger(__name__)
 

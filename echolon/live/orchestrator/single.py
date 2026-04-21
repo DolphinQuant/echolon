@@ -48,10 +48,10 @@ from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.date import DateTrigger
 
 from echolon.config.markets.core.context import TradingContext
-from .config.deploy_config import DeployConfig
-from .config.logging_config import get_deploy_logger, init_logging, shutdown_logging
+from ..config.deploy_config import DeployConfig
+from ..config.logging_config import get_deploy_logger, init_logging, shutdown_logging
 try:
-    from .platforms.miniqmt.qmt_client import MiniQMTClient
+    from ..platforms.miniqmt.qmt_client import MiniQMTClient
 except ImportError:
     MiniQMTClient = None  # Available only on QMT-enabled machines
 
@@ -63,7 +63,7 @@ from echolon.data.loaders.calendar_loader import (
 )
 from echolon.engine.factory import EngineFactory
 from echolon.strategy.hooks.forced_exit_strategy_hook import ForcedExitStrategyHook
-from .io.data_logger import save_trading_data_snapshot, save_trade_execution
+from ..io.data_logger import save_trading_data_snapshot, save_trade_execution
 from echolon.strategy.interfaces import OrderStatus
 from echolon.data.live_data import run_live_data_update
 from echolon.indicators.run import run_indicator_calculation
@@ -552,7 +552,7 @@ class TradingRunner:
 
         # Step 7: Generate dashboard data and save locally
         try:
-            from .io.kpi_aggregator import generate_dashboard_data, save_dashboard_data
+            from ..io.kpi_aggregator import generate_dashboard_data, save_dashboard_data
 
             dashboard_data = generate_dashboard_data(
                 trading_data_dir=self.config.trading_data_dir,
