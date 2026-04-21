@@ -30,6 +30,7 @@ from pathlib import Path
 
 import pandas as pd
 
+from echolon.errors import raise_error
 from .trading_calendar import TradingCalendar, get_last_trading_day_of_month
 
 # Cache for main contract data to avoid repeated file reads.
@@ -180,9 +181,7 @@ def _load_main_contract_data(
 
     csv_path = raw_data_dir / "SHFE" / symbol_lower / "main_contract.csv"
     if not csv_path.exists():
-        raise FileNotFoundError(
-            f"Main contract data not found for {symbol}: {csv_path}"
-        )
+        raise_error("DAT-003", path=str(csv_path), symbol=symbol)
 
     df = pd.read_csv(csv_path)
     df['date'] = pd.to_datetime(df['date']).dt.date

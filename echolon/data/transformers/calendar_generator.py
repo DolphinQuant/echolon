@@ -11,6 +11,8 @@ from typing import Optional, List
 from datetime import datetime
 import pandas as pd
 
+from echolon.errors import raise_error
+
 logger = logging.getLogger(__name__)
 
 
@@ -100,51 +102,56 @@ class CalendarGenerator:
         if df is None and input_file:
             if not os.path.exists(input_file):
                 logger.error(f"[CALENDAR] File not found: {input_file}")
-                return pd.DataFrame()
-            df = pd.read_csv(input_file)
+                df = pd.DataFrame()
+            else:
+                df = pd.read_csv(input_file)
 
         if df is None or df.empty:
             logger.error("[CALENDAR] No data provided")
-            return pd.DataFrame()
-
-        # Determine which column to use for dates
-        date_col = self._find_date_column(df)
-        if date_col is None:
-            logger.error(f"[CALENDAR] No date column found. Available: {list(df.columns)}")
-            return pd.DataFrame()
-
-        # Get unique dates
-        dates = df[date_col].unique()
+            dates = []
+            date_col = None
+        else:
+            # Determine which column to use for dates
+            date_col = self._find_date_column(df)
+            if date_col is None:
+                logger.error(f"[CALENDAR] No date column found. Available: {list(df.columns)}")
+                dates = []
+            else:
+                # Get unique dates
+                dates = df[date_col].unique()
 
         # Convert to datetime based on column type
-        col_dtype = df[date_col].dtype
-        if date_col == 'time':
-            # Epoch milliseconds - convert to dates
-            # CRITICAL: Must apply timezone conversion to get correct local dates
-            # Without this, after-midnight bars (00:00-01:00 local) would be
-            # assigned to the previous UTC day (e.g., Monday 00:30 Shanghai
-            # = Sunday 16:30 UTC → would incorrectly create Sunday as calendar date)
-            # Convert UTC epoch to local timezone, then extract date
-            dates_dt = [
-                pd.to_datetime(int(d), unit='ms', utc=True)
-                    .tz_convert(self.timezone)
-                    .normalize()
-                    .tz_localize(None)  # Remove tz info after normalization
-                for d in dates if pd.notna(d)
-            ]
-            logger.debug(f"[CALENDAR] Converted epoch timestamps using timezone: {self.timezone}")
-
-            # Remove duplicates after converting to date
-            dates_dt = list(set(dates_dt))
-        elif col_dtype in ['int64', 'float64', 'Int64']:
-            # Integer format (YYYYMMDD)
-            dates_dt = [
-                pd.to_datetime(str(int(d)), format='%Y%m%d')
-                for d in dates if pd.notna(d)
-            ]
+        if date_col is None or len(dates) == 0:
+            dates_dt = []
         else:
-            # Already datetime or string
-            dates_dt = pd.to_datetime(dates).tolist()
+            col_dtype = df[date_col].dtype
+            if date_col == 'time':
+                # Epoch milliseconds - convert to dates
+                # CRITICAL: Must apply timezone conversion to get correct local dates
+                # Without this, after-midnight bars (00:00-01:00 local) would be
+                # assigned to the previous UTC day (e.g., Monday 00:30 Shanghai
+                # = Sunday 16:30 UTC → would incorrectly create Sunday as calendar date)
+                # Convert UTC epoch to local timezone, then extract date
+                dates_dt = [
+                    pd.to_datetime(int(d), unit='ms', utc=True)
+                        .tz_convert(self.timezone)
+                        .normalize()
+                        .tz_localize(None)  # Remove tz info after normalization
+                    for d in dates if pd.notna(d)
+                ]
+                logger.debug(f"[CALENDAR] Converted epoch timestamps using timezone: {self.timezone}")
+
+                # Remove duplicates after converting to date
+                dates_dt = list(set(dates_dt))
+            elif col_dtype in ['int64', 'float64', 'Int64']:
+                # Integer format (YYYYMMDD)
+                dates_dt = [
+                    pd.to_datetime(str(int(d)), format='%Y%m%d')
+                    for d in dates if pd.notna(d)
+                ]
+            else:
+                # Already datetime or string
+                dates_dt = pd.to_datetime(dates).tolist()
 
         # Sort dates
         dates_dt = sorted([d for d in dates_dt if pd.notna(d)])
@@ -165,6 +172,16 @@ class CalendarGenerator:
             'date': dates_dt,
             'is_trading_day': True
         })
+
+        if calendar.empty:
+            raise_error(
+                "DAT-004",
+                market=getattr(self, "market", "<unknown>"),
+                instrument=getattr(self, "instrument", "<unknown>"),
+                start_date=str(start_date),
+                end_date=str(end_date),
+                rows_seen=len(df) if df is not None else 0,
+            )
 
         # Save to file
         self.output_dir.mkdir(parents=True, exist_ok=True)

@@ -32,6 +32,23 @@ from .slot_aware_portfolio import SlotAwarePortfolio
 logger = logging.getLogger(__name__)
 
 
+def _load_state_file(path: str) -> Dict[str, Any]:
+    """Load strategy_state.json.
+
+    Returns ``{}`` when the file does NOT exist (cold start is valid).
+    Raises DAT-002 if the file exists but contains corrupt JSON.
+    """
+    from echolon.errors import raise_error
+
+    if not os.path.exists(path):
+        return {}
+    try:
+        with open(path, 'r') as f:
+            return json.load(f)
+    except json.JSONDecodeError as exc:
+        raise_error("DAT-002", path=path, error=str(exc))
+
+
 class TradingSlot:
     """
     Per-slot wrapper for one instrument/strategy combination.
@@ -393,11 +410,15 @@ class TradingSlot:
             logger.warning(f"[{self.slot_id}] Missing indicators in CSV: {missing}")
 
     def _load_state_file(self) -> Dict[str, Any]:
-        """Load state file, return empty dict for cold start."""
-        if self._state_path and os.path.exists(self._state_path):
-            with open(self._state_path, 'r') as f:
-                return json.load(f)
-        return {}
+        """Load state file, return empty dict for cold start.
+
+        Delegates to the module-level ``_load_state_file`` which raises
+        DAT-002 on corrupt JSON and returns ``{}`` only when the file
+        does not exist.
+        """
+        if not self._state_path:
+            return {}
+        return _load_state_file(self._state_path)
 
     def _load_and_map_trial_params(self) -> Dict[str, Any]:
         """Load trial params and map to strategy structure."""
