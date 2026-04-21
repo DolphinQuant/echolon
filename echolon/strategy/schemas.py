@@ -24,6 +24,12 @@ import math
 
 # Import OrderIntent for strategy coordination
 from echolon.strategy.interfaces import OrderIntent
+from echolon.errors import raise_error
+
+
+# Valid signal enum values shared by EntrySignalOutput and ExitSignalOutput.
+# Kept module-level so both schemas reference the same set (VAL-002).
+VALID_SIGNALS = {"LONG", "SHORT", "HOLD"}
 
 
 class EntrySignalOutput(BaseModel):
@@ -82,6 +88,24 @@ class EntrySignalOutput(BaseModel):
         description="Trading context at time of signal - market regime for interday (trending_up, ranging), session phase for intraday (night, morning, afternoon)"
     )
 
+    @field_validator("signal", mode="before")
+    @classmethod
+    def _validate_signal_enum(cls, v):
+        """Raise VAL-002 on unknown signal values before Pydantic's Literal check.
+
+        Running ``mode='before'`` means this hook fires first; Pydantic's own
+        Literal-validator never sees invalid values, so the LLM author gets a
+        catalog-coded error instead of a generic ``pydantic.ValidationError``.
+        """
+        if v not in VALID_SIGNALS:
+            raise_error(
+                "VAL-002",
+                file="EntrySignalOutput",
+                method="<signal field>",
+                got=repr(v),
+            )
+        return v
+
     class Config:
         extra = 'allow'  # Allow strategy-specific diagnostic fields
         arbitrary_types_allowed = True  # Allow Enum types
@@ -136,6 +160,32 @@ class ExitSignalOutput(BaseModel):
         default=None,
         description="Order intent for strategy execution (EXIT_LONG, EXIT_SHORT, or None if no exit)"
     )
+    signal: Optional[Literal['LONG', 'SHORT', 'HOLD']] = Field(
+        default=None,
+        description=(
+            "Optional signal direction that produced this exit decision. "
+            "Must be 'LONG', 'SHORT', or 'HOLD' when provided."
+        )
+    )
+
+    @field_validator("signal", mode="before")
+    @classmethod
+    def _validate_signal_enum(cls, v):
+        """Raise VAL-002 on unknown signal values before Pydantic's Literal check.
+
+        Mirror of the ``EntrySignalOutput`` validator so both schemas produce a
+        catalog-coded error when an LLM author returns lowercase ``'long'``.
+        """
+        if v is None:
+            return v
+        if v not in VALID_SIGNALS:
+            raise_error(
+                "VAL-002",
+                file="ExitSignalOutput",
+                method="<signal field>",
+                got=repr(v),
+            )
+        return v
 
     class Config:
         extra = 'allow'  # Allow strategy-specific diagnostic fields
