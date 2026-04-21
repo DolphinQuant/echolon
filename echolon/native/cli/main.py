@@ -21,6 +21,8 @@ app = typer.Typer(
 @app.callback()
 def _callback() -> None:
     """Echolon CLI — multi-command entry point."""
+    from echolon._internal.structured_logging import install_structured_logging
+    install_structured_logging()
 
 
 from echolon.indicators.cli import indicators_app
