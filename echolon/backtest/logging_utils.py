@@ -23,6 +23,12 @@ Message Format:
 import logging
 from typing import Literal, Optional, Dict, Any
 
+# Custom log level between WARNING (30) and ERROR (40). Used for milestone
+# events ("backtest finished", "trial result") that must be visible in
+# optimization mode without abusing CRITICAL (reserved for "stop the process").
+RESULT = 35
+logging.addLevelName(RESULT, "RESULT")
+
 # Type for execution contexts
 RunContext = Literal["optimization", "debug", "best_trial"]
 
@@ -213,7 +219,7 @@ def log_workflow_success(context: RunContext, workflow: str, **metrics) -> None:
     msg = f"[{context.upper()}] {workflow} | SUCCESS"
     if details:
         msg += f" | {details}"
-    logger.critical(msg)
+    logger.log(RESULT, msg)
 
 
 def log_workflow_failure(context: RunContext, workflow: str, error: str) -> None:
@@ -289,7 +295,7 @@ def log_result_summary(
                           for k, v in extra_metrics.items())
         core_metrics += f" | {extra}"
 
-    logger.critical(f"[{context.upper()}] {workflow} | RESULT SUMMARY | {core_metrics}")
+    logger.log(RESULT, f"[{context.upper()}] {workflow} | RESULT SUMMARY | {core_metrics}")
 
 
 def log_zero_trades_warning(
