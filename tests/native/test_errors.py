@@ -163,3 +163,15 @@ def test_new_catalog_code_raises(code):
     with pytest.raises(Exception) as exc:
         raise_error(code)
     assert exc.value.code == code
+
+
+def test_echolon_error_str_includes_docs_url():
+    """EchelonError.__str__ must surface the docs_url so LLM agents parsing
+    raw exception text can follow the link to the catalog page."""
+    try:
+        raise_error("STR-001", strategy_dir="/tmp/x", missing_files="sizer.py")
+    except EchelonError as exc:
+        s = str(exc)
+        assert "echolon.dev/docs/errors/STR-001" in s or "docs/errors/STR-001" in s
+    else:
+        raise AssertionError("raise_error did not raise")
