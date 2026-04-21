@@ -207,6 +207,191 @@ ERROR_CATALOG: dict[str, dict] = {
             "Run data pipeline first or update market_data_dir in your config."
         ),
     },
+    "DAT-002": {
+        "class": DataError,
+        "what": "State file is corrupt or unreadable JSON",
+        "why": (
+            "A live deploy reads strategy_state.json to resume position and "
+            "cycle counters. A truncated or malformed file silently defaults "
+            "to an empty state, losing position information mid-session."
+        ),
+        "fix_template": (
+            "Inspect the state file and either repair it or delete it to "
+            "cold-start:\n"
+            "  path:       {path}\n"
+            "  parse_error: {error}"
+        ),
+    },
+    "DAT-003": {
+        "class": DataError,
+        "what": "Main contract data file not found for instrument",
+        "why": (
+            "Echolon resolves the main contract per trading date from "
+            "raw_data_dir/{exchange}/{symbol}/main_contract.csv. Without "
+            "this file, contract rollover and live trading cannot proceed."
+        ),
+        "fix_template": (
+            "Run the data pipeline once to populate main_contract.csv, "
+            "or pass an explicit raw_data_dir pointing at a populated tree.\n"
+            "  expected:  {path}\n"
+            "  symbol:    {symbol}"
+        ),
+    },
+    "DAT-004": {
+        "class": DataError,
+        "what": "Trading calendar is empty after generation",
+        "why": (
+            "Calendar generation received zero valid rows. Either the input "
+            "data has no date column, all dates are outside the requested "
+            "range, or the source file is empty."
+        ),
+        "fix_template": (
+            "Verify the upstream source has dated rows in the requested range:\n"
+            "  market:      {market}\n"
+            "  instrument:  {instrument}\n"
+            "  start_date:  {start_date}\n"
+            "  end_date:    {end_date}\n"
+            "  rows_seen:   {rows_seen}"
+        ),
+    },
+    "IND-003": {
+        "class": IndicatorError,
+        "what": "Indicator column produced more NaN than warmup requires",
+        "why": (
+            "The indicator was requested with a period that exceeds the "
+            "available bar history. More than the warmup-plus-some-headroom "
+            "rows are NaN, which silently breaks downstream strategies that "
+            "compare the column against thresholds."
+        ),
+        "fix_template": (
+            "Either shorten the indicator period or extend the backtest "
+            "start date to allow warmup:\n"
+            "  indicator:  {indicator}\n"
+            "  period:     {period}\n"
+            "  rows:       {rows}\n"
+            "  nan_rows:   {nan_rows}\n"
+            "  nan_ratio:  {nan_ratio:.1%}"
+        ),
+    },
+    "IND-004": {
+        "class": IndicatorError,
+        "what": "Regime optimizer returned a degenerate best-trial",
+        "why": (
+            "Every Optuna trial violated at least one hard constraint "
+            "(min_ranging_pct / min_trending_pct / etc.), so the best-trial "
+            "is the first-evaluated arbitrary trial, not a validated result. "
+            "Deploying these params is unsafe."
+        ),
+        "fix_template": (
+            "Loosen constraints in RegimeOptimizerConfig, or increase the "
+            "historical window so the optimizer has enough regime-segments "
+            "to satisfy constraints:\n"
+            "  n_trials:          {n_trials}\n"
+            "  trials_rejected:   {trials_rejected}\n"
+            "  rejected_reasons:  {rejected_reasons}"
+        ),
+    },
+    "BT-001": {
+        "class": EchelonError,
+        "what": "Strategy.on_bar() raised an exception",
+        "why": (
+            "A strategy's entry/exit/risk/sizer component raised during a "
+            "bar-level call. The exception was caught by the engine so the "
+            "backtest could stop cleanly; the strategy code is the likely root cause."
+        ),
+        "fix_template": (
+            "Open {file} at the component that raised and reproduce with "
+            "the context below:\n"
+            "  bar_index:       {bar_index}\n"
+            "  trading_date:    {trading_date}\n"
+            "  contract:        {contract}\n"
+            "  position_size:   {position_size}\n"
+            "  exception:       {exception_repr}"
+        ),
+    },
+    "BT-002": {
+        "class": EchelonError,
+        "what": "Backtest produced zero trades",
+        "why": (
+            "The strategy ran through the configured period without firing "
+            "a single entry. Common causes: entry conditions never met, "
+            "filters block every signal, risk manager blocks every order."
+        ),
+        "fix_template": (
+            "Inspect entry/filter/risk diagnostics printed above this error:\n"
+            "  bars_processed:          {bars_processed}\n"
+            "  entry_signals_generated: {entry_signals_generated}\n"
+            "  entry_signals_blocked:   {entry_signals_blocked}\n"
+            "  risk_blocks:             {risk_blocks}\n"
+            "See docs/errors/BT-002.md for the decision tree."
+        ),
+    },
+    "BT-003": {
+        "class": EchelonError,
+        "what": "Optuna trial violated a hard constraint",
+        "why": (
+            "The trial's param set produced regime metrics outside the "
+            "viability bounds configured in RegimeOptimizerConfig. The "
+            "trial's score is clamped to 0.0 so it will not be selected."
+        ),
+        "fix_template": (
+            "Widen the constraint or the param range that triggered this:\n"
+            "  trial_number:   {trial_number}\n"
+            "  constraint:     {constraint}\n"
+            "  required:       {required}\n"
+            "  actual:         {actual}\n"
+            "  params:         {params}"
+        ),
+    },
+    "LIV-001": {
+        "class": EchelonError,
+        "what": "Broker connection unavailable",
+        "why": (
+            "The QMT/CCXT client lost connection or failed to initialize. "
+            "Trading is halted; no orders will be submitted until the "
+            "connection is restored."
+        ),
+        "fix_template": (
+            "Restore the broker connection and restart the runner:\n"
+            "  platform:     {platform}\n"
+            "  account_id:   {account_id}\n"
+            "  error:        {error}"
+        ),
+    },
+    "LIV-002": {
+        "class": EchelonError,
+        "what": "Order rejected by broker",
+        "why": (
+            "The broker rejected an order. Common causes: price outside the "
+            "day's range, insufficient margin, invalid contract code, "
+            "direction/size mismatch."
+        ),
+        "fix_template": (
+            "Inspect the rejected order and broker response:\n"
+            "  contract:       {contract}\n"
+            "  direction:      {direction}\n"
+            "  price:          {price}\n"
+            "  size:           {size}\n"
+            "  broker_status:  {broker_status}\n"
+            "  broker_message: {broker_message}"
+        ),
+    },
+    "LIV-003": {
+        "class": EchelonError,
+        "what": "QMT async callback delivered an error",
+        "why": (
+            "The miniQMT xtconstant callback for order/trade status indicated "
+            "a failure outcome. The callback thread logs this but the main "
+            "loop needs to translate it for the LLM agent monitoring the run."
+        ),
+        "fix_template": (
+            "Translate the QMT status code and follow broker-specific remediation:\n"
+            "  seq_id:       {seq_id}\n"
+            "  qmt_status:   {qmt_status}\n"
+            "  echo_status:  {echo_status}\n"
+            "  raw:          {raw}"
+        ),
+    },
 }
 
 

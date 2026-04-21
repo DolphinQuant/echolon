@@ -138,3 +138,28 @@ def test_validation_package_reexports():
 def test_native_reexports():
     from echolon.native import validate_strategy_dir, validate_indicator_names, EchelonError
     assert validate_strategy_dir is not None
+
+
+NEW_CODES = [
+    "DAT-002", "DAT-003", "DAT-004",
+    "IND-003", "IND-004",
+    "BT-001", "BT-002", "BT-003",
+    "LIV-001", "LIV-002", "LIV-003",
+]
+
+
+@pytest.mark.parametrize("code", NEW_CODES)
+def test_new_catalog_code_exists(code):
+    assert code in ERROR_CATALOG, f"{code} missing from ERROR_CATALOG"
+    entry = ERROR_CATALOG[code]
+    assert "class" in entry
+    assert "what" in entry and entry["what"], f"{code}: what must be non-empty"
+    assert "why" in entry and entry["why"], f"{code}: why must be non-empty"
+    assert "fix_template" in entry and entry["fix_template"], f"{code}: fix_template must be non-empty"
+
+
+@pytest.mark.parametrize("code", NEW_CODES)
+def test_new_catalog_code_raises(code):
+    with pytest.raises(Exception) as exc:
+        raise_error(code)
+    assert exc.value.code == code
