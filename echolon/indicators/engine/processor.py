@@ -32,10 +32,65 @@ from echolon.data.loaders.session_availability_loader import (
 )
 from ..registry.utils import get_function
 from echolon.config.markets.core.context import TradingContext
+from echolon.errors import raise_error
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+def _resolve_function(indicator_name: str, frequency: str = "day"):
+    """Resolve an indicator name to its calculation function.
+
+    Raises IND-002 if the name has no mapping — silent-skip in this dispatch
+    would produce an all-NaN output column the caller couldn't debug.
+    """
+    function = get_function(indicator_name.upper(), frequency=frequency)
+    if function is None:
+        raise_error(
+            "IND-002",
+            indicator=indicator_name,
+            file=__file__,
+            line="<indicator dispatch>",
+        )
+    return function
+
+
+def _write_nan_warnings_sidecar(
+    df: "pd.DataFrame",
+    output_path,
+    nan_threshold: float = 0.8,
+) -> None:
+    """Inspect df for columns whose NaN ratio exceeds threshold and write
+    <output_path>.warnings.json with a per-column IND-003 payload.
+
+    The sidecar file is present iff at least one column was flagged.
+    Columns 'date', 'datetime', 'contract' are always skipped (they're
+    keys, not indicators).
+    """
+    output_path = Path(output_path)
+    skip = {"date", "datetime", "contract"}
+    warnings = {}
+    for col in df.columns:
+        if col in skip:
+            continue
+        total = len(df)
+        if total == 0:
+            continue
+        nan_rows = int(df[col].isna().sum())
+        ratio = nan_rows / total
+        if ratio >= nan_threshold:
+            warnings[col] = {
+                "code": "IND-003",
+                "indicator": col,
+                "rows": total,
+                "nan_rows": nan_rows,
+                "nan_ratio": round(ratio, 4),
+            }
+    if warnings:
+        sidecar = output_path.with_suffix(output_path.suffix + ".warnings.json")
+        sidecar.write_text(json.dumps({"warnings": warnings}, indent=2))
+
 
 # Default volatility context parameters
 DEFAULT_CONTEXT_PARAMS = {
@@ -254,7 +309,8 @@ class IndicatorProcessor:
         # Save results
         output_file = self.contract_output_dir / f"{contract_name}_indicators.csv"
         output_df.to_csv(output_file, index=False)
-        
+        _write_nan_warnings_sidecar(output_df, output_file)
+
         # Also save as pickle for faster loading
         pickle_file = self.contract_output_dir / f"{contract_name}_indicators.pkl"
         output_df.to_pickle(pickle_file)
@@ -503,6 +559,7 @@ class IndicatorProcessor:
 
             # Save with date as index
             combined_indicators_with_index.to_csv(csv_file, index=True)
+            _write_nan_warnings_sidecar(combined_indicators_with_index, csv_file)
             combined_indicators_with_index.to_pickle(pkl_file)
 
             # Save indicator metadata
@@ -772,12 +829,7 @@ def _compute_indicators_for_contract(
     results: Dict[str, np.ndarray] = {}
 
     for indicator_name, param_spec in indicator_list.items():
-        function = get_function(indicator_name.upper(), frequency=frequency)
-        if function is None:
-            logger.warning(
-                f"[INDICATOR_PROCESSOR] No function mapping | indicator={indicator_name}"
-            )
-            continue
+        function = _resolve_function(indicator_name, frequency=frequency)
 
         # Library-derived params that caller need not specify
         auto_params = _auto_params_for(indicator_name, regime_params, default_params, ctx)
