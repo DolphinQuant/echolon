@@ -61,27 +61,10 @@ def test_component_not_implemented_raises_str_003():
 
     # Find the first method the abstract contract requires.
     # Inspect EntryComponent to learn the abstract method name.
-    import inspect
-    abstract_methods = getattr(EntryComponent, "__abstractmethods__", set())
-    if not abstract_methods:
-        # If EntryComponent isn't ABC-driven, test runs against a known method.
-        abstract_methods = {"evaluate"}
-
-    # Use the first abstract method name.
-    method_name = sorted(abstract_methods)[0]
-    method = getattr(bad, method_name, None)
-
-    if method is None:
-        # The method doesn't exist at all — the preflight isn't about Attributes
-        # but about NotImplementedError at the runtime call site.
-        pytest.skip(f"EntryComponent does not expose {method_name} stub; skip")
-
+    # EntryComponent exposes stub methods that raise STR-003; call generate_signal
+    # directly to exercise the catalog raise from the BaseComponent stub.
     with pytest.raises(EchelonError) as exc:
-        try:
-            method()
-        except TypeError:
-            # Signature may require args; pass minimal ones
-            method(None)
+        bad.generate_signal()
     assert exc.value.code == "STR-003"
 
 
