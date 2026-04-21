@@ -291,6 +291,25 @@ ERROR_CATALOG: dict[str, dict] = {
             "  rejected_reasons:  {rejected_reasons}"
         ),
     },
+    "IND-005": {
+        "class": IndicatorError,
+        "what": "Calculator received a DataFrame without a required column",
+        "why": (
+            "Indicator calculators have explicit column contracts (e.g., a "
+            "session-phase indicator requires 'datetime' and 'trading_date'). "
+            "Running the calculator on a DataFrame missing those columns "
+            "silently produces all-NaN output in the best case, junk values "
+            "in the worst."
+        ),
+        "fix_template": (
+            "Ensure the input DataFrame has all required columns before "
+            "calling the calculator:\n"
+            "  calculator:         {calculator}\n"
+            "  missing_column:     {missing_column}\n"
+            "  required_columns:   {required_columns}\n"
+            "  present_columns:    {present_columns}"
+        ),
+    },
     "BT-001": {
         "class": EchelonError,
         "what": "Strategy.on_bar() raised an exception",

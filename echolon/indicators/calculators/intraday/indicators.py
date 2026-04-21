@@ -18,6 +18,7 @@ from typing import Optional
 import logging
 
 from .market_context import is_night_phase
+from echolon.indicators.calculators._utils import _require_columns
 
 logger = logging.getLogger(__name__)
 
@@ -41,8 +42,7 @@ def calculate_vwap(df: pd.DataFrame) -> pd.DataFrame:
     """
     result = df.copy()
 
-    if 'trading_date' not in result.columns:
-        raise ValueError("DataFrame must have 'trading_date' column")
+    _require_columns(result, ['trading_date'], calculator=__name__)
 
     # Calculate typical price
     if 'high' in result.columns and 'low' in result.columns:
@@ -95,8 +95,7 @@ def calculate_session_levels(df: pd.DataFrame) -> pd.DataFrame:
     """
     result = df.copy()
 
-    if 'session_phase' not in result.columns:
-        raise ValueError("DataFrame must have 'session_phase' column")
+    _require_columns(result, ['session_phase'], calculator=__name__)
 
     # Group by trading_date and session type (night vs day)
     # Use is_night_phase() to handle both granular and aggregated phases
@@ -255,8 +254,7 @@ def calculate_volume_percentile(
         lookback = bars_per_day 
     result = df.copy()
 
-    if 'volume' not in result.columns:
-        raise ValueError("DataFrame must have 'volume' column")
+    _require_columns(result, ['volume'], calculator=__name__)
 
     # Rolling percentile rank
     def percentile_rank(series):
@@ -304,8 +302,7 @@ def calculate_time_features(df: pd.DataFrame) -> pd.DataFrame:
     """
     result = df.copy()
 
-    if 'datetime' not in result.columns:
-        raise ValueError("DataFrame must have 'datetime' column")
+    _require_columns(result, ['datetime'], calculator=__name__)
 
     result['hour_of_day'] = result['datetime'].dt.hour
     result['minute_of_hour'] = result['datetime'].dt.minute
@@ -857,8 +854,7 @@ def calculate_previous_session_levels(df: pd.DataFrame) -> pd.DataFrame:
     """
     result = df.copy()
 
-    if 'trading_date' not in result.columns:
-        raise ValueError("DataFrame must have 'trading_date' column")
+    _require_columns(result, ['trading_date'], calculator=__name__)
 
     # Group by trading_date to get session highs/lows
     session_stats = result.groupby('trading_date').agg({

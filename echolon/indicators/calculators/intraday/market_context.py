@@ -47,6 +47,7 @@ from echolon.config.markets.shfe.phases import (
     get_tradeable_phases,
     is_aggregated_bar_size,
 )
+from echolon.indicators.calculators._utils import _require_columns
 
 logger = logging.getLogger(__name__)
 
@@ -170,8 +171,7 @@ def session_phase(
     Returns:
         Numpy array with session phase strings
     """
-    if 'datetime' not in df.columns:
-        raise ValueError("DataFrame must have 'datetime' column")
+    _require_columns(df, ['datetime'], calculator=__name__)
 
     # Extract time component since get_session_phase expects datetime.time, not Timestamp
     # Pass bar_size to get appropriate phase names (granular vs aggregated)
