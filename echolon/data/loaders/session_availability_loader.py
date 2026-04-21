@@ -138,21 +138,25 @@ class SessionAvailabilityLoader:
 
     def _load(self) -> None:
         """Load session availability data from CSV."""
+        from echolon.errors import raise_error
+
         if self._path_override is not None:
+            # Explicit override — respect even if the file is missing.
             file_path = Path(self._path_override)
+            if not file_path.exists():
+                logger.warning(
+                    f"[SESSION_AVAILABILITY] Explicit path_override points at missing file: {file_path}. "
+                    f"Bar counts will use defaults."
+                )
+                return
         else:
             market_data_dir = self._market_data_dir
             if market_data_dir is None:
                 from echolon.config.paths_config import PathsConfig
                 market_data_dir = PathsConfig.from_env().market_data_dir
             file_path = Path(market_data_dir) / self.market / self.instrument / "session_availability.csv"
-
-        if not file_path.exists():
-            logger.warning(
-                f"[SESSION_AVAILABILITY] File not found: {file_path}. "
-                f"Bar counts will use default values."
-            )
-            return
+            if not file_path.exists():
+                raise_error("DAT-003", path=str(file_path), symbol=self.instrument)
 
         try:
             df = pd.read_csv(file_path)
