@@ -1039,6 +1039,50 @@ class InterdayRegimeOptimizer:
 
 
 # =============================================================================
+# Module-level helpers
+# =============================================================================
+
+def _build_summary_result(
+    n_trials: int,
+    degenerate_trials: list[dict],
+    best_params: dict,
+) -> dict:
+    """Build the post-optimization summary dict. Marks the result as degenerate
+    (code IND-004) when every trial was rejected by constraint checks.
+
+    Args:
+        n_trials: Total trials attempted by the optimizer.
+        degenerate_trials: Per-rejected-trial records, each with at least a
+            ``constraint`` key. Empty list means "no rejections".
+        best_params: Optuna's selected best params dict.
+
+    Returns:
+        dict with keys: best_params, n_trials, trials_rejected, degenerate.
+        When degenerate is True, also includes code="IND-004" and
+        rejected_reasons (counts per constraint).
+    """
+    from collections import Counter
+
+    is_degenerate = len(degenerate_trials) == n_trials and n_trials > 0
+    summary: dict = {
+        "best_params": best_params,
+        "n_trials": n_trials,
+        "trials_rejected": len(degenerate_trials),
+        "degenerate": is_degenerate,
+    }
+    if is_degenerate:
+        reasons = Counter(t.get("constraint", "unknown") for t in degenerate_trials)
+        summary["code"] = "IND-004"
+        summary["rejected_reasons"] = dict(reasons)
+        logger.warning(
+            "[REGIME_OPTIMIZER] IND-004: all %d trials rejected by constraints %s. "
+            "Loosen constraints or extend the historical window.",
+            n_trials, dict(reasons),
+        )
+    return summary
+
+
+# =============================================================================
 # Public module-level helper
 # =============================================================================
 
