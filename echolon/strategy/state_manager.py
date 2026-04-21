@@ -161,7 +161,7 @@ class StateManager:
         # Ensure directory exists (also done inside write_state_atomically, harmless)
         self._state_path.parent.mkdir(parents=True, exist_ok=True)
 
-        from echolon.live.state_writer import write_state_atomically
+        from echolon._internal.atomic_state import write_state_atomically
         write_state_atomically(str(self._state_path), self._state.to_dict())
 
     def clear_state(self) -> None:

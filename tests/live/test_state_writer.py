@@ -2,7 +2,7 @@
 import json
 from pathlib import Path
 
-from echolon.live.state_writer import (
+from echolon._internal.atomic_state import (
     STATE_SCHEMA_VERSION,
     HEARTBEAT_SCHEMA_VERSION,
     write_state_atomically,
