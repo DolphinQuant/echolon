@@ -538,6 +538,8 @@ def calculate_mfe_mae_for_all_trades(
 
 def main():
     """Main function to run MFE/MAE calculation on backtest results."""
+    from echolon._internal.structured_logging import install_structured_logging
+    install_structured_logging()
     from echolon.config.paths_config import PathsConfig
     from echolon.config.markets.factory import MarketFactory
 

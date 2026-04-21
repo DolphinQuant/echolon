@@ -224,6 +224,8 @@ def run_best_trial(
 
 def main():
     """Command line entry point."""
+    from echolon._internal.structured_logging import install_structured_logging
+    install_structured_logging()
     parser = argparse.ArgumentParser(
         description='Run backtest with quant engine',
         formatter_class=argparse.RawDescriptionHelpFormatter,

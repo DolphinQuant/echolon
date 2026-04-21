@@ -131,3 +131,48 @@ def test_debug_modules_env_var_raises_level(monkeypatch):
 
     target = logging.getLogger("echolon.backtest.engine.hooks.contract_aware.broker")
     assert target.level == logging.DEBUG
+
+
+def test_cli_entry_points_call_install_structured_logging():
+    """Every echolon CLI `def main()` must call install_structured_logging()
+    as its first action, so ECHOLON_LOG_JSON / ECHOLON_DEBUG_MODULES env vars
+    are honored when running echolon from the command line."""
+    import ast
+    from pathlib import Path
+
+    base = Path(__file__).parent.parent.parent / "echolon"
+    # Find every file with a top-level `def main`
+    cli_files: list[Path] = []
+    for py in base.rglob("*.py"):
+        src = py.read_text()
+        if "\ndef main(" in src or src.startswith("def main("):
+            cli_files.append(py)
+
+    assert cli_files, "expected at least one CLI entry point under echolon/"
+
+    offenders: list[tuple[str, str]] = []
+    for path in cli_files:
+        tree = ast.parse(path.read_text())
+        for node in ast.iter_child_nodes(tree):
+            if not (isinstance(node, ast.FunctionDef) and node.name == "main"):
+                continue
+            # Walk main() body looking for install_structured_logging() calls.
+            found = False
+            for sub in ast.walk(node):
+                if isinstance(sub, ast.Call) and isinstance(sub.func, ast.Name) and sub.func.id == "install_structured_logging":
+                    found = True
+                    break
+                # Also accept attribute-style calls like `structured_logging.install_structured_logging()`
+                if (
+                    isinstance(sub, ast.Call)
+                    and isinstance(sub.func, ast.Attribute)
+                    and sub.func.attr == "install_structured_logging"
+                ):
+                    found = True
+                    break
+            if not found:
+                offenders.append((str(path.relative_to(base)), f"def main at line {node.lineno}"))
+
+    assert not offenders, (
+        f"CLI entry points missing install_structured_logging(): {offenders}"
+    )
