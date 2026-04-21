@@ -336,23 +336,16 @@ class EngineFactory:
         )
 
         if platform == "miniqmt":
-            from .deploy.platforms.miniqmt.qmt_engine import QMTEngine
+            from echolon.live.platforms.miniqmt.qmt_engine import QMTEngine
             return QMTEngine(
                 ctx=ctx,
                 market_adapter=market_adapter,
                 frequency_context=frequency_context,
                 client=client
             )
-        elif platform == "ccxt":
-            from .deploy.platforms.ccxt.ccxt_engine import CCXTEngine
-            return CCXTEngine(
-                ctx=ctx,
-                market_adapter=market_adapter,
-                frequency_context=frequency_context,
-                client=client
-            )
-        else:
-            raise ValueError(f"Unknown platform: {platform}")
+        # Note: "ccxt" platform is not yet implemented. See
+        # echolon/live/platforms/ccxt/ccxt_engine.py for the skeleton TODOs.
+        raise ValueError(f"Unknown or unimplemented platform: {platform}")
 
     @classmethod
     def register_market_adapter(
