@@ -222,19 +222,30 @@ def log_workflow_success(context: RunContext, workflow: str, **metrics) -> None:
     logger.log(RESULT, msg)
 
 
-def log_workflow_failure(context: RunContext, workflow: str, error: str) -> None:
+def log_workflow_failure(
+    context: RunContext,
+    workflow: str,
+    error: Exception | str,
+) -> None:
     """
-    Log workflow failure with error message.
+    Log workflow failure. Accepts either an exception (preferred — traceback
+    is captured automatically via exc_info) or a plain string for legacy callers.
 
-    Format: "[CONTEXT] Workflow | FAILURE | error description"
+    Format: "[CONTEXT] Workflow | FAILURE | <type: msg or string>"
 
     Args:
         context: Execution context
         workflow: Workflow name
-        error: Error description
+        error: Exception instance (traceback captured) OR a plain string
     """
     logger = logging.getLogger("backtest")
-    logger.critical(f"[{context.upper()}] {workflow} | FAILURE | {error}")
+    if isinstance(error, BaseException):
+        logger.critical(
+            f"[{context.upper()}] {workflow} | FAILURE | {type(error).__name__}: {error}",
+            exc_info=(type(error), error, error.__traceback__),
+        )
+    else:
+        logger.critical(f"[{context.upper()}] {workflow} | FAILURE | {error}")
 
 
 def log_workflow_info(context: RunContext, workflow: str, message: str) -> None:
@@ -264,7 +275,7 @@ def log_result_summary(
     """
     Log comprehensive result summary for backtest runs.
 
-    This creates a CRITICAL level log that's always visible and easily parseable
+    This creates a RESULT level log that's always visible and easily parseable
     by automated tools (e.g., debugger_agent.py).
 
     Format: "[CONTEXT] Workflow | RESULT SUMMARY | Sharpe: X.XXX | Return: X.XX% | ..."

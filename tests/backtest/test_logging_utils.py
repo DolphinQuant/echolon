@@ -31,3 +31,26 @@ def test_log_result_summary_uses_result_level(caplog):
         )
     assert any(r.levelno == logging_utils.RESULT for r in caplog.records)
     assert not any(r.levelno == logging.CRITICAL for r in caplog.records)
+
+
+def test_log_workflow_failure_accepts_exception_and_records_traceback(caplog):
+    try:
+        raise ValueError("boom")
+    except ValueError as exc:
+        logging_utils.log_workflow_failure(
+            context="debug", workflow="Backtest", error=exc
+        )
+    # Record exists and has exc_info (traceback captured)
+    records = [r for r in caplog.records if r.levelno == logging.CRITICAL]
+    assert records, "CRITICAL-level record expected"
+    assert records[-1].exc_info is not None
+    assert records[-1].exc_info[0] is ValueError
+
+
+def test_log_workflow_failure_accepts_string_backcompat(caplog):
+    logging_utils.log_workflow_failure(
+        context="debug", workflow="Backtest", error="simple string"
+    )
+    records = [r for r in caplog.records if r.levelno == logging.CRITICAL]
+    assert records
+    assert "simple string" in records[-1].message
