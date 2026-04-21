@@ -130,3 +130,24 @@ def test_preflight_fails_fast_on_first_check(tmp_path):
         preflight(tmp_path)
     # STR-001 comes first in the check order
     assert exc.value.code == "STR-001"
+
+
+def test_load_strategy_from_dir_calls_preflight(tmp_path):
+    """loader.load_strategy_from_dir must call preflight() so the PRM-*
+    checks fire BEFORE any import attempt. Without preflight delegation,
+    the loader's inline checks only cover STR-001/002 and PRM-001/002
+    would only surface later at backtest-time."""
+    _make_valid_strategy(tmp_path)
+    # Break PRM-002: remove a required params key. Today the loader's
+    # inline checks (STR-001, STR-002) pass — preflight delegation is
+    # what catches PRM-002 at load time.
+    (tmp_path / "strategy_params.py").write_text(
+        "DEFAULT_PARAMS = {'entry_params': {'printlog': False}}"
+    )
+
+    from echolon.strategy.loader import load_strategy_from_dir
+    from echolon.errors import EchelonError
+
+    with pytest.raises(EchelonError) as exc:
+        load_strategy_from_dir(tmp_path)
+    assert exc.value.code == "PRM-002"

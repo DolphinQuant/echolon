@@ -22,23 +22,14 @@ from pathlib import Path
 from types import ModuleType
 from typing import Any
 
-from echolon.errors import raise_error
+from echolon.strategy.preflight import preflight as _preflight
 
 logger = logging.getLogger(__name__)
 
 
-REQUIRED_FILES = [
-    "entry.py",
-    "exit.py",
-    "risk.py",
-    "sizer.py",
-    "component.py",
-    "strategy_params.py",
-    "strategy_indicator_list.json",
-]
-
 # Mapping of strategy module file (without .py) to its required exported class name.
-# Used by load_strategy_from_dir() to verify each module exports the expected class.
+# Used by load_strategy_from_dir() to collect the component classes after
+# preflight() has already verified every file/class is present.
 _REQUIRED_CLASSES: dict[str, str] = {
     "entry": "entry_rule",
     "exit": "exit_rule",
@@ -179,35 +170,23 @@ def load_strategy_from_dir(
 
     Raises
     ------
-    StrategyStructureError
+    EchelonError
         STR-001 if any of the 7 required files are missing.
         STR-002 if a required class is not exported by its module.
+        PRM-001 / PRM-002 if strategy_params.DEFAULT_PARAMS is malformed.
+        (See ``echolon.strategy.preflight`` for the full check order.)
     """
     strategy_dir = Path(strategy_dir)
 
-    # STR-001: verify all 7 required files exist
-    missing = [f for f in REQUIRED_FILES if not (strategy_dir / f).exists()]
-    if missing:
-        raise_error(
-            "STR-001",
-            strategy_dir=str(strategy_dir),
-            missing_files=", ".join(missing),
-        )
+    # Delegate structural + param validation to the shared preflight
+    # orchestrator so STR-001/002 and PRM-001/002 surface at load time
+    # with the richest catalog error.
+    _preflight(strategy_dir)
 
-    # STR-002: verify each module exports its required class
     loader = StrategyLoader(strategy_dir, package_base=package_base)
     components: dict[str, Any] = {}
     for module_name, expected_class_name in _REQUIRED_CLASSES.items():
         module = loader.load_module(module_name)
-        if not hasattr(module, expected_class_name):
-            module_path = strategy_dir / f"{module_name}.py"
-            found = [name for name in dir(module) if not name.startswith("_")]
-            raise_error(
-                "STR-002",
-                file=str(module_path),
-                expected_class=expected_class_name,
-                found_classes=", ".join(found),
-            )
         components[expected_class_name] = getattr(module, expected_class_name)
 
     return components
