@@ -54,3 +54,28 @@ def test_log_workflow_failure_accepts_string_backcompat(caplog):
     records = [r for r in caplog.records if r.levelno == logging.CRITICAL]
     assert records
     assert "simple string" in records[-1].message
+
+
+import asyncio
+
+
+def test_run_context_isolated_across_asyncio_tasks():
+    """Parallel trials (asyncio or concurrent.futures) must not share run_context."""
+    results = {}
+
+    async def setter_a():
+        logging_utils.set_run_context("optimization")
+        await asyncio.sleep(0.01)
+        results["a"] = logging_utils.get_run_context()
+
+    async def setter_b():
+        logging_utils.set_run_context("debug")
+        await asyncio.sleep(0.01)
+        results["b"] = logging_utils.get_run_context()
+
+    async def runner():
+        await asyncio.gather(setter_a(), setter_b())
+
+    asyncio.run(runner())
+    assert results["a"] == "optimization"
+    assert results["b"] == "debug"

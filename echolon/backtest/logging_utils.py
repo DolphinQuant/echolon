@@ -21,6 +21,7 @@ Message Format:
 """
 
 import logging
+from contextvars import ContextVar
 from typing import Literal, Optional, Dict, Any
 
 # Custom log level between WARNING (30) and ERROR (40). Used for milestone
@@ -32,32 +33,21 @@ logging.addLevelName(RESULT, "RESULT")
 # Type for execution contexts
 RunContext = Literal["optimization", "debug", "best_trial"]
 
-# Module-level context for components to check
-_current_context: RunContext = "debug"
+_current_context: ContextVar[RunContext] = ContextVar("echolon_run_context", default="debug")
 
 
 def set_run_context(context: RunContext) -> None:
-    """
-    Set the current run context for all components.
+    """Set the run context for the current async/thread context.
 
-    This should be called at the start of any backtest/optimization run.
-    Components can then check the context to determine logging verbosity.
-
-    Args:
-        context: The execution context
+    ContextVar semantics: asyncio tasks and concurrent.futures workers each
+    get an isolated copy, so parallel Optuna trials do not race.
     """
-    global _current_context
-    _current_context = context
+    _current_context.set(context)
 
 
 def get_run_context() -> RunContext:
-    """
-    Get the current run context.
-
-    Returns:
-        Current execution context
-    """
-    return _current_context
+    """Read the run context for the current async/thread context."""
+    return _current_context.get()
 
 
 def setup_backtest_logging(run_context: RunContext) -> None:
