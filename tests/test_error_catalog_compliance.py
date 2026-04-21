@@ -7,12 +7,21 @@ import pathlib
 
 MIGRATED_SUBSYSTEMS = [
     "strategy/parameter_architecture.py",
+    "strategy/preflight.py",
     "data/loaders/session_availability_loader.py",
+    "data/loaders/ohlcv_loader.py",
     "data/transformers/calendar_generator.py",
+    "indicators/calculators/_utils.py",
+    "indicators/calculators/intraday/indicators.py",
+    "indicators/calculators/intraday/market_context.py",
     "backtest/engine/backtrader_strategy.py",
     "live/trading_slot.py",
     "live/platforms/miniqmt/qmt_client.py",
 ]
+# Note: strategy/schemas.py is NOT in this list. P4B.2 tightened only
+# EntrySignalOutput / ExitSignalOutput (VAL-001, VAL-002). The ~22
+# bare raises in SizerOutput / RiskOutput / StrategyIndicatorList
+# validators remain out of migration scope pending separate conversion.
 
 # Bare raises of these concrete types are what we forbid. Catalog codes use
 # raise_error(), which internally raises a subclass of EchelonError — those
