@@ -21,7 +21,7 @@ def test_load_equity_curve_is_public_export():
 
 def test_sender_helpers_are_removed():
     """HTTP POST helpers must no longer exist in echolon (moved to goingmerry)."""
-    import echolon.live.dashboard as dash
+    import echolon.live.io.kpi_aggregator as dash
     assert not hasattr(dash, "send_dashboard_data")
     assert not hasattr(dash, "send_portfolio_dashboard_data")
     assert not hasattr(dash, "_post_json")

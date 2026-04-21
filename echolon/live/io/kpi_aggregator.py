@@ -32,8 +32,8 @@ import pandas as pd
 
 from echolon.config.markets.factory import MarketFactory
 
-from .config.logging_config import get_deploy_logger
-from .config.portfolio_deploy_config import PortfolioDeployConfig, SlotConfig
+from ..config.logging_config import get_deploy_logger
+from ..config.portfolio_deploy_config import PortfolioDeployConfig, SlotConfig
 
 logger = get_deploy_logger(__name__)
 

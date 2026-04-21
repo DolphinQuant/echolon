@@ -1,6 +1,6 @@
 """Echolon live trading — MiniQMT and CCXT platform runners."""
 
-from echolon.live.dashboard import (
+from echolon.live.io.kpi_aggregator import (
     aggregate_portfolio,
     generate_portfolio_dashboard,
     load_equity_curve,

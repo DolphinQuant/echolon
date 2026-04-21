@@ -63,7 +63,7 @@ from echolon.data.loaders.calendar_loader import (
 )
 from echolon.engine.factory import EngineFactory
 from echolon.strategy.hooks.forced_exit_strategy_hook import ForcedExitStrategyHook
-from .data_logger import save_trading_data_snapshot, save_trade_execution
+from .io.data_logger import save_trading_data_snapshot, save_trade_execution
 from echolon.strategy.interfaces import OrderStatus
 from echolon.data.live_data import run_live_data_update
 from echolon.indicators.run import run_indicator_calculation
@@ -552,7 +552,7 @@ class TradingRunner:
 
         # Step 7: Generate dashboard data and save locally
         try:
-            from .dashboard import generate_dashboard_data, save_dashboard_data
+            from .io.kpi_aggregator import generate_dashboard_data, save_dashboard_data
 
             dashboard_data = generate_dashboard_data(
                 trading_data_dir=self.config.trading_data_dir,

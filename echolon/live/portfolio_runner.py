@@ -381,7 +381,7 @@ class PortfolioTradingRunner:
             results["drawdown_breached"] = True
 
         # Phase 5: Save trading data snapshot + state + health report
-        from .data_logger import save_trading_data_snapshot
+        from .io.data_logger import save_trading_data_snapshot
         for slot in self.slots:
             if not slot.is_errored:
                 # Save daily trading data snapshot (equity curve source)
@@ -821,7 +821,7 @@ class PortfolioTradingRunner:
                         )
 
                         # Write per-slot trade execution CSV
-                        from .data_logger import save_trade_execution
+                        from .io.data_logger import save_trade_execution
                         sc = slot.slot_config
                         trade_data_dir = os.path.join(self.slots_dir, slot_id)
                         save_trade_execution(
@@ -878,7 +878,7 @@ class PortfolioTradingRunner:
                     })
 
                     # Write canceled trade to execution CSV
-                    from .data_logger import save_trade_execution
+                    from .io.data_logger import save_trade_execution
                     sc = slot.slot_config
                     trade_data_dir = os.path.join(self.slots_dir, slot_id)
                     save_trade_execution(
@@ -923,7 +923,7 @@ class PortfolioTradingRunner:
                         })
 
                     # Write rejected trade to execution CSV
-                    from .data_logger import save_trade_execution
+                    from .io.data_logger import save_trade_execution
                     sc = slot.slot_config
                     trade_data_dir = os.path.join(self.slots_dir, slot_id)
                     save_trade_execution(
@@ -1161,7 +1161,7 @@ class PortfolioTradingRunner:
 
     def _generate_dashboard(self) -> None:
         """Generate per-slot + portfolio aggregate dashboard and save locally."""
-        from .dashboard import generate_portfolio_dashboard, save_portfolio_dashboard
+        from .io.kpi_aggregator import generate_portfolio_dashboard, save_portfolio_dashboard
 
         # Build slot statuses from runtime state
         slot_statuses = {}
