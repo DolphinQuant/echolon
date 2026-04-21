@@ -133,6 +133,66 @@ def _check_params_structure(strategy_dir: Path) -> None:
             )
 
 
+import ast as _ast
+import json as _json
+import re as _re
+
+
+def _collect_json_declared_indicators(strategy_dir: Path) -> set[str]:
+    """Return the set of indicator names declared in strategy_indicator_list.json."""
+    path = strategy_dir / "strategy_indicator_list.json"
+    try:
+        payload = _json.loads(path.read_text())
+    except (_json.JSONDecodeError, OSError):
+        return set()
+    indicators = payload.get("indicators", [])
+    names: set[str] = set()
+    for entry in indicators:
+        if isinstance(entry, dict) and "name" in entry:
+            names.add(str(entry["name"]))
+        elif isinstance(entry, str):
+            names.add(entry)
+    return names
+
+
+def _collect_code_referenced_strings(strategy_dir: Path) -> set[str]:
+    """Heuristic: scan string literals in entry/exit/risk/sizer.py that look
+    like indicator-name-style tokens (letters + digits + underscores, no
+    spaces/punctuation)."""
+    pattern = _re.compile(r"^[A-Za-z][A-Za-z0-9_]*$")
+    referenced: set[str] = set()
+    for file_name in EXPECTED_CLASSES:  # entry.py, exit.py, risk.py, sizer.py
+        path = strategy_dir / file_name
+        if not path.exists():
+            continue
+        try:
+            tree = _ast.parse(path.read_text())
+        except SyntaxError:
+            continue
+        for node in _ast.walk(tree):
+            if isinstance(node, _ast.Constant) and isinstance(node.value, str):
+                s = node.value
+                if pattern.match(s) and len(s) >= 3:
+                    referenced.add(s)
+    return referenced
+
+
+def _check_indicator_casing(strategy_dir: Path) -> None:
+    """Raise IND-001 if any code-referenced string matches a JSON-declared
+    indicator when case-folded, but not exactly."""
+    declared = _collect_json_declared_indicators(strategy_dir)
+    referenced = _collect_code_referenced_strings(strategy_dir)
+    declared_lower = {n.lower(): n for n in declared}
+    for code_name in sorted(referenced):  # sorted for deterministic error ordering
+        lower = code_name.lower()
+        if lower in declared_lower and code_name != declared_lower[lower]:
+            raise_error(
+                "IND-001",
+                code_name=code_name,
+                json_name=declared_lower[lower],
+            )
+
+
 def preflight(strategy_dir) -> None:
     """Run all preflight checks against a strategy directory.
 
@@ -144,3 +204,4 @@ def preflight(strategy_dir) -> None:
     _check_required_files(strategy_dir)
     _check_required_classes(strategy_dir)
     _check_params_structure(strategy_dir)
+    _check_indicator_casing(strategy_dir)
