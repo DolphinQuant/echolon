@@ -422,22 +422,16 @@ class BacktestRunner:
         """Log results summary with SUCCESS/FAILURE markers."""
         run_context = get_run_context()
 
-        # Check for zero trades - critical diagnostic
-        if results.total_trades == 0:
-            log_zero_trades_warning(
-                run_context,
-                "Backtest",
-                bars_processed=len(self._indicators),
-                entry_signals_generated=0,  # Would need strategy stats
-                entry_signals_blocked=0,
-                risk_blocks=0,
-            )
-            log_workflow_failure(
-                run_context,
-                "Backtest",
-                "Zero trades executed - check entry/risk conditions"
-            )
-            return
+        # Check for zero trades - critical diagnostic (BT-002)
+        # _assert_trades_produced logs the diagnostic warning and raises
+        # an EchelonError so callers (and LLM log readers) see a structured code.
+        _assert_trades_produced(
+            total_trades=results.total_trades,
+            bars_processed=len(self._indicators),
+            entry_signals_generated=0,  # Would need strategy stats
+            entry_signals_blocked=0,
+            risk_blocks=0,
+        )
 
         # Log result summary (CRITICAL level for debugger_agent)
         win_rate = (
@@ -674,3 +668,38 @@ class BacktestRunner:
             'sizer_params': sizer_params,
             'risk_params': risk_params,
         }
+
+
+# =============================================================================
+# BT-002 helper: raise EchelonError when a backtest completes with zero trades
+# =============================================================================
+
+from echolon.errors import raise_error
+
+
+def _assert_trades_produced(
+    total_trades: int,
+    bars_processed: int,
+    entry_signals_generated: int = 0,
+    entry_signals_blocked: int = 0,
+    risk_blocks: int = 0,
+) -> None:
+    """Raise BT-002 when a backtest completes with no trades. Logs the
+    diagnostic warning first so the LLM reading logs sees both."""
+    if total_trades > 0:
+        return
+    log_zero_trades_warning(
+        get_run_context(),
+        "Backtest",
+        bars_processed=bars_processed,
+        entry_signals_generated=entry_signals_generated,
+        entry_signals_blocked=entry_signals_blocked,
+        risk_blocks=risk_blocks,
+    )
+    raise_error(
+        "BT-002",
+        bars_processed=bars_processed,
+        entry_signals_generated=entry_signals_generated,
+        entry_signals_blocked=entry_signals_blocked,
+        risk_blocks=risk_blocks,
+    )

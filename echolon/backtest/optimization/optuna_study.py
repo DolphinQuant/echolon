@@ -586,3 +586,31 @@ class OptunaOptimizer:
                 with open(params_path, 'w') as f:
                     json.dump(best_params, f, indent=2, default=str)
                 logger.info(f"Saved best params to {params_path}")
+
+
+# =============================================================================
+# BT-003 helper: raise EchelonError on Optuna hard-constraint violation
+# =============================================================================
+
+from echolon.errors import raise_error
+
+
+def _raise_constraint_violation(
+    trial_number: int,
+    constraint: str,
+    required,
+    actual,
+    params: dict,
+) -> None:
+    """Raise BT-003 with Optuna trial params in context. Callers should invoke
+    this when a hard constraint fails, so the exception's structured context
+    (trial_number, constraint, required, actual, params) is captured even if
+    the trial's score is also clamped to 0 for Optuna's convergence logic."""
+    raise_error(
+        "BT-003",
+        trial_number=trial_number,
+        constraint=constraint,
+        required=required,
+        actual=actual,
+        params=params,
+    )

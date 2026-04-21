@@ -379,7 +379,26 @@ class BacktraderStrategyBridge(bt.Strategy):
 
         # Delegate to platform-agnostic strategy
         # Hook lifecycle (forced exits, session context) handled in on_bar()
-        self._agnostic_strategy.on_bar()
+        # BT-001: translate raw strategy exceptions into EchelonError with bar context
+        try:
+            self._agnostic_strategy.on_bar()
+        except Exception as exc:
+            _wrap_on_bar_exception(
+                exc=exc,
+                bar_index=len(self),  # backtrader convention
+                trading_date=(
+                    self.data.datetime.date(0)
+                    if hasattr(self.data, "datetime") else None
+                ),
+                contract=(
+                    str(self.data._name) if hasattr(self.data, "_name") else None
+                ),
+                position_size=(self.position.size if self.position else 0),
+                file=(
+                    type(self._agnostic_strategy).__module__
+                    if self._agnostic_strategy is not None else __name__
+                ),
+            )
 
         # Log bar end with position change detection (debug/best_trial only)
         if log_details:
@@ -481,3 +500,31 @@ def get_strategy_class(ctx: TradingContext, strategy_code_dir: Optional[str] = N
     _STRATEGY_CLASS_CACHE[cache_key] = strategy_class
 
     return strategy_class
+
+
+# =============================================================================
+# BT-001 helper: translate raw strategy exceptions into EchelonError
+# =============================================================================
+
+from echolon.errors import raise_error
+
+
+def _wrap_on_bar_exception(
+    exc: Exception,
+    bar_index: int,
+    trading_date,
+    contract,
+    position_size,
+    file: str,
+) -> None:
+    """Translate a raw strategy exception into a BT-001 EchelonError with
+    bar-level context so an LLM reading logs can locate the failure."""
+    raise_error(
+        "BT-001",
+        file=file,
+        bar_index=bar_index,
+        trading_date=str(trading_date),
+        contract=str(contract),
+        position_size=position_size,
+        exception_repr=f"{type(exc).__name__}: {exc}",
+    )
