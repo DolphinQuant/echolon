@@ -28,7 +28,7 @@ from echolon.config.markets.core.trading_target import TradingTarget
 from echolon.config.optuna_config import OptunaConfig
 from echolon.config.backtest_config import BacktestConfig
 from .engine.backtest_runner import BacktestRunner
-from .portfolio_metrics import (
+from echolon.backtest.metrics.portfolio_metrics import (
     compute_correlation_matrix,
     compute_per_year_returns,
     compute_portfolio_metrics,

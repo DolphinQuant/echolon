@@ -22,7 +22,7 @@ import json
 import os
 import matplotlib.pyplot as plt
 
-from .schemas import validate_trades_dict_list
+from echolon.backtest.schemas import validate_trades_dict_list
 
 logger = logging.getLogger(__name__)
 

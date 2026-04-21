@@ -47,7 +47,7 @@ import pandas as pd
 from .backtrader_engine import BacktestResults
 from .enriched_pandas_data import EnrichedPandasData
 from echolon.engine.factory import EngineFactory
-from echolon.backtest.reporting import convert_to_serializable, save_trade_log, save_equity_curve
+from echolon.backtest.metrics.reporting import convert_to_serializable, save_trade_log, save_equity_curve
 from echolon.data.loaders.backtest_data_loader import load_backtest_data, load_indicator_metadata, load_best_params
 
 
@@ -61,7 +61,7 @@ def _get_default_params(strategy_code_dir: Optional[Path] = None):
     return loader.load_attr("strategy_params", "DEFAULT_PARAMS")
 
 
-from echolon.backtest.mfe_mae import enrich_trades_with_mfe_mae
+from echolon.backtest.metrics.mfe_mae import enrich_trades_with_mfe_mae
 from echolon.backtest.schemas import BacktestResultsSchemaV4
 from .backtrader_strategy import get_strategy_class
 from echolon.config.markets.core.context import TradingContext

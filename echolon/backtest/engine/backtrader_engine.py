@@ -74,7 +74,7 @@ from echolon.strategy.frequency.session_context_provider import BaseSessionConte
 from echolon.strategy.logging import CSVStrategyLogger, NullStrategyLogger
 
 # Analyzers
-from echolon.backtest.analyzers import add_analyzers, extract_analysis_results
+from echolon.backtest.metrics.analyzers import add_analyzers, extract_analysis_results
 
 # Hook interface
 from .hooks.base import IEngineHook

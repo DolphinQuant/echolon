@@ -80,7 +80,7 @@ def setup_backtest_logging(run_context: RunContext) -> None:
             "echolon.backtest.engine.hooks.contract_aware.broker",
             "echolon.backtest.engine.hooks.contract_aware.hook",
             "echolon.backtest.engine.hooks.session_aware",
-            "echolon.backtest.mfe_mae",
+            "echolon.backtest.metrics.mfe_mae",
             "echolon.backtest.optimization.optuna_study",
             "echolon.backtest.wfa.runner",
             "echolon.indicators.engine.processor",
