@@ -45,8 +45,73 @@ from xtquant.xttype import StockAccount
 
 from ...config.deploy_config import QMTAccountConfig
 from echolon.data.loaders.calendar_loader import is_night_market_open
+from echolon.errors import raise_error
 
 logger = logging.getLogger(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Error helpers (LIV-001/002/003)
+# ---------------------------------------------------------------------------
+
+# Translation table for miniQMT order-status constants (xtconstant) to the
+# Echolon-canonical status vocabulary surfaced to strategies and agents.
+_QMT_STATUS_TO_ECHO = {
+    48: "UNREPORTED",
+    49: "WAIT_REPORTING",
+    50: "SUBMITTED",
+    53: "PARTIAL_CANCELED",
+    54: "CANCELED",
+    55: "PARTIAL_FILLED",
+    56: "FILLED",
+    57: "REJECTED",
+}
+
+
+def _raise_broker_unavailable(account_id: str, error: str) -> None:
+    """Raise LIV-001 when the miniQMT client can't connect or loses connection."""
+    raise_error(
+        "LIV-001",
+        platform="miniqmt",
+        account_id=account_id,
+        error=error,
+    )
+
+
+def _raise_order_rejected(
+    contract: str,
+    direction: str,
+    price: float,
+    size: int,
+    broker_status: int,
+    broker_message: str,
+) -> None:
+    """Raise LIV-002 with full order + broker-response context."""
+    raise_error(
+        "LIV-002",
+        contract=contract,
+        direction=direction,
+        price=price,
+        size=size,
+        broker_status=broker_status,
+        broker_message=broker_message,
+    )
+
+
+def _raise_qmt_callback_error(seq_id: int, qmt_status: int, raw) -> None:
+    """Raise LIV-003 with QMT status-code translation.
+
+    Unknown ``qmt_status`` values fall back to ``UNKNOWN_<status>`` so the
+    agent monitoring the run always gets a readable string, never a silent
+    KeyError or a bare integer.
+    """
+    raise_error(
+        "LIV-003",
+        seq_id=seq_id,
+        qmt_status=qmt_status,
+        echo_status=_QMT_STATUS_TO_ECHO.get(qmt_status, f"UNKNOWN_{qmt_status}"),
+        raw=str(raw),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -372,7 +437,10 @@ class MiniQMTClient:
         """Context manager entry."""
         if self.connect():
             return self
-        raise ConnectionError("Failed to connect to miniQMT")
+        _raise_broker_unavailable(
+            account_id=self.config.account_id,
+            error="connect() returned False; see logs above for error code and traceback",
+        )
 
     def __exit__(self, exc_type, exc_val, exc_tb):
         """Context manager exit."""
