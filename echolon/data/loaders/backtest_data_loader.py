@@ -99,6 +99,21 @@ def load_backtest_data(
         indicators_path = os.path.join(str(indicator_dir), instrument, "strategy_indicators.csv")
     indicators_data = pd.read_csv(indicators_path)
 
+    # Surface IND-003 sidecar warnings written by indicators/engine/processor
+    import json as _json
+    _sidecar_path = Path(indicators_path).with_suffix(Path(indicators_path).suffix + ".warnings.json")
+    if _sidecar_path.exists():
+        try:
+            _payload = _json.loads(_sidecar_path.read_text())
+            for _col, _info in _payload.get("warnings", {}).items():
+                logger.warning(
+                    f"[DATA_LOADER] {_info.get('code', 'IND-003')}: indicator "
+                    f"'{_col}' has {_info.get('nan_ratio', 0):.1%} NaN "
+                    f"({_info.get('nan_rows')}/{_info.get('rows')} rows)"
+                )
+        except (_json.JSONDecodeError, OSError):
+            pass  # Sidecar is best-effort; don't let a corrupt sidecar break loading
+
     # For intraday data: use 'datetime' column as index (has time component)
     # For interday data: fall back to 'date' column
     # Backtrader's PandasData uses the index for datetime tracking (datetime=None in params)
