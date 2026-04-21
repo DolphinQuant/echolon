@@ -25,7 +25,7 @@ def test_import_market_adapters():
 def test_import_backtest():
     from echolon.backtest.engine.backtrader_engine import BacktraderEngine
     from echolon.backtest.optimization.optuna_study import OptunaOptimizer
-    from echolon.backtest.engine_factory import EngineFactory
+    from echolon.engine.factory import EngineFactory
     assert BacktraderEngine is not None
     assert OptunaOptimizer is not None
     assert EngineFactory is not None

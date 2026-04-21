@@ -21,7 +21,7 @@ from typing import Any, Dict, List, Optional
 
 from echolon.config.markets.factory import MarketFactory
 from echolon.config.markets.core.context import TradingContext
-from echolon.backtest.engine_factory import EngineFactory
+from echolon.engine.factory import EngineFactory
 from echolon.strategy.hooks.forced_exit_strategy_hook import ForcedExitStrategyHook
 from echolon.strategy.interfaces import Order, OrderStatus
 from .config.portfolio_deploy_config import SlotConfig

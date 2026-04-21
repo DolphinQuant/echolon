@@ -34,7 +34,7 @@ IMPORT_MIGRATIONS: dict[str, str] = {
     "echolon.quant_engine.backtest.portfolio_backtest_runner": "echolon.backtest.portfolio_runner",
     "echolon.quant_engine.backtest.portfolio_metrics": "echolon.backtest.portfolio_metrics",
     "echolon.quant_engine.backtest": "echolon.backtest",
-    "echolon.quant_engine.engine_factory": "echolon.backtest.engine_factory",
+    "echolon.quant_engine.engine_factory": "echolon.engine.factory",
     "echolon.quant_engine.run_backtest": "echolon.backtest.runner",
     "echolon.quant_engine.reporting": "echolon.backtest.reporting",
     "echolon.quant_engine.calculate_mfe_mae": "echolon.backtest.mfe_mae",

@@ -45,9 +45,6 @@ from echolon.strategy.frequency.interday_context import InterdayContext
 from echolon.strategy.frequency.intraday_context import IntradayContext
 from echolon.markets.shfe.adapter import SHFEAdapter
 from echolon.markets.crypto.adapter import CryptoAdapter
-from echolon.backtest.engine.backtrader_engine import BacktraderEngine
-from echolon.backtest.engine.hooks.contract_aware.hook import ContractAwareHook
-from echolon.backtest.engine.hooks.session_aware import SessionAwareHook
 from echolon.data.loaders.contract_loader import ContractIndicatorManager
 from echolon.config.markets.core.context import TradingContext
 
@@ -238,6 +235,10 @@ class EngineFactory:
             - Adds session context provider (SHFE or Crypto specific)
             - Enables VWAP, opening range, session phase tracking
         """
+        from echolon.backtest.engine.backtrader_engine import BacktraderEngine   # lazy
+        from echolon.backtest.engine.hooks.contract_aware.hook import ContractAwareHook   # lazy
+        from echolon.backtest.engine.hooks.session_aware import SessionAwareHook   # lazy
+
         market_adapter = cls.create_market_adapter(ctx, calendar_path)
         frequency_context = cls.create_frequency_context(ctx, market_adapter)
 

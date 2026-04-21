@@ -9,7 +9,6 @@ from __future__ import annotations
 from typing import TYPE_CHECKING
 
 if TYPE_CHECKING:
-    from echolon.backtest.engine_factory import EngineFactory
     from echolon.backtest.portfolio_runner import PortfolioBacktestRunner
     from echolon.backtest.runner import run_backtest, run_best_trial, run_debug_backtest
     from echolon.backtest.schemas import (
@@ -18,7 +17,6 @@ if TYPE_CHECKING:
     )
 
 __all__ = [
-    "EngineFactory",
     "PortfolioBacktestRunner",
     "run_backtest",
     "run_best_trial",
@@ -28,7 +26,6 @@ __all__ = [
 ]
 
 _LAZY_ATTRS = {
-    "EngineFactory": ("echolon.backtest.engine_factory", "EngineFactory"),
     "PortfolioBacktestRunner": ("echolon.backtest.portfolio_runner", "PortfolioBacktestRunner"),
     "run_backtest": ("echolon.backtest.runner", "run_backtest"),
     "run_best_trial": ("echolon.backtest.runner", "run_best_trial"),

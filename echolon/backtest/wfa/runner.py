@@ -86,7 +86,7 @@ class WFARunner:
         from echolon.backtest.optimization.optuna_study import OptunaOptimizer
         from echolon.backtest.optimization.select_best_trial import TrialSelector
         from echolon.backtest.runner import run_best_trial
-        from echolon.backtest.engine_factory import EngineFactory
+        from echolon.engine.factory import EngineFactory
         from echolon.backtest.engine.backtrader_strategy import get_strategy_class
         from echolon.data.loaders.backtest_data_loader import (
             load_backtest_data, load_indicator_metadata

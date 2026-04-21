@@ -46,7 +46,7 @@ import pandas as pd
 
 from .backtrader_engine import BacktestResults
 from .enriched_pandas_data import EnrichedPandasData
-from echolon.backtest.engine_factory import EngineFactory
+from echolon.engine.factory import EngineFactory
 from echolon.backtest.reporting import convert_to_serializable, save_trade_log, save_equity_curve
 from echolon.data.loaders.backtest_data_loader import load_backtest_data, load_indicator_metadata, load_best_params
 

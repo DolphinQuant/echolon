@@ -280,7 +280,7 @@ class OptimizationRunner:
         try:
             # Create engine (lightweight - no logging)
             # Use EngineFactory to handle frequency context and hooks
-            from echolon.backtest.engine_factory import EngineFactory
+            from echolon.engine.factory import EngineFactory
             engine = EngineFactory.create_backtest_engine(
                 ctx=ctx,
                 indicators_dir=indicators_dir,
