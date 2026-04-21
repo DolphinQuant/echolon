@@ -31,7 +31,7 @@ Callers (e.g. qorka) must update the following imports:
 ### Preserved (no call-site changes needed)
 
 - Class names: `EngineFactory`, `TradingRunner`, `PortfolioTradingRunner`, `PortfolioRiskOverlay`, `TradingSlot`, `CapitalSlot`, `SlotAwarePortfolio`
-- Function names in `kpi_aggregator.py`: `generate_dashboard_data`, `aggregate_portfolio`, `load_equity_curve`, `save_portfolio_dashboard`
+- Function names in `kpi_aggregator.py` (public via `echolon.live` re-export): `generate_dashboard_data`, `generate_portfolio_dashboard`, `save_dashboard_data`, `save_portfolio_dashboard`, `aggregate_portfolio`, `load_equity_curve`, `load_slot_state`
 - Function names in `data_logger.py`: `save_trading_data_snapshot`, `save_trade_execution`, `load_trading_data_history`
 - Function names in `atomic_state.py`: `write_state_atomically`, `update_heartbeat`
 - All function / class signatures across the moved files

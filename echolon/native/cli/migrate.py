@@ -29,15 +29,15 @@ IMPORT_MIGRATIONS: dict[str, str] = {
     "echolon.quant_engine.strategy.loader": "echolon.strategy.loader",
     "echolon.quant_engine.strategy.generators": "echolon.strategy.generators",
     # ---- backtest/engine subfolder moves ----
-    "echolon.quant_engine.backtest.engine.analyzers": "echolon.backtest.analyzers",
+    "echolon.quant_engine.backtest.engine.analyzers": "echolon.backtest.metrics.analyzers",
     # ---- backtest/ promoted ----
     "echolon.quant_engine.backtest.portfolio_backtest_runner": "echolon.backtest.portfolio_runner",
-    "echolon.quant_engine.backtest.portfolio_metrics": "echolon.backtest.portfolio_metrics",
+    "echolon.quant_engine.backtest.portfolio_metrics": "echolon.backtest.metrics.portfolio_metrics",
     "echolon.quant_engine.backtest": "echolon.backtest",
     "echolon.quant_engine.engine_factory": "echolon.engine.factory",
     "echolon.quant_engine.run_backtest": "echolon.backtest.runner",
-    "echolon.quant_engine.reporting": "echolon.backtest.reporting",
-    "echolon.quant_engine.calculate_mfe_mae": "echolon.backtest.mfe_mae",
+    "echolon.quant_engine.reporting": "echolon.backtest.metrics.reporting",
+    "echolon.quant_engine.calculate_mfe_mae": "echolon.backtest.metrics.mfe_mae",
     "echolon.quant_engine.logging_utils": "echolon.backtest.logging_utils",
     # ---- quant_engine/schemas consolidated ----
     "echolon.quant_engine.schemas.backtest_results": "echolon.backtest.schemas",
@@ -84,7 +84,7 @@ IMPORT_MIGRATIONS: dict[str, str] = {
     "echolon.indicators.run_indicators": "echolon.indicators.run",
     # ---- lib distributed ----
     "echolon.lib.regime_utils": "echolon.indicators.utils.regime_utils",
-    "echolon.lib.stats_utils": "echolon.backtest.utils.stats",
+    "echolon.lib.stats_utils": "echolon.backtest.metrics.stats",
     "echolon.lib.strategy_log": "echolon.strategy.utils.strategy_log",
     "echolon.lib.json_utils": "echolon._internal.json_utils",
     # ---- config merge ----
