@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from .trading_slot import TradingSlot
-    from .platforms.miniqmt.qmt_client import MiniQMTClient
+    from ..platforms.miniqmt.qmt_client import MiniQMTClient
 
 
 class PortfolioRiskOverlay:

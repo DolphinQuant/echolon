@@ -12,7 +12,7 @@ def test_corrupt_state_raises_dat_002(tmp_path: Path):
     state_file = tmp_path / "strategy_state.json"
     state_file.write_text("{ this is not valid json")
 
-    from echolon.live.trading_slot import _load_state_file
+    from echolon.live.slot.trading_slot import _load_state_file
 
     with pytest.raises(DataError) as exc:
         _load_state_file(str(state_file))
@@ -23,7 +23,7 @@ def test_corrupt_state_raises_dat_002(tmp_path: Path):
 
 def test_nonexistent_state_file_returns_empty(tmp_path: Path):
     """Cold start (file does NOT exist) is still valid; returns {} without raising."""
-    from echolon.live.trading_slot import _load_state_file
+    from echolon.live.slot.trading_slot import _load_state_file
 
     result = _load_state_file(str(tmp_path / "does_not_exist.json"))
     assert result == {}

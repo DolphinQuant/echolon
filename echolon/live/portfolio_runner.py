@@ -52,9 +52,9 @@ except ImportError:
 
 from echolon.data.loaders.contract_loader import get_main_contract
 from echolon.strategy.interfaces import Order, OrderIntent, OrderStatus
-from .capital_slot import CapitalSlot
-from .trading_slot import TradingSlot
-from .portfolio_risk import PortfolioRiskOverlay
+from .slot.capital_slot import CapitalSlot
+from .slot.trading_slot import TradingSlot
+from .slot.risk_overlay import PortfolioRiskOverlay
 from echolon.data.loaders.calendar_loader import (
     get_trading_dates,
     is_trading_day,
