@@ -4,3 +4,6 @@ __pycache__/
 dist/
 *.egg-info/
 .venv/
+
+# Audit output from scripts/audit_echolon_api_skills.py (regenerated on demand)
+audit_output.txt
