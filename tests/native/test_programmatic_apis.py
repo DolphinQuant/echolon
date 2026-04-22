@@ -28,3 +28,40 @@ def test_get_error_doc_raises_on_unknown_code():
     from echolon.native.errors import get_error_doc
     with pytest.raises((KeyError, ValueError, FileNotFoundError)):
         get_error_doc("ZZZ-999")
+
+
+def test_indicator_catalog_lists_all():
+    from echolon.indicators import catalog
+    names = catalog.list_all()
+    assert isinstance(names, list)
+    # Echolon must ship at least a handful of canonical indicators
+    assert any("rsi" in n.lower() or "atr" in n.lower() or "adx" in n.lower() for n in names)
+
+
+def test_indicator_catalog_info_returns_structure():
+    from echolon.indicators import catalog
+    info = catalog.info("rsi")
+    assert info is not None
+    assert hasattr(info, "tier") or hasattr(info, "name") or isinstance(info, dict)
+
+
+def test_patterns_list_and_get():
+    from echolon.native import patterns
+    names = patterns.list_patterns()
+    assert isinstance(names, list)
+    assert len(names) >= 1
+    first = names[0]
+    p = patterns.get_pattern(first)
+    assert p is not None
+
+
+def test_templates_list_and_load():
+    from echolon.native import templates
+    names = templates.list_templates()
+    assert isinstance(names, list)
+    assert len(names) >= 1
+    first = names[0]
+    tpl = templates.load_template(first)
+    assert tpl is not None
+    # Template should expose file contents
+    assert hasattr(tpl, "files") or isinstance(tpl, dict)
