@@ -87,8 +87,8 @@ class BaseComponent(ABC):
     # - hooks: declarative list of hook names for the engine to auto-install.
     # - indicators: declarative list of indicator names (per indicator_list schema).
     Params = None
-    hooks: tuple = ()
-    indicators: tuple = ()
+    hooks: tuple[str, ...] = ()
+    indicators: tuple[str, ...] = ()
 
     def __init__(
         self,
@@ -175,6 +175,10 @@ class BaseComponent(ABC):
             self.run_context = kwargs.get('run_context', 'optimization')
             self.is_initialized = False
             self._hooks: List[IComponentHook] = []
+            # Logging: no engine → logging is disabled. Setting _log_enabled=False
+            # avoids AttributeError if a hook or subclass calls self.log() on an
+            # engineless instance.
+            self._log_enabled = False
 
     def get_indicators(self) -> tuple:
         """Return the declarative ``indicators`` class attribute.
@@ -293,6 +297,10 @@ class BaseComponent(ABC):
         level : str
             Log level ('debug', 'info', 'warning', 'error')
         """
+        # Skip logging entirely when the component was constructed without a
+        # trading engine (declarative-surface unit tests, hooks that fire early).
+        if self._logger is None:
+            return
         # Skip logging if disabled (during optimization) unless it's error/warning
         if not self._log_enabled and level not in ['error', 'warning']:
             return
