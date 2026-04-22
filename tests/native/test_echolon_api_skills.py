@@ -94,3 +94,25 @@ def test_skills_index_contains_every_skill():
             missing.append(rel_str)
 
     assert not missing, "Skills not in SKILLS.md index:\n" + "\n".join(missing)
+
+
+def test_migrated_qorka_skills_present():
+    """The 3 qorka skills migrated in Phase 1 Task 15 must live in echolon now."""
+    from pathlib import Path
+    skills_root = Path(__file__).resolve().parents[2] / "echolon" / "native" / "skills" / "echolon_api"
+    for skill in ("validation-backup", "code-standards", "trading-api-core"):
+        skill_md = skills_root / skill / "SKILL.md"
+        assert skill_md.is_file(), f"Missing SKILL.md for migrated skill: {skill}"
+        text = skill_md.read_text()
+        assert f"name: {skill}" in text, f"{skill}/SKILL.md frontmatter missing name field"
+
+
+def test_migrated_qorka_skills_indexed_in_SKILLS_md():
+    """SKILLS.md index must link each of the 3 migrated skills."""
+    from pathlib import Path
+    skills_md = Path(__file__).resolve().parents[2] / "echolon" / "native" / "skills" / "SKILLS.md"
+    text = skills_md.read_text()
+    for skill in ("validation-backup", "code-standards", "trading-api-core"):
+        assert f"[{skill}](echolon_api/{skill}/SKILL.md)" in text, (
+            f"SKILLS.md index missing link for migrated skill {skill!r}"
+        )

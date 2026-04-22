@@ -80,49 +80,114 @@ class BaseComponent(ABC):
     - Parameter storage and access
     """
 
+    # ------ Phase 1 declarative surface (Task 23) ------
+    # Subclasses may override these class attributes.
+    # - Params: a @dataclass type defining this component's parameters; if set,
+    #   dict/missing `params` are auto-promoted to this dataclass.
+    # - hooks: declarative list of hook names for the engine to auto-install.
+    # - indicators: declarative list of indicator names (per indicator_list schema).
+    Params = None
+    hooks: tuple[str, ...] = ()
+    indicators: tuple[str, ...] = ()
+
     def __init__(
         self,
-        trading_engine: ITradingEngine,
+        trading_engine: ITradingEngine | None = None,
         frequency_context: 'IFrequencyContext' = None,
         market_adapter: 'IMarketAdapter' = None,
-        **params
+        *,
+        params=None,
+        **kwargs,
     ):
         """
         Initialize base component.
 
         Args:
-            trading_engine: Trading engine providing all interfaces
+            trading_engine: Trading engine providing all interfaces (optional for
+                declarative-surface-only construction in unit tests).
             frequency_context: Frequency context for scaling (optional, uses engine's)
             market_adapter: Market adapter (optional, uses engine's)
-            **params: Component parameters
+            params: Optional Params dataclass instance / dict for the Phase 1
+                typed-params surface. If None and ``self.Params`` is set, a
+                default ``self.Params()`` instance is constructed.
+            **kwargs: Legacy component parameters (collected into ``self._params``
+                to preserve the existing dict-based access pattern).
         """
+        # Phase 1 Params/dict promotion:
+        # - params=None + self.Params set → construct default self.Params()
+        # - dict + self.Params set → promote dict to self.Params(**dict)
+        # - instance + self.Params set → store as-is
+        # - None or dict or instance + self.Params unset → store as-is (legacy dict path)
+        #
+        # The typed params (or raw ``params`` arg) are stored in ``self._typed_params``;
+        # the ``params`` property below returns this when set, falling back to the
+        # legacy kwargs-dict (``self._params``) otherwise.
+        if params is None and self.Params is not None:
+            self._typed_params = self.Params()
+        elif self.Params is not None and isinstance(params, dict):
+            self._typed_params = self.Params(**params)
+        else:
+            self._typed_params = params
+
+        # Legacy param storage (kwargs-based, used by existing concrete components).
+        # Existing entry/exit/risk/sizer subclasses pass `printlog=...`, etc. as kwargs;
+        # collect them into self._params to preserve the existing `params.get(...)`
+        # access pattern elsewhere in the codebase.
+        self._params = kwargs
+
+        # Engine wiring — only if an engine was provided (skipped for unit tests
+        # that exercise only the Params/hooks/indicators surface).
         self._engine = trading_engine
-        self._params = params
+        if trading_engine is not None:
+            # Get contexts from engine if not provided
+            self._context = frequency_context or trading_engine.get_frequency_context()
+            self._market_adapter = market_adapter or trading_engine.get_market_adapter()
+            self._trading_context: TradingContext = trading_engine.get_trading_context()
 
-        # Get contexts from engine if not provided
-        self._context = frequency_context or trading_engine.get_frequency_context()
-        self._market_adapter = market_adapter or trading_engine.get_market_adapter()
-        self._trading_context: TradingContext = trading_engine.get_trading_context()
+            # Cache interface references
+            self._market_data = trading_engine.get_market_data()
+            self._portfolio = trading_engine.get_portfolio()
+            self._logger = trading_engine.get_logger()
+            self._strategy_logger = trading_engine.get_strategy_logger()
 
-        # Cache interface references
-        self._market_data = trading_engine.get_market_data()
-        self._portfolio = trading_engine.get_portfolio()
-        self._logger = trading_engine.get_logger()
-        self._strategy_logger = trading_engine.get_strategy_logger()
+            # Get run context for logging control
+            self.run_context = kwargs.get('run_context', 'optimization')
 
-        # Get run context for logging control
-        self.run_context = params.get('run_context', 'optimization')
+            # Configure logging based on context
+            self._configure_component_logging(self.run_context)
 
-        # Configure logging based on context
-        self._configure_component_logging(self.run_context)
+            # Component state
+            self.is_initialized = False
 
-        # Component state
-        self.is_initialized = False
+            # Hook infrastructure (market/frequency-specific features added via hooks)
+            self._hooks: List[IComponentHook] = []
 
-        # Hook infrastructure (market/frequency-specific features added via hooks)
-        self._hooks: List[IComponentHook] = []
+            self.log(f"{self.__class__.__name__} component initialized")
+        else:
+            # Lightweight construction path — declarative surface only.
+            self._context = None
+            self._market_adapter = None
+            self._trading_context = None
+            self._market_data = None
+            self._portfolio = None
+            self._logger = None
+            self._strategy_logger = None
+            self.run_context = kwargs.get('run_context', 'optimization')
+            self.is_initialized = False
+            self._hooks: List[IComponentHook] = []
+            # Logging: no engine → logging is disabled. Setting _log_enabled=False
+            # avoids AttributeError if a hook or subclass calls self.log() on an
+            # engineless instance.
+            self._log_enabled = False
 
-        self.log(f"{self.__class__.__name__} component initialized")
+    def get_indicators(self) -> tuple:
+        """Return the declarative ``indicators`` class attribute.
+
+        Subclasses that declare ``indicators = ("rsi_14", "atr_20")`` can call
+        ``self.get_indicators()`` to surface them into strategy_indicator_list.json
+        construction.
+        """
+        return self.indicators
 
     # =========================================================================
     # Properties
@@ -171,7 +236,15 @@ class BaseComponent(ABC):
 
     @property
     def params(self) -> Dict[str, Any]:
-        """Get component parameters."""
+        """Get component parameters.
+
+        Returns the Phase 1 typed Params instance when one was supplied or
+        auto-constructed (via the ``Params`` class attribute); otherwise falls
+        back to the legacy kwargs-dict collected at ``__init__`` time.
+        """
+        typed = getattr(self, "_typed_params", None)
+        if typed is not None:
+            return typed
         return self._params
 
     @property
@@ -224,6 +297,10 @@ class BaseComponent(ABC):
         level : str
             Log level ('debug', 'info', 'warning', 'error')
         """
+        # Skip logging entirely when the component was constructed without a
+        # trading engine (declarative-surface unit tests, hooks that fire early).
+        if self._logger is None:
+            return
         # Skip logging if disabled (during optimization) unless it's error/warning
         if not self._log_enabled and level not in ['error', 'warning']:
             return

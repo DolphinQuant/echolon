@@ -1,7 +1,9 @@
 """Validate a strategy directory against Echolon contracts."""
 
 import ast
+from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Union
 
 from echolon.errors import EchelonError, ERROR_CATALOG
 
@@ -124,3 +126,34 @@ def validate_strategy_dir(strategy_dir: Path) -> list[EchelonError]:
     errors.extend(_check_classes_defined(strategy_dir))
     errors.extend(_check_strategy_params(strategy_dir))
     return errors
+
+
+@dataclass
+class ValidationResult:
+    """Structured return value for the programmatic validate_strategy API."""
+
+    status: str  # "VALID" or "INVALID"
+    errors: list[EchelonError] = field(default_factory=list)
+
+    @property
+    def is_valid(self) -> bool:
+        return self.status == "VALID"
+
+
+def validate_strategy(path: Union[str, Path]) -> ValidationResult:
+    """Programmatic API: validate a strategy directory.
+
+    Thin wrapper around validate_strategy_dir that returns a structured
+    ValidationResult (status + errors) instead of a bare list.
+
+    Args:
+        path: Strategy directory path (str or Path).
+
+    Returns:
+        ValidationResult with .status == "VALID" if no errors, else "INVALID".
+    """
+    errs = validate_strategy_dir(Path(path))
+    return ValidationResult(
+        status="VALID" if not errs else "INVALID",
+        errors=errs,
+    )
