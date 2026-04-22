@@ -103,6 +103,8 @@ def create_backup():
 
 def main():
     """Create validation backup and output result as JSON."""
+    from echolon._internal.structured_logging import install_structured_logging
+    install_structured_logging()
     result = create_backup()
     print(json.dumps(result, indent=2, default=str))
     return 0 if result["success"] else 1

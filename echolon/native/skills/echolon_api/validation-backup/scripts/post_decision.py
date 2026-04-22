@@ -195,6 +195,8 @@ def execute_revert():
 
 
 def main():
+    from echolon._internal.structured_logging import install_structured_logging
+    install_structured_logging()
     parser = argparse.ArgumentParser(
         description="Post-decision handler for KEEP/REVERT workflow"
     )
