@@ -39,6 +39,9 @@ dependencies = [
 
 [project.optional-dependencies]
 platformdirs = ["platformdirs>=4.0.0"]
+mcp = [
+    "mcp>=1.0.0",
+]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
@@ -57,6 +60,7 @@ artifacts = [
 
 [project.scripts]
 echolon = "echolon.native.cli.main:app"
+echolon-mcp = "echolon.mcp.server:main"
 
 [project.urls]
 Homepage = "https://github.com/dolphinquant/echolon"
