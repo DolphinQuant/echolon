@@ -1,4 +1,5 @@
 """Echolon patterns — parse docs/PATTERNS.md, expose programmatic access."""
+import re
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -15,6 +16,16 @@ class Pattern:
 
 
 _PATTERNS_MD = Path(__file__).resolve().parents[3] / "docs" / "PATTERNS.md"
+
+# Matches a section header in one of two forms:
+#   **Label:**                (block: content on following lines)
+#   **Label:** content text   (inline: content on same line)
+_SECTION_HEADER = re.compile(r"^\*\*([^*]+):\*\*\s*(.*)$")
+
+
+def _normalize_key(name: str) -> str:
+    """Convert a pattern display name into a lookup key: lowercase, whitespace/hyphens → underscore."""
+    return re.sub(r"[\s-]+", "_", name.lower())
 
 
 def _parse_patterns() -> dict[str, Pattern]:
@@ -33,7 +44,7 @@ def _parse_patterns() -> dict[str, Pattern]:
         if current_name is None:
             return
         sections_joined = {k: "\n".join(v).strip() for k, v in current_sections.items()}
-        patterns[current_name.lower().replace(" ", "_")] = Pattern(
+        patterns[_normalize_key(current_name)] = Pattern(
             name=current_name,
             when_to_use=sections_joined.get("when to use", ""),
             key_idea=sections_joined.get("key idea", ""),
@@ -52,10 +63,14 @@ def _parse_patterns() -> dict[str, Pattern]:
             current_name = name
             current_sections = {}
             current_key = None
-        elif stripped.startswith("**") and stripped.endswith(":**") and current_name:
-            # section header inside a pattern
-            current_key = stripped[2:-3].lower()
-            current_sections[current_key] = []
+            continue
+        if current_name is None:
+            continue
+        m = _SECTION_HEADER.match(stripped)
+        if m:
+            current_key = m.group(1).lower()
+            inline = m.group(2)
+            current_sections[current_key] = [inline] if inline else []
         elif current_key is not None:
             current_sections[current_key].append(line)
     flush()
@@ -70,7 +85,7 @@ def list_patterns() -> list[str]:
 
 
 def get_pattern(name: str) -> Pattern | None:
-    return _CACHE.get(name.lower())
+    return _CACHE.get(_normalize_key(name))
 
 
 __all__ = ["Pattern", "list_patterns", "get_pattern"]

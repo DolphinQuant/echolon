@@ -1,4 +1,6 @@
 """Tests for echolon programmatic APIs (Phase 1 workstream C)."""
+import re
+
 import pytest
 from pathlib import Path
 
@@ -50,9 +52,18 @@ def test_patterns_list_and_get():
     names = patterns.list_patterns()
     assert isinstance(names, list)
     assert len(names) >= 1
+    # Keys must be underscore-identifiers (no hyphens/spaces) so callers can use them
+    # as natural Python identifiers in dict lookups.
+    assert all(re.fullmatch(r"[a-z0-9_]+", n) for n in names), (
+        f"pattern keys must be underscore-only identifiers, got: {names}"
+    )
     first = names[0]
     p = patterns.get_pattern(first)
     assert p is not None
+    # Parser must populate the semantic fields, not just return a hollow dataclass.
+    assert p.when_to_use, f"pattern {first!r}: when_to_use is empty"
+    assert p.key_idea, f"pattern {first!r}: key_idea is empty"
+    assert p.common_errors, f"pattern {first!r}: common_errors is empty"
 
 
 def test_templates_list_and_load():
