@@ -357,15 +357,9 @@ class TradingSlot:
     def _validate_indicators(self) -> None:
         """Validate that required indicators exist in the CSV.
 
-        The strategy_indicator_list.json has the structure:
-        {
-            "indicators_with_lookback": {"aroonosc": [15, 17], ...},
-            "indicators_without_lookback": ["ad", ...],
-            "indicators_with_special_params": ["market_regime", ...]
-        }
-
-        Extract actual indicator names from all categories and check
-        that each has at least one matching column in the CSV.
+        Accepts flat-dict ``strategy_indicator_list.json``
+        (``{name: {param: v}}``) and legacy 4-section format (auto-translated
+        via :class:`echolon.strategy.schemas.StrategyIndicatorList`).
         """
         indicator_list_path = os.path.join(
             self.slot_config.strategy_code_dir, "strategy_indicator_list.json"
@@ -377,17 +371,7 @@ class TradingSlot:
         with open(indicator_list_path, 'r') as f:
             indicator_list = json.load(f)
 
-        # Extract indicator names from the categorized structure
-        indicator_names = set()
-        with_lookback = indicator_list.get('indicators_with_lookback', {})
-        if isinstance(with_lookback, dict):
-            indicator_names.update(with_lookback.keys())
-        without_lookback = indicator_list.get('indicators_without_lookback', [])
-        if isinstance(without_lookback, list):
-            indicator_names.update(without_lookback)
-        with_special = indicator_list.get('indicators_with_special_params', [])
-        if isinstance(with_special, list):
-            indicator_names.update(with_special)
+        indicator_names = _collect_declared_names(indicator_list)
 
         if not indicator_names:
             logger.warning(f"[{self.slot_id}] No indicator names found in config, skipping validation")
@@ -400,14 +384,31 @@ class TradingSlot:
         columns = [c.lower() for c in market_data._df.columns] if market_data._df is not None else []
         missing = []
         for name in sorted(indicator_names):
-            name_lower = name.lower()
             # Exact match OR prefix match (e.g. "atr" matches "atr_10")
-            found = any(c == name_lower or c.startswith(name_lower + "_") for c in columns)
+            found = any(c == name or c.startswith(name + "_") for c in columns)
             if not found:
                 missing.append(name)
 
         if missing:
             logger.warning(f"[{self.slot_id}] Missing indicators in CSV: {missing}")
+
+
+def _collect_declared_names(indicator_list: object) -> set:
+    """Derive the set of lowercase indicator names declared by a config dict.
+
+    Accepts both flat-dict and legacy 4-section payloads (the latter is
+    auto-translated via :class:`StrategyIndicatorList`). Non-dict input returns
+    an empty set.
+    """
+    from echolon.strategy.schemas import StrategyIndicatorList
+
+    if not isinstance(indicator_list, dict):
+        return set()
+
+    if StrategyIndicatorList._is_legacy_shape(indicator_list):
+        indicator_list = StrategyIndicatorList._translate_legacy(indicator_list)
+
+    return {str(name).lower() for name in indicator_list.keys()}
 
     def _load_state_file(self) -> Dict[str, Any]:
         """Load state file, return empty dict for cold start.
