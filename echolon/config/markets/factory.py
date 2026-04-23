@@ -88,8 +88,11 @@ class MarketFactory:
                 data = json.load(f)
             target = TradingTarget.model_validate(data)
         else:
-            # Load from session/state.json
-            target = TradingTarget.load(session_path)
+            # Load from session/state.json — forward the resolved session_dir
+            # so TradingTarget.load() does not fall through to its installed-
+            # package default when session_path wasn't explicitly provided.
+            resolved_session_path = session_path or str(Path(session_dir) / "state.json")
+            target = TradingTarget.load(resolved_session_path)
             # Load and validate trading target config based on frequency
             target.target = cls._load_trading_target_config(
                 target.frequency, session_dir=session_dir
@@ -187,8 +190,9 @@ class MarketFactory:
                 data = json.load(f)
             return TradingTarget.model_validate(data)
 
-        # Load from session/state.json
-        target = TradingTarget.load(session_path)
+        # Load from session/state.json — forward the resolved session_dir
+        resolved_session_path = session_path or str(Path(session_dir) / "state.json")
+        target = TradingTarget.load(resolved_session_path)
         # Load and validate trading target config based on frequency
         target.target = cls._load_trading_target_config(
             target.frequency, session_dir=session_dir
