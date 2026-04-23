@@ -375,7 +375,7 @@ class TradingRunner:
         # indicators_backtest_dir.
         import json as _json
         import os as _os
-        from echolon.indicators.utils.loader import load_indicator_list
+        from echolon.indicators.utils.merge_indicators import load_indicator_list
 
         strategy_code_dir = self._paths.strategy_code_dir
         ind_path = _os.path.join(str(strategy_code_dir), "strategy_indicator_list.json")
