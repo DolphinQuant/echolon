@@ -24,7 +24,6 @@ import numpy as np
 import pandas as pd
 
 from echolon.config.markets.factory import MarketFactory
-from echolon.config.markets.core.trading_target import TradingTarget
 from echolon.config.optuna_config import OptunaConfig
 from echolon.config.backtest_config import BacktestConfig
 from .engine.backtest_runner import BacktestRunner
@@ -155,20 +154,12 @@ class PortfolioBacktestRunner:
 
     def _create_slot_context(self, sc: SlotConfig) -> 'TradingContext':
         """Create TradingContext for a slot with correct initial_capital."""
-        target = TradingTarget(
-            market=sc.market,
-            instrument=sc.instrument,
-            instrument_code=sc.instrument_code,
-            frequency=sc.frequency,
-            bar_size=sc.bar_size,
-            initial_capital=sc.initial_capital,
-        )
         return MarketFactory.create(
             market=sc.market,
             instrument=sc.instrument_code,
             frequency=sc.frequency,
             bar_size=sc.bar_size,
-            target=target,
+            initial_capital=sc.initial_capital,
         )
 
     def _run_slot(

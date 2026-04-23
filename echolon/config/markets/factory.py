@@ -23,7 +23,6 @@ from typing import Optional
 
 from echolon.config.markets.core.context import TradingContext
 from echolon.config.markets.core.types import MarketConfig, InstrumentSpec
-from echolon.config.markets.core.trading_target import TradingTarget
 
 
 class MarketFactory:
@@ -41,7 +40,7 @@ class MarketFactory:
         instrument: str,
         frequency: str,
         bar_size: str,
-        target: 'TradingTarget' = None,
+        initial_capital: float = 200000.0,
     ) -> TradingContext:
         """
         Create TradingContext with explicit parameters.
@@ -51,7 +50,7 @@ class MarketFactory:
             instrument: Instrument code ('al', 'btc')
             frequency: 'intraday' or 'interday'
             bar_size: Bar size ('1m', '5m', '15m', '1h', '1d')
-            target: Optional TradingTarget with user's trading configuration
+            initial_capital: Starting capital for backtesting / live trading.
 
         Returns:
             Configured TradingContext
@@ -87,7 +86,7 @@ class MarketFactory:
             instrument=instrument_spec,
             frequency=frequency,
             bar_size=bar_size,
-            target=target,
+            initial_capital=initial_capital,
             _encode_phase=encode_fn,
             _decode_phase=decode_fn,
         )
