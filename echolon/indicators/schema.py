@@ -20,7 +20,7 @@ from __future__ import annotations
 import itertools
 from typing import Any, Dict, List, Union
 
-from pydantic import BaseModel, RootModel, field_validator
+from pydantic import BaseModel, RootModel, field_validator, model_validator
 
 
 ParamValue = Union[int, float, str, List[Union[int, float]]]
@@ -39,6 +39,29 @@ class IndicatorList(RootModel[Dict[str, _IndicatorEntry]]):
         if not v:
             raise ValueError("indicator_list must contain at least one indicator")
         return v
+
+    @model_validator(mode="after")
+    def _validate_against_catalog(self):
+        """Check every name + param against the echolon indicator catalog.
+
+        Deferred-import to avoid a circular import during catalog hydration
+        (catalog imports from ``echolon.indicators.calculators.*`` which doesn't
+        touch this module, but we keep the import lazy as a defensive move).
+        """
+        from echolon.indicators import catalog as _catalog
+
+        raw: Dict[str, Any] = {
+            name: (entry.root if isinstance(entry, _IndicatorEntry) else entry)
+            for name, entry in self.root.items()
+        }
+        errors = _catalog.validate(raw)
+        if errors:
+            lines = [
+                f"[{e['code']}] {e['field']}: {e['message']}"
+                for e in errors
+            ]
+            raise ValueError("; ".join(lines))
+        return self
 
 
 def _is_integer_range(values: list) -> bool:

@@ -10,9 +10,33 @@ origin_module: task15_migration_from_qorka
 
 # Trading API Core Patterns
 
-## Three-Tier Indicator System (CRITICAL)
+## Indicator discovery — use the catalog, not this file
 
-All indicator access MUST follow tier-specific naming:
+For indicator **existence / params / output columns**, use the echolon catalog
+tools — the authoritative source that stays in sync with `ta_lib.py`:
+
+- `list_indicators(cluster=None)` — all 222+ catalog names; optional cluster filter
+- `indicator_info(name)` — canonical cluster, function, params, output_columns
+- `indicator_params(name)` — just the params list
+- `validate_indicator_list(payload_json)` — validate a flat-dict
+  `strategy_indicator_list.json` payload end-to-end
+- `suggest_similar(name, limit=5)` — typo recovery
+
+Available through two transports (same names + signatures + return shapes):
+
+- **openai-agents SDK**: `echolon-mcp` stdio subprocess
+- **LangGraph**: `lib/graph_util/indicator_tools.py::create_indicator_tools(ctx)`
+
+The tier terminology below is about `get_indicator(name)` **runtime call semantics**
+(what column name to pass at dispatch), not about the on-disk
+`strategy_indicator_list.json` wire format. The wire format is flat-dict:
+`{"<name>": {"<param>": scalar | list}}`.
+
+## Three-Tier Indicator Column Naming at get_indicator() (CRITICAL)
+
+All indicator access at the `self.get_indicator(...)` call site MUST follow
+tier-specific naming. Tier is a property of the underlying indicator
+(available via `indicator_info(name).cluster`), not a wire-format section key:
 
 ### Tier 1: Indicators with Lookback
 - **Format**: `f'{indicator_name}_{self.period}'`

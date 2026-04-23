@@ -336,36 +336,41 @@ class TradingSlot:
     def _get_indicators_path(self) -> str:
         """Get path to the strategy indicators CSV.
 
-        Checks per-slot directory first (portfolio mode), falls back to
-        per-instrument directory (single-instrument mode).
+        Resolution order:
+          1. Per-slot path ``{indicators_backtest_dir}/{slot_id}/`` — written when
+             portfolio mode computes per-slot (legacy / divergent regime_params case).
+          2. Per-group path ``{indicators_backtest_dir}/{instrument_code}_{bar_size}/``
+             — written when portfolio mode merges slots on the same
+             (instrument, bar_size) and computes the union once.
+          3. Per-instrument path ``{indicators_backtest_dir}/{instrument}/`` —
+             single-instrument (TradingRunner) mode.
         """
         from echolon.config.paths_config import PathsConfig
         indicators_backtest_dir = str(
             PathsConfig.from_env().indicators_backtest_dir
         )
-        slot_id = self.slot_config.slot_id
-        instrument = self.slot_config.instrument
+        sc = self.slot_config
 
-        # Per-slot path (written by PortfolioTradingRunner phase 0)
-        slot_path = os.path.join(indicators_backtest_dir, slot_id, "strategy_indicators.csv")
+        slot_path = os.path.join(indicators_backtest_dir, sc.slot_id, "strategy_indicators.csv")
         if os.path.exists(slot_path):
             return slot_path
 
-        # Fallback: per-instrument path (single-instrument mode)
-        return os.path.join(indicators_backtest_dir, instrument, "strategy_indicators.csv")
+        group_path = os.path.join(
+            indicators_backtest_dir,
+            f"{sc.instrument_code}_{sc.bar_size}",
+            "strategy_indicators.csv",
+        )
+        if os.path.exists(group_path):
+            return group_path
+
+        return os.path.join(indicators_backtest_dir, sc.instrument, "strategy_indicators.csv")
 
     def _validate_indicators(self) -> None:
         """Validate that required indicators exist in the CSV.
 
-        The strategy_indicator_list.json has the structure:
-        {
-            "indicators_with_lookback": {"aroonosc": [15, 17], ...},
-            "indicators_without_lookback": ["ad", ...],
-            "indicators_with_special_params": ["market_regime", ...]
-        }
-
-        Extract actual indicator names from all categories and check
-        that each has at least one matching column in the CSV.
+        Accepts flat-dict ``strategy_indicator_list.json``
+        (``{name: {param: v}}``) and legacy 4-section format (auto-translated
+        via :class:`echolon.strategy.schemas.StrategyIndicatorList`).
         """
         indicator_list_path = os.path.join(
             self.slot_config.strategy_code_dir, "strategy_indicator_list.json"
@@ -377,17 +382,7 @@ class TradingSlot:
         with open(indicator_list_path, 'r') as f:
             indicator_list = json.load(f)
 
-        # Extract indicator names from the categorized structure
-        indicator_names = set()
-        with_lookback = indicator_list.get('indicators_with_lookback', {})
-        if isinstance(with_lookback, dict):
-            indicator_names.update(with_lookback.keys())
-        without_lookback = indicator_list.get('indicators_without_lookback', [])
-        if isinstance(without_lookback, list):
-            indicator_names.update(without_lookback)
-        with_special = indicator_list.get('indicators_with_special_params', [])
-        if isinstance(with_special, list):
-            indicator_names.update(with_special)
+        indicator_names = _collect_declared_names(indicator_list)
 
         if not indicator_names:
             logger.warning(f"[{self.slot_id}] No indicator names found in config, skipping validation")
@@ -400,14 +395,23 @@ class TradingSlot:
         columns = [c.lower() for c in market_data._df.columns] if market_data._df is not None else []
         missing = []
         for name in sorted(indicator_names):
-            name_lower = name.lower()
             # Exact match OR prefix match (e.g. "atr" matches "atr_10")
-            found = any(c == name_lower or c.startswith(name_lower + "_") for c in columns)
+            found = any(c == name or c.startswith(name + "_") for c in columns)
             if not found:
                 missing.append(name)
 
         if missing:
             logger.warning(f"[{self.slot_id}] Missing indicators in CSV: {missing}")
+
+
+def _collect_declared_names(indicator_list: object) -> set:
+    """Derive the set of lowercase indicator names declared by a flat-dict config.
+
+    Non-dict input returns an empty set (defensive guard for malformed configs).
+    """
+    if not isinstance(indicator_list, dict):
+        return set()
+    return {str(name).lower() for name in indicator_list.keys()}
 
     def _load_state_file(self) -> Dict[str, Any]:
         """Load state file, return empty dict for cold start.

@@ -513,7 +513,10 @@ class PortfolioTradingRunner:
         per instrument.
         """
         import json as _json
-        from echolon.indicators.utils.merge_indicators import load_indicator_list
+        from echolon.indicators.utils.merge_indicators import (
+            load_indicator_list,
+            merge_indicator_lists,
+        )
         from ..platforms.miniqmt.xtdc_client import XtdcClient
 
         # Connect XtdcClient once for all instruments
@@ -555,44 +558,94 @@ class PortfolioTradingRunner:
         paths = PathsConfig.from_env()
         indicators_backtest_dir = paths.indicators_backtest_dir
 
-        # Step 2: Indicator calculation — per slot with its own config + regime params
-        for sc in self.config.get_enabled_slots():
-            ctx = MarketFactory.create(
-                market=sc.market,
-                instrument=sc.instrument_code,
-                frequency=sc.frequency,
-                bar_size=sc.bar_size,
+        end_date = (
+            self.present_date.strftime("%Y-%m-%d")
+            if hasattr(self.present_date, "strftime")
+            else str(self.present_date)
+        )
+
+        # Step 2: Indicator calculation — merge per-(instrument, bar_size) group,
+        # compute the union once, output to a shared dir. trading_slot's
+        # _get_indicators_path resolves this group dir after its per-slot check.
+        groups = self.config.get_slots_by_instrument_and_barsize()
+        for (instrument_code, bar_size), slot_configs in groups.items():
+            group_id = f"{instrument_code}_{bar_size}"
+            group_dir = os.path.join(str(indicators_backtest_dir), group_id)
+
+            # Collect each slot's flat-dict indicator_list + regime_params
+            slot_configs_with_ind = []
+            for sc in slot_configs:
+                ind_path = os.path.join(sc.strategy_code_dir, "strategy_indicator_list.json")
+                if not os.path.exists(ind_path):
+                    self.log.warning(f"[{sc.slot_id}] skipped: no {ind_path}")
+                    continue
+                ind = load_indicator_list(ind_path)
+                regime_path = os.path.join(sc.strategy_code_dir, "regime_params.json")
+                rp = None
+                if os.path.exists(regime_path):
+                    with open(regime_path, 'r') as f:
+                        rd = _json.load(f)
+                    rp = rd.get('params', rd)
+                slot_configs_with_ind.append((sc, ind, rp))
+
+            if not slot_configs_with_ind:
+                self.log.warning(f"Indicators skipped for group {group_id}: no slot has a list")
+                continue
+
+            # Union indicator_lists across slots in this group
+            merged_indicator_list = merge_indicator_lists(
+                [ind for (_, ind, _) in slot_configs_with_ind]
             )
 
-            # Load slot's indicator config
-            ind_path = os.path.join(sc.strategy_code_dir, "strategy_indicator_list.json")
-            indicator_config = load_indicator_list(ind_path) if os.path.exists(ind_path) else None
+            # Regime params: take the first slot's. Warn if any other slot in
+            # the group has a different set (divergent regime_params would need
+            # per-slot compute; deferred until that case actually appears).
+            regime_params = next(
+                (rp for (_, _, rp) in slot_configs_with_ind if rp is not None),
+                None,
+            )
+            if regime_params is not None:
+                for (sc, _, rp) in slot_configs_with_ind:
+                    if rp is not None and rp != regime_params:
+                        self.log.warning(
+                            f"[{sc.slot_id}] regime_params differ within group {group_id}; "
+                            f"using first slot's params (falling back to per-slot compute "
+                            f"is not yet implemented)"
+                        )
 
-            # Load slot's regime params
-            regime_path = os.path.join(sc.strategy_code_dir, "regime_params.json")
-            regime_params = None
-            if os.path.exists(regime_path):
-                with open(regime_path, 'r') as f:
-                    regime_data = _json.load(f)
-                regime_params = regime_data.get('params', regime_data)
+            # Window: earliest start_date across the group (for backfill)
+            start_dates = [
+                getattr(sc, "start_date", None)
+                for (sc, _, _) in slot_configs_with_ind
+            ]
+            start_dates = [d for d in start_dates if d]
+            start_date = min(start_dates) if start_dates else None
 
-            # Output to per-slot indicator directory
-            slot_indicator_dir = os.path.join(str(indicators_backtest_dir), sc.slot_id)
+            first_sc = slot_configs_with_ind[0][0]
+            ctx = MarketFactory.create(
+                market=first_sc.market,
+                instrument=first_sc.instrument_code,
+                frequency=first_sc.frequency,
+                bar_size=first_sc.bar_size,
+            )
 
-            self.log.info(f"Indicators: {sc.slot_id} -> {slot_indicator_dir}")
+            self.log.info(
+                f"Indicators: {group_id} "
+                f"({len(slot_configs_with_ind)} slot(s), "
+                f"{len(merged_indicator_list)} unique indicators) -> {group_dir}"
+            )
             try:
                 run_indicator_calculation(
                     ctx=ctx,
-                    output_dir=slot_indicator_dir,
-                    selected_only=True,
+                    output_dir=group_dir,
+                    indicator_list=merged_indicator_list,
                     use_parallel=True,
-                    mode='deploy',
-                    optimize_regime=False,
-                    indicator_config=indicator_config,
                     regime_params=regime_params,
+                    start_date=start_date,
+                    end_date=end_date,
                 )
             except Exception as e:
-                self.log.error(f"Indicators failed for {sc.slot_id}: {e}")
+                self.log.error(f"Indicators failed for group {group_id}: {e}")
 
     # =========================================================================
     # Phase 2.5: Central order firing

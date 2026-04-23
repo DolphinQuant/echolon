@@ -65,7 +65,7 @@ MINIMAL_STRATEGY_FILES = {
         framework = None
     """,
     "strategy_indicator_list.json": """\
-        {"indicators_with_lookback": {}, "indicators_without_lookback": [], "indicators_with_special_params": ["market_regime"]}
+        {"market_regime": {}}
     """,
 }
 

@@ -60,22 +60,80 @@ def build_server() -> FastMCP:
         }
 
     @server.tool()
-    def list_indicators() -> list[str]:
-        """Return all indicator names shipped by echolon."""
-        return _catalog.list_all()
+    def list_indicators(cluster: str | None = None) -> list[str]:
+        """Return all indicator names in the echolon catalog, optionally filtered by cluster.
+
+        Args:
+            cluster: Optional cluster filter. Valid values:
+                ``"indicators_with_lookback"``, ``"indicators_without_lookback"``,
+                ``"indicators_with_special_params"``, ``"intraday_context_indicators"``.
+                Omit for all.
+        """
+        return _catalog.list_all(cluster=cluster)
 
     @server.tool()
     def indicator_info(name: str) -> dict | None:
-        """Return structured info for one indicator, or None if unknown."""
+        """Return structured info for one indicator, or None if unknown.
+
+        Keys: ``name``, ``cluster``, ``function``, ``file``, ``params``
+        (list of ``{name, default, type}`` dicts), ``output_columns``.
+        """
         info = _catalog.info(name)
         if info is None:
             return None
         return {
             "name": info.name,
-            "tier": info.tier,
+            "cluster": info.cluster,
+            "function": info.function,
+            "file": info.file,
             "params": info.params,
             "output_columns": info.output_columns,
         }
+
+    @server.tool()
+    def indicator_params(name: str) -> list[dict] | None:
+        """Return the tunable parameters for an indicator, or None if unknown.
+
+        Convenience accessor — same as ``indicator_info(name)["params"]`` but
+        skips the wrapper dict. Each entry is ``{"name": str, "default": any, "type": str}``.
+        """
+        info = _catalog.info(name)
+        if info is None:
+            return None
+        return info.params
+
+    @server.tool()
+    def validate_indicator_list(payload_json: str) -> dict:
+        """Validate a flat-dict ``strategy_indicator_list.json`` payload against the catalog.
+
+        Args:
+            payload_json: JSON string of the flat-dict
+                (e.g. ``'{"rsi": {"timeperiod": [10, 20]}}'``).
+
+        Returns a dict ``{"valid": bool, "errors": [{code, field, message, suggestion}]}``.
+        Bad JSON surfaces as a structured error, not a raise.
+        """
+        import json as _json
+
+        try:
+            data = _json.loads(payload_json)
+        except _json.JSONDecodeError as e:
+            return {
+                "valid": False,
+                "errors": [{
+                    "code": "IND-000",
+                    "field": "<payload>",
+                    "message": f"Failed to parse JSON: {e}",
+                    "suggestion": [],
+                }],
+            }
+        errors = _catalog.validate(data)
+        return {"valid": not errors, "errors": errors}
+
+    @server.tool()
+    def suggest_similar(name: str, limit: int = 5) -> list[str]:
+        """Return up to ``limit`` catalog names close to ``name`` (difflib + substring)."""
+        return _catalog.suggest_similar(name, limit=limit)
 
     @server.tool()
     def list_patterns() -> list[str]:

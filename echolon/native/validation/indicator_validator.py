@@ -27,6 +27,14 @@ def _make_error(code: str, **context_vars):
 
 
 def _get_declared_indicator_names(strategy_dir: Path) -> set[str]:
+    """Return the set of indicator column names declared by the strategy's JSON.
+
+    Reads the flat-dict format (``{name: {param: value_or_list}}``). For lookback
+    indicators, the ``timeperiod`` param expands to one entry per period
+    (``rsi_10``, ``rsi_11``, …). Non-lookback indicators contribute their bare name.
+    """
+    from echolon.indicators.schema import expand_param
+
     json_path = strategy_dir / "strategy_indicator_list.json"
     if not json_path.exists():
         return set()
@@ -34,16 +42,24 @@ def _get_declared_indicator_names(strategy_dir: Path) -> set[str]:
         data = json.loads(json_path.read_text())
     except json.JSONDecodeError:
         return set()
+    if not isinstance(data, dict):
+        return set()
+
     declared: set[str] = set()
-    for name, rng in data.get("indicators_with_lookback", {}).items():
-        if isinstance(rng, list) and len(rng) == 2:
-            lo, hi = rng
-            for i in range(int(lo), int(hi) + 1):
-                declared.add(f"{name.lower()}_{i}")
-    for name in data.get("indicators_without_lookback", []):
-        declared.add(str(name).lower())
-    for name in data.get("indicators_with_special_params", []):
-        declared.add(str(name).lower())
+    for name, params in data.items():
+        name_lower = str(name).lower()
+        if not isinstance(params, dict) or not params:
+            declared.add(name_lower)
+            continue
+        timeperiod = params.get("timeperiod")
+        if timeperiod is None:
+            declared.add(name_lower)
+            continue
+        for period in expand_param(timeperiod):
+            if isinstance(period, (int, float)):
+                declared.add(f"{name_lower}_{int(period)}")
+            else:
+                declared.add(name_lower)
     return declared
 
 

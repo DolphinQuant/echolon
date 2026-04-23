@@ -19,9 +19,7 @@ def _write_entry(tmp_path: Path, content: str) -> Path:
 
 
 def test_valid_lowercase_indicators_pass(tmp_path):
-    _write_json(tmp_path, '{"indicators_with_lookback": {"ATR": [10, 20]}, '
-                          '"indicators_without_lookback": [], '
-                          '"indicators_with_special_params": []}')
+    _write_json(tmp_path, '{"atr": {"timeperiod": [10, 20]}}')
     _write_entry(tmp_path, """\
         def f(self):
             x = self.get_indicator('atr_14')
@@ -31,9 +29,7 @@ def test_valid_lowercase_indicators_pass(tmp_path):
 
 
 def test_uppercase_in_code_raises_ind_001(tmp_path):
-    _write_json(tmp_path, '{"indicators_with_lookback": {"ATR": [10, 20]}, '
-                          '"indicators_without_lookback": [], '
-                          '"indicators_with_special_params": []}')
+    _write_json(tmp_path, '{"atr": {"timeperiod": [10, 20]}}')
     _write_entry(tmp_path, """\
         def f(self):
             x = self.get_indicator('ATR_14')
@@ -48,9 +44,7 @@ def test_missing_json_returns_empty(tmp_path):
 
 
 def test_multiple_files_checked(tmp_path):
-    _write_json(tmp_path, '{"indicators_with_lookback": {"rsi": [10]}, '
-                          '"indicators_without_lookback": [], '
-                          '"indicators_with_special_params": []}')
+    _write_json(tmp_path, '{"rsi": {"timeperiod": 10}}')
     (tmp_path / "entry.py").write_text("x = self.get_indicator('RSI_10')")
     (tmp_path / "exit.py").write_text("y = self.get_indicator('rsi_10')")
     errors = validate_indicator_names(tmp_path)
