@@ -53,6 +53,7 @@ class WFARunner:
         backtest_config: Optional[BacktestConfig] = None,
         backtest_results_dir: Optional[Path] = None,
         paths: Optional["PathsConfig"] = None,  # type: ignore[name-defined]
+        drs_config: Optional[DRSConfig] = None,
     ):
         if optuna_config is None:
             raise ValueError(
@@ -76,6 +77,12 @@ class WFARunner:
             backtest_results_dir = resolved_paths.backtest_results_dir
         self.output_dir = Path(backtest_results_dir)
         self.wfa_dir = self.output_dir / "wfa_windows"
+
+        # Caller may inject DRSConfig explicitly. When None, falls back to
+        # deriving from ctx.target.target for backward compatibility — callers
+        # are encouraged to pass drs_config explicitly so WFA doesn't need to
+        # reach into host-app workflow state on the TradingContext.
+        self._drs_config = drs_config
 
     def run(self) -> Dict[str, Any]:
         """
@@ -344,8 +351,10 @@ class WFARunner:
         final_data["wfa_windows"] = wfa_window_details
 
         # Compute Deployment Readiness Score from WFA + performance data
-        drs_config = None
-        if self.ctx.target and self.ctx.target.target:
+        # Prefer explicit drs_config passed by the caller; fall back to
+        # deriving from ctx.target.target only when not provided (legacy path).
+        drs_config = self._drs_config
+        if drs_config is None and self.ctx.target and self.ctx.target.target:
             drs_config = DRSConfig.from_trading_target(self.ctx.target.target)
         drs_result = compute_drs(final_data, config=drs_config)
         final_data["drs"] = drs_result.to_dict()
