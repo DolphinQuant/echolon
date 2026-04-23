@@ -29,6 +29,7 @@ def run_indicator_calculation(
     regime_params: Optional[Dict[str, Any]] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    paths: Optional["PathsConfig"] = None,  # type: ignore[name-defined]
 ) -> pd.DataFrame:
     """
     Run indicator calculation on market data.

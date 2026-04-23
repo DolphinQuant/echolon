@@ -50,6 +50,7 @@ class MarketFactory:
         *,
         session_dir: Optional[Path] = None,
         output_dir: Optional[Path] = None,
+        paths: Optional["PathsConfig"] = None,  # type: ignore[name-defined]
     ) -> TradingContext:
         """
         Create TradingContext from session state file.
@@ -72,13 +73,15 @@ class MarketFactory:
             FileNotFoundError: If session state file doesn't exist
             ValidationError: If required fields are missing or invalid
         """
+        # paths= takes precedence over individual session_dir/output_dir kwargs;
+        # both take precedence over PathsConfig.from_env() fallback.
         if output_dir is None or session_dir is None:
             from echolon.config.paths_config import PathsConfig
-            paths = PathsConfig.from_env()
+            resolved = paths if paths is not None else PathsConfig.from_env()
             if output_dir is None:
-                output_dir = paths.output_dir
+                output_dir = resolved.output_dir
             if session_dir is None:
-                session_dir = paths.session_dir
+                session_dir = resolved.session_dir
 
         # Check if integrated target exists in output_dir
         output_target_path = Path(output_dir) / "target.json"
@@ -154,6 +157,7 @@ class MarketFactory:
         *,
         session_dir: Optional[Path] = None,
         output_dir: Optional[Path] = None,
+        paths: Optional["PathsConfig"] = None,  # type: ignore[name-defined]
     ) -> TradingTarget:
         """
         Load TradingTarget from session state file with trading target config.
@@ -176,11 +180,11 @@ class MarketFactory:
         """
         if output_dir is None or session_dir is None:
             from echolon.config.paths_config import PathsConfig
-            paths = PathsConfig.from_env()
+            resolved = paths if paths is not None else PathsConfig.from_env()
             if output_dir is None:
-                output_dir = paths.output_dir
+                output_dir = resolved.output_dir
             if session_dir is None:
-                session_dir = paths.session_dir
+                session_dir = resolved.session_dir
 
         # Check if integrated target exists in output_dir
         output_target_path = Path(output_dir) / "target.json"

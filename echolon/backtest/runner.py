@@ -50,6 +50,7 @@ from typing import Dict, Any, Optional
 
 from echolon.config.markets.core.context import TradingContext
 from echolon.config.backtest_config import BacktestConfig
+from echolon.config.paths_config import PathsConfig
 from .engine.backtest_runner import BacktestRunner, _RunnerConfig
 
 logger = logging.getLogger(__name__)
@@ -67,6 +68,7 @@ def run_backtest(
     output_dir: Optional[str] = None,
     save_results: bool = True,
     backtest_config: Optional[BacktestConfig] = None,
+    paths: Optional[PathsConfig] = None,
 ) -> Dict[str, Any]:
     """
     Run a single backtest with provided parameters.
@@ -128,6 +130,7 @@ def run_backtest(
 def run_debug_backtest(
     ctx: TradingContext,
     backtest_config: Optional[BacktestConfig] = None,
+    paths: Optional[PathsConfig] = None,
 ) -> Dict[str, Any]:
     """
     Run debug backtest with default parameters and detailed logging.
@@ -171,6 +174,7 @@ def run_best_trial(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     backtest_config: Optional[BacktestConfig] = None,
+    paths: Optional[PathsConfig] = None,
 ) -> Dict[str, Any]:
     """
     Run backtest with best parameters from Optuna optimization.
