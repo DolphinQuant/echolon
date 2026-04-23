@@ -83,3 +83,60 @@ def test_stdio_list_indicators_returns_many_names():
                 assert "obv" in names
 
     asyncio.run(run())
+
+
+@pytest.mark.skipif(not _HAS_MCP_SERVER, reason="echolon-mcp not on PATH")
+def test_stdio_generate_strategy_params_writes_file(tmp_path):
+    """Spawn echolon-mcp; call generate_strategy_params with a tmp-path fixture;
+    assert the output .py file lands on disk with the expected absolute import."""
+    from mcp import ClientSession, StdioServerParameters
+    from mcp.client.stdio import stdio_client
+
+    params_fixture = tmp_path / "params_to_optimize.json"
+    params_fixture.write_text(json.dumps({
+        "entry_parameters": {
+            "calculation": {
+                "rsi_period": {
+                    "type": "int", "range": [10, 20], "default": 14,
+                    "description": "RSI", "ownership": "owner",
+                },
+            },
+            "usage": {}, "fixed": {},
+        },
+        "exit_parameters": {"calculation": {}, "usage": {}, "fixed": {
+            "take_profit": {"type": "float", "value": 0.05, "description": "TP", "ownership": "owner"},
+        }},
+        "risk_parameters": {"calculation": {}, "usage": {}, "fixed": {
+            "max_positions": {"type": "int", "value": 5, "description": "max", "ownership": "owner"},
+        }},
+        "sizing_parameters": {"calculation": {}, "usage": {}, "fixed": {
+            "risk_pct": {"type": "float", "value": 0.01, "description": "risk", "ownership": "owner"},
+        }},
+        "extraction_report": {"shared_parameters": []},
+    }))
+    output = tmp_path / "strategy_params.py"
+
+    async def run():
+        params = StdioServerParameters(command="echolon-mcp", args=[])
+        async with stdio_client(params) as (read, write):
+            async with ClientSession(read, write) as session:
+                await session.initialize()
+                result = await session.call_tool(
+                    "generate_strategy_params",
+                    arguments={
+                        "params_file_path": str(params_fixture),
+                        "output_path": str(output),
+                        "frequency": "interday",
+                    },
+                )
+                # FastMCP serializes a dict return as a TextContent with JSON payload.
+                payload = json.loads(result.content[0].text)
+                assert payload["success"] is True
+                assert payload["output_path"] == str(output)
+
+    asyncio.run(run())
+    assert output.exists()
+    content = output.read_text()
+    assert "from echolon.strategy.parameter_architecture import" in content
+    assert "DEFAULT_PARAMS" in content
+    assert "optuna_search_space" in content
