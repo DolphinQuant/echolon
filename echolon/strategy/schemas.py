@@ -393,261 +393,87 @@ def validate_position_size(size: Union[int, float], component_name: str = "posit
     return validated_size
 
 
-class StrategyIndicatorList(BaseModel):
+class StrategyIndicatorList:
+    """Deprecated 4-section schema — compatibility shim over IndicatorList.
+
+    Routes every validation through ``echolon.indicators.schema.IndicatorList``
+    (catalog-aware flat-dict validator). 4-section payloads are auto-translated
+    with a ``DeprecationWarning``. Flat-dict payloads pass through unchanged.
+
+    This shim preserves the historical import surface
+    ``echolon.strategy.schemas.StrategyIndicatorList`` while migrating callers
+    to the flat-dict wire format. Scheduled for removal after one release cycle.
     """
-    Pydantic model for validating strategy_indicator_list.json format.
 
-    This model enforces the EXACT structure required by the backtest system:
-    1. indicators_with_lookback: Dict[str, List[int]] - indicator name to [min_period, max_period]
-    2. indicators_without_lookback: List[str] - simple list of indicator names
-    3. indicators_with_special_params: List[str] - simple list of indicator names
-
-    The data preparation system will generate indicators for ALL periods from min to max (inclusive).
-    For example: "ADX": [10, 20] will generate adx_10, adx_11, adx_12, ..., adx_20
-
-    Example valid format:
-    {
-        "indicators_with_lookback": {
-            "ADX": [10, 20],
-            "ATR": [10, 20],
-            "EMA": [150, 250]
-        },
-        "indicators_without_lookback": [],
-        "indicators_with_special_params": [
-            "MACD_LINE",
-            "MACD_SIGNAL",
-            "BBANDS_UPPER"
-        ]
+    _LEGACY_TOP_LEVEL_KEYS = {
+        "indicators_with_lookback",
+        "indicators_without_lookback",
+        "indicators_with_special_params",
+        "system_provided_indicators",
     }
-    """
 
-    indicators_with_lookback: Dict[str, List[int]] = Field(
-        default_factory=dict,
-        description="Indicators with period parameters. Format: {INDICATOR_NAME: [min_period, max_period]}"
-    )
-
-    indicators_without_lookback: List[str] = Field(
-        default_factory=list,
-        description="Indicators without period parameters. Format: [INDICATOR_NAME1, INDICATOR_NAME2, ...]"
-    )
-
-    indicators_with_special_params: List[str] = Field(
-        default_factory=list,
-        description="Indicators with special parameters (e.g., MACD, BBANDS). Format: [INDICATOR_NAME1, INDICATOR_NAME2, ...]"
-    )
-
-    system_provided_indicators: Optional[Dict[str, str]] = Field(
-        default=None,
-        description="Intraday only: Documents auto-generated bar count indicators (bar_of_day, bars_remaining, etc.). This is informational - these indicators are always provided by the system."
-    )
-
-    @field_validator('indicators_with_lookback')
     @classmethod
-    def validate_lookback_format(cls, v: Dict[str, List[int]]) -> Dict[str, List[int]]:
-        """
-        Validate that lookback indicators have exactly [min, max] format.
-
-        Rules:
-        - Each indicator must have exactly 2 integer values
-        - Values must be: [min_period, max_period]
-        - min_period <= max_period
-        - Both values must be positive integers
-        - This will generate indicators for ALL periods from min to max (inclusive)
-        """
-        for indicator_name, periods in v.items():
-            # Check type
-            if not isinstance(periods, list):
-                raise ValueError(
-                    f"Indicator '{indicator_name}' lookback must be a list, got {type(periods).__name__}. "
-                    f"Expected format: [min_period, max_period]"
-                )
-
-            # Check length - MUST be exactly 2 values
-            if len(periods) != 2:
-                raise ValueError(
-                    f"Indicator '{indicator_name}' must have exactly 2 values [min, max], "
-                    f"got {len(periods)} values: {periods}. "
-                    f"The system will generate ALL periods from min to max automatically."
-                )
-
-            # Check all values are integers
-            if not all(isinstance(p, int) for p in periods):
-                raise ValueError(
-                    f"Indicator '{indicator_name}' periods must be integers, "
-                    f"got {periods} with types {[type(p).__name__ for p in periods]}"
-                )
-
-            # Check all values are positive
-            if not all(p > 0 for p in periods):
-                raise ValueError(
-                    f"Indicator '{indicator_name}' periods must be positive, got {periods}"
-                )
-
-            # Check min <= max
-            min_period, max_period = periods
-            if min_period > max_period:
-                raise ValueError(
-                    f"Indicator '{indicator_name}' periods must satisfy min <= max, "
-                    f"got min={min_period}, max={max_period}"
-                )
-
-        return v
-
-    @field_validator('indicators_without_lookback')
-    @classmethod
-    def validate_no_lookback_format(cls, v: List[str]) -> List[str]:
-        """
-        Validate that indicators_without_lookback is a simple list of strings.
-
-        Rules:
-        - Must be a list
-        - All elements must be non-empty strings
-        - No duplicates allowed
-        """
-        if not isinstance(v, list):
-            raise ValueError(
-                f"indicators_without_lookback must be a list, got {type(v).__name__}"
-            )
-
-        # Check all elements are strings
-        for i, indicator in enumerate(v):
-            if not isinstance(indicator, str):
-                raise ValueError(
-                    f"indicators_without_lookback[{i}] must be a string, "
-                    f"got {type(indicator).__name__}: {indicator}"
-                )
-
-            if not indicator.strip():
-                raise ValueError(
-                    f"indicators_without_lookback[{i}] cannot be empty or whitespace"
-                )
-
-        # Check for duplicates
-        if len(v) != len(set(v)):
-            duplicates = [item for item in set(v) if v.count(item) > 1]
-            raise ValueError(
-                f"indicators_without_lookback contains duplicates: {duplicates}"
-            )
-
-        return v
-
-    @field_validator('indicators_with_special_params')
-    @classmethod
-    def validate_special_params_format(cls, v: List[str]) -> List[str]:
-        """
-        Validate that indicators_with_special_params is a simple list of strings.
-
-        Rules:
-        - Must be a list
-        - All elements must be non-empty strings
-        - No duplicates allowed
-        """
-        if not isinstance(v, list):
-            raise ValueError(
-                f"indicators_with_special_params must be a list, got {type(v).__name__}"
-            )
-
-        # Check all elements are strings
-        for i, indicator in enumerate(v):
-            if not isinstance(indicator, str):
-                raise ValueError(
-                    f"indicators_with_special_params[{i}] must be a string, "
-                    f"got {type(indicator).__name__}: {indicator}"
-                )
-
-            if not indicator.strip():
-                raise ValueError(
-                    f"indicators_with_special_params[{i}] cannot be empty or whitespace"
-                )
-
-        # Check for duplicates
-        if len(v) != len(set(v)):
-            duplicates = [item for item in set(v) if v.count(item) > 1]
-            raise ValueError(
-                f"indicators_with_special_params contains duplicates: {duplicates}"
-            )
-
-        return v
-
-    @model_validator(mode='after')
-    def validate_no_overlaps(self) -> 'StrategyIndicatorList':
-        """
-        Ensure no indicator appears in multiple categories.
-        """
-        lookback_set = set(self.indicators_with_lookback.keys())
-        no_lookback_set = set(self.indicators_without_lookback)
-        special_params_set = set(self.indicators_with_special_params)
-
-        # Check for overlaps between lookback and no_lookback
-        overlap_lookback_no_lookback = lookback_set & no_lookback_set
-        if overlap_lookback_no_lookback:
-            raise ValueError(
-                f"Indicators cannot be in both 'with_lookback' and 'without_lookback': "
-                f"{overlap_lookback_no_lookback}"
-            )
-
-        # Check for overlaps between lookback and special_params
-        overlap_lookback_special = lookback_set & special_params_set
-        if overlap_lookback_special:
-            raise ValueError(
-                f"Indicators cannot be in both 'with_lookback' and 'with_special_params': "
-                f"{overlap_lookback_special}"
-            )
-
-        # Check for overlaps between no_lookback and special_params
-        overlap_no_lookback_special = no_lookback_set & special_params_set
-        if overlap_no_lookback_special:
-            raise ValueError(
-                f"Indicators cannot be in both 'without_lookback' and 'with_special_params': "
-                f"{overlap_no_lookback_special}"
-            )
-
-        return self
-
-    @model_validator(mode='after')
-    def validate_not_empty(self) -> 'StrategyIndicatorList':
-        """
-        Ensure at least one indicator is defined.
-        """
-        total_indicators = (
-            len(self.indicators_with_lookback) +
-            len(self.indicators_without_lookback) +
-            len(self.indicators_with_special_params)
+    def _is_legacy_shape(cls, data) -> bool:
+        return (
+            isinstance(data, dict)
+            and bool(cls._LEGACY_TOP_LEVEL_KEYS & set(data.keys()))
         )
 
-        if total_indicators == 0:
-            raise ValueError(
-                "Strategy must define at least one indicator. "
-                "All three categories (with_lookback, without_lookback, with_special_params) are empty."
+    @classmethod
+    def _translate_legacy(cls, data: dict) -> dict:
+        """Convert 4-section dict to flat-dict.
+
+        - indicators_with_lookback: {NAME: [min, max]} → {name: {timeperiod: [min, max]}}
+        - indicators_without_lookback: [NAME, ...]      → {name: {}}
+        - indicators_with_special_params: [NAME, ...]   → {name: {}}
+        - system_provided_indicators: dropped (informational only; per plan §2.4b)
+        """
+        flat: dict = {}
+        for name, rng in data.get("indicators_with_lookback", {}).items():
+            flat[name.lower()] = {"timeperiod": rng}
+        for name in data.get("indicators_without_lookback", []):
+            flat[name.lower()] = {}
+        for name in data.get("indicators_with_special_params", []):
+            flat[name.lower()] = {}
+        # system_provided_indicators intentionally dropped.
+        return flat
+
+    @classmethod
+    def _maybe_translate_and_warn(cls, data):
+        if cls._is_legacy_shape(data):
+            import warnings
+            warnings.warn(
+                "StrategyIndicatorList received a legacy 4-section payload. "
+                "Migrate to the flat-dict format "
+                "({indicator_name: {param: value_or_list}}). "
+                "See docs/superpowers/plans/2026-04-22-indicator-validation-hardening.md "
+                "for the migration guide.",
+                DeprecationWarning,
+                stacklevel=3,
             )
+            return cls._translate_legacy(data)
+        return data
 
-        return self
+    @classmethod
+    def model_validate(cls, data):
+        from echolon.indicators.schema import IndicatorList
+        return IndicatorList.model_validate(cls._maybe_translate_and_warn(data))
 
-    class Config:
-        """Pydantic configuration."""
-        extra = 'forbid'  # Forbid extra fields not defined in the model
-        json_schema_extra = {
-            "example": {
-                "indicators_with_lookback": {
-                    "ADX": [10, 20],
-                    "ATR": [10, 20],
-                    "EMA": [150, 250],
-                    "RSI": [10, 20],
-                    "SMA": [30, 70]
-                },
-                "indicators_without_lookback": [],
-                "indicators_with_special_params": [
-                    "MACD_LINE",
-                    "MACD_SIGNAL",
-                    "MACD_HISTOGRAM",
-                    "MAMA",
-                    "FAMA",
-                    "BBANDS_UPPER",
-                    "BBANDS_MIDDLE",
-                    "BBANDS_LOWER"
-                ]
-            }
-        }
+    @classmethod
+    def model_validate_json(cls, json_str):
+        import json as _json
+        return cls.model_validate(_json.loads(json_str))
+
+    def __init__(self, **data):
+        """Support ``StrategyIndicatorList(**data)`` call sites (used by
+        ``validate_indicator_list_json`` below).
+        """
+        self._model = type(self).model_validate(data)
+
+    @classmethod
+    def __class_getitem__(cls, item):  # keep type-hint-style usage benign
+        return cls
+
 
 
 def validate_indicator_list_json(file_path: str) -> tuple[bool, str, StrategyIndicatorList]:
