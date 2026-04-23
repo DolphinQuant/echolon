@@ -49,7 +49,10 @@ def test_schema_rejects_non_dict_entry():
 
 def test_schema_allows_scalar_or_list_param():
     IndicatorList.model_validate({
-        "rsi": {"period": [5, 30]},        # range
-        "atr": {"period": 14},              # fixed
-        "bbands": {"period": [15, 25], "stddev": [1.5, 2.0, 2.5]},  # multi-param
+        "rsi": {"timeperiod": [5, 30]},     # range (catalog param: timeperiod)
+        "atr": {"timeperiod": 14},           # fixed
+        "bbands_upper": {                    # multi-param (bbands is decomposed in registry)
+            "timeperiod": [15, 25],
+            "nbdevup": [1.5, 2.0, 2.5],
+        },
     })
