@@ -336,23 +336,34 @@ class TradingSlot:
     def _get_indicators_path(self) -> str:
         """Get path to the strategy indicators CSV.
 
-        Checks per-slot directory first (portfolio mode), falls back to
-        per-instrument directory (single-instrument mode).
+        Resolution order:
+          1. Per-slot path ``{indicators_backtest_dir}/{slot_id}/`` — written when
+             portfolio mode computes per-slot (legacy / divergent regime_params case).
+          2. Per-group path ``{indicators_backtest_dir}/{instrument_code}_{bar_size}/``
+             — written when portfolio mode merges slots on the same
+             (instrument, bar_size) and computes the union once.
+          3. Per-instrument path ``{indicators_backtest_dir}/{instrument}/`` —
+             single-instrument (TradingRunner) mode.
         """
         from echolon.config.paths_config import PathsConfig
         indicators_backtest_dir = str(
             PathsConfig.from_env().indicators_backtest_dir
         )
-        slot_id = self.slot_config.slot_id
-        instrument = self.slot_config.instrument
+        sc = self.slot_config
 
-        # Per-slot path (written by PortfolioTradingRunner phase 0)
-        slot_path = os.path.join(indicators_backtest_dir, slot_id, "strategy_indicators.csv")
+        slot_path = os.path.join(indicators_backtest_dir, sc.slot_id, "strategy_indicators.csv")
         if os.path.exists(slot_path):
             return slot_path
 
-        # Fallback: per-instrument path (single-instrument mode)
-        return os.path.join(indicators_backtest_dir, instrument, "strategy_indicators.csv")
+        group_path = os.path.join(
+            indicators_backtest_dir,
+            f"{sc.instrument_code}_{sc.bar_size}",
+            "strategy_indicators.csv",
+        )
+        if os.path.exists(group_path):
+            return group_path
+
+        return os.path.join(indicators_backtest_dir, sc.instrument, "strategy_indicators.csv")
 
     def _validate_indicators(self) -> None:
         """Validate that required indicators exist in the CSV.
