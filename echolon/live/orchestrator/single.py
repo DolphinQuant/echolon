@@ -369,14 +369,43 @@ class TradingRunner:
             self.logger.info("Data pipeline completed successfully")
         else:
             self.logger.error("Data pipeline failed -- proceeding with existing data")
-        
-        result = run_indicator_calculation(
-                ctx=self.ctx,
-                selected_only=True,
-                use_parallel=True,
-                mode='deploy',
-                optimize_regime=False,  # Use cached regime params if available
-            )
+
+        # Load the strategy's flat-dict indicator list + regime params, then
+        # compute indicators up to the present trading date into the paths'
+        # indicators_backtest_dir.
+        import json as _json
+        import os as _os
+        from echolon.indicators.utils.merge_indicators import load_indicator_list
+
+        strategy_code_dir = self._paths.strategy_code_dir
+        ind_path = _os.path.join(str(strategy_code_dir), "strategy_indicator_list.json")
+        if not _os.path.exists(ind_path):
+            self.logger.warning(f"No indicator list at {ind_path}; skipping indicator calculation")
+            return
+        indicator_list = load_indicator_list(ind_path)
+
+        regime_path = _os.path.join(str(strategy_code_dir), "regime_params.json")
+        regime_params = None
+        if _os.path.exists(regime_path):
+            with open(regime_path, "r") as f:
+                regime_data = _json.load(f)
+            regime_params = regime_data.get("params", regime_data)
+
+        end_date = (
+            self.present_date.strftime("%Y-%m-%d")
+            if hasattr(self.present_date, "strftime")
+            else str(self.present_date)
+        )
+
+        run_indicator_calculation(
+            ctx=self.ctx,
+            output_dir=str(self._paths.indicators_backtest_dir),
+            indicator_list=indicator_list,
+            use_parallel=True,
+            regime_params=regime_params,
+            start_date=getattr(self.config, "start_date", None),
+            end_date=end_date,
+        )
 
     def _create_strategy(self, strategy_params: Dict[str, Any]):
         """Import and instantiate the platform-agnostic strategy."""

@@ -564,9 +564,12 @@ class PortfolioTradingRunner:
                 bar_size=sc.bar_size,
             )
 
-            # Load slot's indicator config
+            # Load slot's indicator config (flat-dict)
             ind_path = os.path.join(sc.strategy_code_dir, "strategy_indicator_list.json")
-            indicator_config = load_indicator_list(ind_path) if os.path.exists(ind_path) else None
+            if not os.path.exists(ind_path):
+                self.log.warning(f"Indicators skipped for {sc.slot_id}: no {ind_path}")
+                continue
+            indicator_list = load_indicator_list(ind_path)
 
             # Load slot's regime params
             regime_path = os.path.join(sc.strategy_code_dir, "regime_params.json")
@@ -579,17 +582,22 @@ class PortfolioTradingRunner:
             # Output to per-slot indicator directory
             slot_indicator_dir = os.path.join(str(indicators_backtest_dir), sc.slot_id)
 
+            # Deploy path: compute indicators up to the present trading date.
+            # run_indicator_calculation needs a concrete window; use the
+            # slot's configured backtest start and the runner's present_date.
+            start_date = sc.start_date if hasattr(sc, "start_date") else None
+            end_date = self.present_date.strftime("%Y-%m-%d") if hasattr(self.present_date, "strftime") else str(self.present_date)
+
             self.log.info(f"Indicators: {sc.slot_id} -> {slot_indicator_dir}")
             try:
                 run_indicator_calculation(
                     ctx=ctx,
                     output_dir=slot_indicator_dir,
-                    selected_only=True,
+                    indicator_list=indicator_list,
                     use_parallel=True,
-                    mode='deploy',
-                    optimize_regime=False,
-                    indicator_config=indicator_config,
                     regime_params=regime_params,
+                    start_date=start_date,
+                    end_date=end_date,
                 )
             except Exception as e:
                 self.log.error(f"Indicators failed for {sc.slot_id}: {e}")
