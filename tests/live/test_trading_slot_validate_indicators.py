@@ -25,16 +25,6 @@ def test_flat_dict_mixed():
     }) == {"rsi", "obv", "bbands_upper", "market_regime"}
 
 
-def test_legacy_4section_payload_still_works():
-    legacy = {
-        "indicators_with_lookback": {"ARoonosc": [15, 17]},
-        "indicators_without_lookback": ["AD"],
-        "indicators_with_special_params": ["market_regime"],
-    }
-    # names are lowercased for consistency with the CSV-column match
-    assert _collect_declared_names(legacy) == {"aroonosc", "ad", "market_regime"}
-
-
 def test_empty_payload_yields_empty_set():
     assert _collect_declared_names({}) == set()
 

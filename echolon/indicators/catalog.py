@@ -285,8 +285,8 @@ def suggest_similar(name: str, limit: int = 5) -> list[str]:
 
 
 def auto_generate_list(strategy_dir: Path) -> dict:
-    """Scan strategy code for indicator usage; emit a canonical indicator list.
+    """Scan strategy code for indicator usage; emit a canonical flat-dict list.
 
     Placeholder stub for Phase 1; full implementation in workstream E (Task 22).
     """
-    return {"indicators": [], "indicators_with_special_params": []}
+    return {}

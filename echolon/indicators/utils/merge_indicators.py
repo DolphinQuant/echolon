@@ -7,15 +7,10 @@ load ``strategy_indicator_list.json`` from disk.
 Flat-dict format (per echolon/indicators/schema.py::IndicatorList):
 
     {"<indicator_name>": {"<param>": scalar | list}, ...}
-
-Legacy 4-section payloads (``indicators_with_lookback`` / ``indicators_without_lookback``
-/ ``indicators_with_special_params``) are auto-translated with a DeprecationWarning
-via ``StrategyIndicatorList`` — callers need not care.
 """
 from __future__ import annotations
 
 import json
-import warnings
 from typing import Any, Dict, List
 
 
@@ -96,32 +91,13 @@ def merge_indicator_lists(configs: List[Dict[str, Any]]) -> Dict[str, Any]:
 def load_indicator_list(path: str) -> Dict[str, Any]:
     """Load a ``strategy_indicator_list.json`` file as flat-dict.
 
-    Legacy 4-section payloads are auto-translated via
-    :class:`echolon.strategy.schemas.StrategyIndicatorList` (emits
-    ``DeprecationWarning``). The result is always a flat-dict ready for
-    :func:`echolon.indicators.run.run_indicator_calculation`.
+    Validates against the catalog via
+    :class:`echolon.indicators.schema.IndicatorList` — unknown names or shapes
+    fail fast before the caller touches the result.
     """
+    from echolon.indicators.schema import IndicatorList
+
     with open(path, "r") as f:
         data = json.load(f)
-
-    from echolon.strategy.schemas import StrategyIndicatorList
-
-    # _is_legacy_shape emits no warning; _maybe_translate_and_warn does.
-    if StrategyIndicatorList._is_legacy_shape(data):
-        warnings.warn(
-            f"load_indicator_list({path!r}) received a legacy 4-section payload. "
-            "Migrate the file to flat-dict format "
-            "({indicator_name: {param: value_or_list}}). "
-            "See docs/superpowers/plans/2026-04-22-indicator-validation-hardening.md.",
-            DeprecationWarning,
-            stacklevel=2,
-        )
-        flat = StrategyIndicatorList._translate_legacy(data)
-    else:
-        flat = data
-
-    # Validate against the catalog via IndicatorList to fail fast on unknown names.
-    from echolon.indicators.schema import IndicatorList
-    IndicatorList.model_validate(flat)
-
-    return flat
+    IndicatorList.model_validate(data)
+    return data

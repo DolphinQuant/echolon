@@ -29,16 +29,11 @@ def _make_error(code: str, **context_vars):
 def _get_declared_indicator_names(strategy_dir: Path) -> set[str]:
     """Return the set of indicator column names declared by the strategy's JSON.
 
-    Accepts both the flat-dict format
-    (``{name: {param: value_or_list}}``) and the legacy 4-section format
-    (auto-translated; emits DeprecationWarning through the shim).
-
-    For lookback indicators, the ``timeperiod`` param expands to one entry per
-    period (``rsi_10``, ``rsi_11``, …). Non-lookback indicators contribute their
-    bare name.
+    Reads the flat-dict format (``{name: {param: value_or_list}}``). For lookback
+    indicators, the ``timeperiod`` param expands to one entry per period
+    (``rsi_10``, ``rsi_11``, …). Non-lookback indicators contribute their bare name.
     """
     from echolon.indicators.schema import expand_param
-    from echolon.strategy.schemas import StrategyIndicatorList
 
     json_path = strategy_dir / "strategy_indicator_list.json"
     if not json_path.exists():
@@ -47,10 +42,6 @@ def _get_declared_indicator_names(strategy_dir: Path) -> set[str]:
         data = json.loads(json_path.read_text())
     except json.JSONDecodeError:
         return set()
-
-    if StrategyIndicatorList._is_legacy_shape(data):
-        data = StrategyIndicatorList._translate_legacy(data)
-
     if not isinstance(data, dict):
         return set()
 
@@ -62,7 +53,6 @@ def _get_declared_indicator_names(strategy_dir: Path) -> set[str]:
             continue
         timeperiod = params.get("timeperiod")
         if timeperiod is None:
-            # indicator without a period param — contributes its bare name
             declared.add(name_lower)
             continue
         for period in expand_param(timeperiod):

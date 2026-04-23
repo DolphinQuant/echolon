@@ -394,20 +394,12 @@ class TradingSlot:
 
 
 def _collect_declared_names(indicator_list: object) -> set:
-    """Derive the set of lowercase indicator names declared by a config dict.
+    """Derive the set of lowercase indicator names declared by a flat-dict config.
 
-    Accepts both flat-dict and legacy 4-section payloads (the latter is
-    auto-translated via :class:`StrategyIndicatorList`). Non-dict input returns
-    an empty set.
+    Non-dict input returns an empty set (defensive guard for malformed configs).
     """
-    from echolon.strategy.schemas import StrategyIndicatorList
-
     if not isinstance(indicator_list, dict):
         return set()
-
-    if StrategyIndicatorList._is_legacy_shape(indicator_list):
-        indicator_list = StrategyIndicatorList._translate_legacy(indicator_list)
-
     return {str(name).lower() for name in indicator_list.keys()}
 
     def _load_state_file(self) -> Dict[str, Any]:

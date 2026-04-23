@@ -1,9 +1,5 @@
-"""Phase A4 — merge_indicator_lists + load_indicator_list for flat-dict format.
-
-TDD red first; then implement the flat-dict union + range-merge semantics.
-"""
+"""Phase A4 — merge_indicator_lists + load_indicator_list for flat-dict format."""
 import json
-import warnings
 
 import pytest
 
@@ -77,26 +73,6 @@ def test_load_flat_dict_returns_flat_dict(tmp_path):
     p.write_text(json.dumps(payload))
     out = load_indicator_list(str(p))
     assert out == payload
-
-
-def test_load_legacy_4section_translates_and_warns(tmp_path):
-    """Loading a legacy 4-section file translates to flat-dict + warns."""
-    p = tmp_path / "strategy_indicator_list.json"
-    legacy = {
-        "indicators_with_lookback": {"RSI": [14, 28]},
-        "indicators_without_lookback": ["obv"],
-        "indicators_with_special_params": ["macd_line"],
-    }
-    p.write_text(json.dumps(legacy))
-    with warnings.catch_warnings(record=True) as captured:
-        warnings.simplefilter("always")
-        out = load_indicator_list(str(p))
-    assert "rsi" in out
-    assert "obv" in out
-    assert "macd_line" in out
-    assert out["rsi"] == {"timeperiod": [14, 28]}
-    assert out["obv"] == {}
-    assert any(issubclass(w.category, DeprecationWarning) for w in captured)
 
 
 def test_load_rejects_invalid_payload_shape(tmp_path):

@@ -393,86 +393,10 @@ def validate_position_size(size: Union[int, float], component_name: str = "posit
     return validated_size
 
 
-class StrategyIndicatorList:
-    """Deprecated 4-section schema — compatibility shim over IndicatorList.
-
-    Routes every validation through ``echolon.indicators.schema.IndicatorList``
-    (catalog-aware flat-dict validator). 4-section payloads are auto-translated
-    with a ``DeprecationWarning``. Flat-dict payloads pass through unchanged.
-
-    This shim preserves the historical import surface
-    ``echolon.strategy.schemas.StrategyIndicatorList`` while migrating callers
-    to the flat-dict wire format. Scheduled for removal after one release cycle.
-    """
-
-    _LEGACY_TOP_LEVEL_KEYS = {
-        "indicators_with_lookback",
-        "indicators_without_lookback",
-        "indicators_with_special_params",
-        "system_provided_indicators",
-    }
-
-    @classmethod
-    def _is_legacy_shape(cls, data) -> bool:
-        return (
-            isinstance(data, dict)
-            and bool(cls._LEGACY_TOP_LEVEL_KEYS & set(data.keys()))
-        )
-
-    @classmethod
-    def _translate_legacy(cls, data: dict) -> dict:
-        """Convert 4-section dict to flat-dict.
-
-        - indicators_with_lookback: {NAME: [min, max]} → {name: {timeperiod: [min, max]}}
-        - indicators_without_lookback: [NAME, ...]      → {name: {}}
-        - indicators_with_special_params: [NAME, ...]   → {name: {}}
-        - system_provided_indicators: dropped (informational only; per plan §2.4b)
-        """
-        flat: dict = {}
-        for name, rng in data.get("indicators_with_lookback", {}).items():
-            flat[name.lower()] = {"timeperiod": rng}
-        for name in data.get("indicators_without_lookback", []):
-            flat[name.lower()] = {}
-        for name in data.get("indicators_with_special_params", []):
-            flat[name.lower()] = {}
-        # system_provided_indicators intentionally dropped.
-        return flat
-
-    @classmethod
-    def _maybe_translate_and_warn(cls, data):
-        if cls._is_legacy_shape(data):
-            import warnings
-            warnings.warn(
-                "StrategyIndicatorList received a legacy 4-section payload. "
-                "Migrate to the flat-dict format "
-                "({indicator_name: {param: value_or_list}}). "
-                "See docs/superpowers/plans/2026-04-22-indicator-validation-hardening.md "
-                "for the migration guide.",
-                DeprecationWarning,
-                stacklevel=3,
-            )
-            return cls._translate_legacy(data)
-        return data
-
-    @classmethod
-    def model_validate(cls, data):
-        from echolon.indicators.schema import IndicatorList
-        return IndicatorList.model_validate(cls._maybe_translate_and_warn(data))
-
-    @classmethod
-    def model_validate_json(cls, json_str):
-        import json as _json
-        return cls.model_validate(_json.loads(json_str))
-
-    def __init__(self, **data):
-        """Support ``StrategyIndicatorList(**data)`` call sites (used by
-        ``validate_indicator_list_json`` below).
-        """
-        self._model = type(self).model_validate(data)
-
-    @classmethod
-    def __class_getitem__(cls, item):  # keep type-hint-style usage benign
-        return cls
+# StrategyIndicatorList is a thin alias over the canonical flat-dict schema.
+# Callers that still import ``from echolon.strategy.schemas import StrategyIndicatorList``
+# get the same Pydantic model they'd get importing IndicatorList directly.
+from echolon.indicators.schema import IndicatorList as StrategyIndicatorList
 
 
 
@@ -494,7 +418,7 @@ def validate_indicator_list_json(file_path: str) -> tuple[bool, str, StrategyInd
         >>> if not is_valid:
         >>>     print(f"Validation failed: {error}")
         >>> else:
-        >>>     print(f"Valid! Found {len(model.indicators_with_lookback)} lookback indicators")
+        >>>     print(f"Valid! Found {len(model.root)} indicators")
     """
     # Check file exists
     if not os.path.exists(file_path):
