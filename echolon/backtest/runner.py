@@ -10,7 +10,8 @@ This module provides simple function-based API for common use cases:
 - run_backtest(ctx, ...): Custom parameters
 
 All functions use TradingContext as single source of truth for market/instrument config.
-Use MarketFactory.from_session() to create ctx from current state.
+Use MarketFactory.create(...) to build ctx with explicit market/instrument values
+(host apps own session parsing).
 
 For more control, use the class-based API directly:
 - BacktestRunner: Full-featured runner for debug/best_trial modes
@@ -22,7 +23,9 @@ Usage:
     from echolon.backtest.runner import run_debug_backtest, run_best_trial
 
     # Get TradingContext (single source of truth)
-    ctx = MarketFactory.from_session()
+    ctx = MarketFactory.create(
+        market='SHFE', instrument='al', frequency='interday', bar_size='1d',
+    )
 
     # Debug backtest
     results = run_debug_backtest(ctx)
@@ -39,7 +42,7 @@ Usage:
     runner = BacktestRunner(ctx=ctx)
     results = runner.load_data().run(params=my_params, context='custom')
 
-    # Command line (uses MarketFactory.from_session() internally)
+    # Command line
     python -m modules.quant_engine.run_backtest --mode debug
     python -m modules.quant_engine.run_backtest --mode best_trial
 """
@@ -249,6 +252,10 @@ Examples:
         '--params-path',
         help='Path to parameters JSON (for best_trial mode)'
     )
+    parser.add_argument('--market', required=True, help='Market code (e.g., SHFE)')
+    parser.add_argument('--instrument', required=True, help='Instrument code (e.g., al)')
+    parser.add_argument('--frequency', default='interday', help='interday or intraday')
+    parser.add_argument('--bar-size', default='1d', help='Bar size (1m/5m/15m/30m/1h/1d)')
 
     args = parser.parse_args()
 
@@ -258,9 +265,15 @@ Examples:
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
 
-    # Get TradingContext from session (single source of truth)
+    # Build TradingContext from explicit CLI args — host apps wire their own
+    # session parsing; echolon's CLI is a minimal example.
     from echolon.config.markets.factory import MarketFactory
-    ctx = MarketFactory.from_session()
+    ctx = MarketFactory.create(
+        market=args.market,
+        instrument=args.instrument,
+        frequency=args.frequency,
+        bar_size=args.bar_size,
+    )
 
     if args.mode == 'debug':
         results = run_debug_backtest(ctx)

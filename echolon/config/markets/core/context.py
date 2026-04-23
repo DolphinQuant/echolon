@@ -2,16 +2,16 @@
 Trading Context - Runtime context for market-specific trading operations.
 
 TradingContext encapsulates all market, instrument, and frequency information
-needed by trading modules. It's created by MarketFactory from session state
-and passed to modules via dependency injection.
+needed by trading modules. Build it with :class:`MarketFactory.create` and
+pass to modules via dependency injection.
 
 Usage:
     from echolon.config.markets.factory import MarketFactory
 
-    # Create context from session state
-    ctx = MarketFactory.from_session()
+    ctx = MarketFactory.create(
+        market='SHFE', instrument='al', frequency='interday', bar_size='1d',
+    )
 
-    # Use in modules
     commission = ctx.instrument.calculate_commission(price, size)
     phase = ctx.encode_phase("morning")
     bars = ctx.bars_per_day

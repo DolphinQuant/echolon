@@ -19,8 +19,10 @@ For optimization (many parallel runs), use OptimizationRunner instead.
 Usage:
     from echolon.config.markets.factory import MarketFactory
 
-    # Get TradingContext (single source of truth)
-    ctx = MarketFactory.from_session()
+    # Get TradingContext — host apps own session parsing and pass values here
+    ctx = MarketFactory.create(
+        market='SHFE', instrument='al', frequency='interday', bar_size='1d',
+    )
 
     # Debug backtest
     results = BacktestRunner.debug(ctx)

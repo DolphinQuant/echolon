@@ -84,8 +84,10 @@ def run_data_pipeline(
         True if successful
 
     Example:
-        >>> from config.markets.factory import MarketFactory
-        >>> ctx = MarketFactory.from_session()
+        >>> from echolon.config.markets.factory import MarketFactory
+        >>> ctx = MarketFactory.create(
+        ...     market='SHFE', instrument='al', frequency='interday', bar_size='1d',
+        ... )
         >>> run_data_pipeline(ctx, skip_extraction=True)
     """
     if paths is None:

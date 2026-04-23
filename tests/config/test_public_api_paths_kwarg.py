@@ -64,18 +64,6 @@ def test_optimize_regime_params_accepts_paths():
     assert _signature_accepts_paths(optimize_regime_params)
 
 
-def test_market_factory_from_session_accepts_paths():
-    """Convenience — from_session accepts `paths=` as a single-arg alternative
-    to the separate session_dir + output_dir kwargs."""
-    from echolon.config.markets.factory import MarketFactory
-    assert _signature_accepts_paths(MarketFactory.from_session)
-
-
-def test_market_factory_load_target_accepts_paths():
-    from echolon.config.markets.factory import MarketFactory
-    assert _signature_accepts_paths(MarketFactory.load_target)
-
-
-def test_trading_target_load_accepts_paths():
-    from echolon.config.markets.core.trading_target import TradingTarget
-    assert _signature_accepts_paths(TradingTarget.load)
+# MarketFactory.from_session / .load_target and TradingTarget.load were
+# removed at E1 — host apps now load session state themselves and call
+# MarketFactory.create() with explicit values. No paths= surface to test.

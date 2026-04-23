@@ -1,207 +1,38 @@
 """
-Market Factory - Creates TradingContext from session state.
+Market Factory - Creates TradingContext from explicit values.
 
-This is the primary entry point for obtaining market configuration.
-It reads session/state.json and returns a fully configured TradingContext.
+Host apps own session/config parsing. MarketFactory.create() is the library's
+only public entry point; it accepts market/instrument/frequency/bar_size and
+returns a fully wired TradingContext with no file I/O.
 
 Usage:
     from echolon.config.markets.factory import MarketFactory
 
-    # Create from session state (most common)
-    ctx = MarketFactory.from_session()
-
-    # Create with explicit parameters
     ctx = MarketFactory.create(
         market='SHFE',
         instrument='al',
         frequency='intraday',
-        bar_size='5m'
+        bar_size='5m',
     )
 
-    # Use the context
     print(f"Trading {ctx.instrument_name} on {ctx.market_code}")
     print(f"Bars per day: {ctx.bars_per_day}")
 """
 
-import json
-from pathlib import Path
 from typing import Optional
 
 from echolon.config.markets.core.context import TradingContext
 from echolon.config.markets.core.types import MarketConfig, InstrumentSpec
-from echolon.config.markets.core.trading_target import TradingTarget, TradingTargetConfigSchema
+from echolon.config.markets.core.trading_target import TradingTarget
 
 
 class MarketFactory:
     """
-    Factory for creating TradingContext instances.
-
-    Reads session state and creates appropriately configured contexts
-    with all market-specific functions and data attached.
+    Factory for creating TradingContext instances from explicit values.
     """
 
     # Cache for loaded market configs
     _market_configs: dict = {}
-
-    @classmethod
-    def from_session(
-        cls,
-        session_path: Optional[str] = None,
-        *,
-        session_dir: Optional[Path] = None,
-        output_dir: Optional[Path] = None,
-        paths: Optional["PathsConfig"] = None,  # type: ignore[name-defined]
-    ) -> TradingContext:
-        """
-        Create TradingContext from session state file.
-
-        Loading priority:
-        1. If output_dir/target.json exists, load it directly (already integrated)
-        2. Otherwise, load state.json and trading_target_*.json from session_dir
-
-        Args:
-            session_path: Path to session state JSON. Defaults to session/state.json
-            session_dir: Optional base session directory. When None, falls back
-                to ``PathsConfig.from_env()``.
-            output_dir: Optional output directory. When None, falls back to
-                ``PathsConfig.from_env()``.
-
-        Returns:
-            Configured TradingContext
-
-        Raises:
-            FileNotFoundError: If session state file doesn't exist
-            ValidationError: If required fields are missing or invalid
-        """
-        # paths= takes precedence over individual session_dir/output_dir kwargs;
-        # both take precedence over PathsConfig.from_env() fallback.
-        if output_dir is None or session_dir is None:
-            from echolon.config.paths_config import PathsConfig
-            resolved = paths if paths is not None else PathsConfig.from_env()
-            if output_dir is None:
-                output_dir = resolved.output_dir
-            if session_dir is None:
-                session_dir = resolved.session_dir
-
-        # Check if integrated target exists in output_dir
-        output_target_path = Path(output_dir) / "target.json"
-        if output_target_path.exists():
-            # Load from output_dir/target.json (already has integrated target)
-            with open(output_target_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            target = TradingTarget.model_validate(data)
-        else:
-            # Load from session/state.json — forward the resolved session_dir
-            # so TradingTarget.load() does not fall through to its installed-
-            # package default when session_path wasn't explicitly provided.
-            resolved_session_path = session_path or str(Path(session_dir) / "state.json")
-            target = TradingTarget.load(resolved_session_path)
-            # Load and validate trading target config based on frequency
-            target.target = cls._load_trading_target_config(
-                target.frequency, session_dir=session_dir
-            )
-
-        return cls.create(
-            market=target.market,
-            instrument=target.instrument_code,
-            frequency=target.frequency,
-            bar_size=target.bar_size,
-            target=target,
-        )
-
-    @classmethod
-    def _load_trading_target_config(
-        cls,
-        frequency: str,
-        *,
-        session_dir: Optional[Path] = None,
-    ) -> Optional[TradingTargetConfigSchema]:
-        """
-        Load and validate trading target config based on frequency.
-
-        Args:
-            frequency: 'intraday' or 'interday'
-            session_dir: Optional base session directory. When None, falls back
-                to ``PathsConfig.from_env()``.
-
-        Returns:
-            Validated TradingTargetConfigSchema or None if file doesn't exist
-
-        Raises:
-            ValidationError: If trading target JSON has invalid structure
-        """
-        if frequency == "intraday":
-            target_file = "trading_target_intraday.json"
-        else:
-            target_file = "trading_target_interday.json"
-
-        if session_dir is None:
-            from echolon.config.paths_config import PathsConfig
-            session_dir = PathsConfig.from_env().session_dir
-
-        target_path = Path(session_dir) / target_file
-
-        if not target_path.exists():
-            return None
-
-        with open(target_path, 'r', encoding='utf-8') as f:
-            raw_data = json.load(f)
-
-        # Validate against schema
-        return TradingTargetConfigSchema.model_validate(raw_data)
-
-    @classmethod
-    def load_target(
-        cls,
-        session_path: Optional[str] = None,
-        *,
-        session_dir: Optional[Path] = None,
-        output_dir: Optional[Path] = None,
-        paths: Optional["PathsConfig"] = None,  # type: ignore[name-defined]
-    ) -> TradingTarget:
-        """
-        Load TradingTarget from session state file with trading target config.
-
-        Loading priority:
-        1. If output_dir/target.json exists, load it directly (already integrated)
-        2. Otherwise, load state.json and trading_target_*.json from session_dir
-
-        Use this when you need the full target info (including user_request).
-
-        Args:
-            session_path: Path to session state JSON. Defaults to session/state.json
-            session_dir: Optional base session directory. When None, falls back
-                to ``PathsConfig.from_env()``.
-            output_dir: Optional output directory. When None, falls back to
-                ``PathsConfig.from_env()``.
-
-        Returns:
-            Validated TradingTarget instance with target config
-        """
-        if output_dir is None or session_dir is None:
-            from echolon.config.paths_config import PathsConfig
-            resolved = paths if paths is not None else PathsConfig.from_env()
-            if output_dir is None:
-                output_dir = resolved.output_dir
-            if session_dir is None:
-                session_dir = resolved.session_dir
-
-        # Check if integrated target exists in output_dir
-        output_target_path = Path(output_dir) / "target.json"
-        if output_target_path.exists():
-            # Load from output_dir/target.json (already has integrated target)
-            with open(output_target_path, 'r', encoding='utf-8') as f:
-                data = json.load(f)
-            return TradingTarget.model_validate(data)
-
-        # Load from session/state.json — forward the resolved session_dir
-        resolved_session_path = session_path or str(Path(session_dir) / "state.json")
-        target = TradingTarget.load(resolved_session_path)
-        # Load and validate trading target config based on frequency
-        target.target = cls._load_trading_target_config(
-            target.frequency, session_dir=session_dir
-        )
-        return target
 
     @classmethod
     def create(

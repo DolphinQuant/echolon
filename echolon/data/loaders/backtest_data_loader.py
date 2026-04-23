@@ -10,7 +10,9 @@ for market and instrument configuration.
 Usage:
     from echolon.config.markets.factory import MarketFactory
 
-    ctx = MarketFactory.from_session()
+    ctx = MarketFactory.create(
+        market='SHFE', instrument='al', frequency='interday', bar_size='1d',
+    )
     indicators, calendar = load_backtest_data(ctx)
     metadata = load_indicator_metadata(ctx)
 """
