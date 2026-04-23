@@ -136,6 +136,46 @@ def build_server() -> FastMCP:
         return _catalog.suggest_similar(name, limit=limit)
 
     @server.tool()
+    def generate_strategy_params(
+        params_file_path: str,
+        output_path: str,
+        frequency: str = "interday",
+    ) -> dict:
+        """Generate strategy_params.py from params_to_optimize.json.
+
+        Deterministic code generation: parses the JSON → determines parameter
+        ownership across components → emits ComponentParameterTemplate classes
+        + framework registration + optuna_search_space with crossover
+        constraints → writes the target file. Period parameters that exceed
+        the frequency-appropriate indicator cap are auto-clamped and reported.
+
+        Args:
+            params_file_path: Absolute path to ``params_to_optimize.json``.
+            output_path: Absolute path to write ``strategy_params.py``.
+            frequency: ``"interday"`` (caps: TEMA≤62, ADX≤93, default≤180)
+                or ``"intraday"`` (caps: TEMA≤500, ADX≤750, default≤1000).
+
+        Returns ``{"success": bool, "output_path": str, "corrections":
+        [{"param", "type", "old_*", "new_*", "cap", "category", "changes"?}],
+        "message": str}``. Parse / IO failures surface as
+        ``success=False`` rather than raising.
+        """
+        from echolon.strategy.generators import (
+            generate_strategy_params as _impl,
+        )
+        result = _impl(
+            params_file_path=params_file_path,
+            output_path=output_path,
+            frequency=frequency,
+        )
+        return {
+            "success": result.success,
+            "output_path": result.output_path,
+            "corrections": result.corrections,
+            "message": result.message,
+        }
+
+    @server.tool()
     def list_patterns() -> list[str]:
         """Return all canonical pattern names."""
         return _patterns.list_patterns()
