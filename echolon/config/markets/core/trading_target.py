@@ -448,17 +448,20 @@ class TradingTarget(BaseModel):
         Load and validate trading target from JSON file.
 
         Args:
-            path: Path to state.json. Defaults to session/state.json
+            path: Path to state.json. When None, resolves via
+                ``PathsConfig.from_env().session_dir / "state.json"`` — respects
+                ``ECHOLON_PROJECT_ROOT`` env var or falls back to the process cwd.
 
         Returns:
             Validated TradingTarget instance
 
         Raises:
-            FileNotFoundError: If state file doesn't exist
+            FileNotFoundError: If state file doesn't exist at the resolved path.
             ValidationError: If state file has invalid content
         """
         if path is None:
-            path = Path(__file__).parent.parent.parent.parent / "session" / "state.json"
+            from echolon.config.paths_config import PathsConfig
+            path = PathsConfig.from_env().session_dir / "state.json"
         else:
             path = Path(path)
 
