@@ -538,6 +538,7 @@ def calculate_mfe_mae_for_all_trades(
 
 def main():
     """Main function to run MFE/MAE calculation on backtest results."""
+    import argparse
     from echolon._internal.structured_logging import install_structured_logging
     install_structured_logging()
     from echolon.config.paths_config import PathsConfig
@@ -545,14 +546,26 @@ def main():
 
     paths = PathsConfig.from_env()
 
+    parser = argparse.ArgumentParser(description='Run MFE/MAE analysis')
+    parser.add_argument('--market', required=True, help='Market code (e.g., SHFE)')
+    parser.add_argument('--instrument', required=True, help='Instrument code (e.g., al)')
+    parser.add_argument('--frequency', default='interday', help='interday or intraday')
+    parser.add_argument('--bar-size', default='1d', help='Bar size (1m/5m/15m/30m/1h/1d)')
+    args = parser.parse_args()
+
     # Setup logging
     logging.basicConfig(
         level=logging.INFO,
         format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
     )
 
-    # Get TradingContext from session (single source of truth)
-    ctx = MarketFactory.from_session()
+    # Build TradingContext from explicit CLI args — host apps own session parsing.
+    ctx = MarketFactory.create(
+        market=args.market,
+        instrument=args.instrument,
+        frequency=args.frequency,
+        bar_size=args.bar_size,
+    )
 
     # Define paths using standard workspace structure
     trades_csv = paths.backtest_results_dir / "backtest_trades.csv"

@@ -88,10 +88,8 @@ class DRSConfig:
         """Build target-calibrated :class:`DRSConfig` from raw target values.
 
         Takes plain floats so any host project can call this without a
-        schema type — replaces the legacy :meth:`from_trading_target` which
-        was coupled to qorka's ``TradingTargetConfigSchema``. Same derivation
-        formulas; new signature decouples the scoring library from any host
-        app's workflow types.
+        schema type — decoupling the scoring library from any host app's
+        workflow types.
 
         Args:
             sharpe_target: Annual Sharpe target (e.g., 2.0). Defaults to 2.0.
@@ -126,41 +124,6 @@ class DRSConfig:
             oos_dd_floor_pct=max_dd_target * 0.5,
             oos_dd_ceiling_pct=max_dd_target,
         )
-
-    @classmethod
-    def from_trading_target(cls, target_config) -> 'DRSConfig':
-        """
-        DEPRECATED — use :meth:`from_target_params` with plain floats.
-
-        Retained as a thin delegator to :meth:`from_target_params` while the
-        qorka migration is in flight. Deleted in E1.
-        """
-        sharpe_target = target_config.sharpe_target or 2.0
-        max_dd_target = target_config.max_drawdown_target or 15.0
-
-        annual_return_target = 40.0
-        if target_config.secondary_objective:
-            ret_obj = getattr(
-                target_config.secondary_objective, 'average_annual_return_pct', None
-            )
-            if ret_obj and getattr(ret_obj, 'target', None):
-                annual_return_target = ret_obj.target
-
-        freq_target_min = None
-        if target_config.secondary_objective:
-            freq_obj = getattr(
-                target_config.secondary_objective, 'average_trades_per_week', None
-            )
-            if freq_obj:
-                freq_target_min = getattr(freq_obj, 'target_min', None)
-
-        return cls.from_target_params(
-            sharpe_target=sharpe_target,
-            max_drawdown_target=max_dd_target,
-            annual_return_target=annual_return_target,
-            trades_per_week_target_min=freq_target_min,
-        )
-
 
 # =============================================================================
 # RESULT TYPES

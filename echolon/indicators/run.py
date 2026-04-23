@@ -68,7 +68,9 @@ def run_indicator_calculation(
 
     Example:
         >>> from echolon.config.markets.factory import MarketFactory
-        >>> ctx = MarketFactory.from_session()
+        >>> ctx = MarketFactory.create(
+        ...     market='SHFE', instrument='al', frequency='interday', bar_size='1d',
+        ... )
         >>> indicators = run_indicator_calculation(
         ...     ctx,
         ...     output_dir="/path/to/output",

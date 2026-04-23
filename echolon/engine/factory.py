@@ -30,7 +30,9 @@ Hook Composition Logic:
 Example:
     from echolon.config.markets.factory import MarketFactory
 
-    ctx = MarketFactory.from_session()
+    ctx = MarketFactory.create(
+        market='SHFE', instrument='al', frequency='interday', bar_size='1d',
+    )
     engine = EngineFactory.create_backtest_engine(ctx)
     # or
     engine = EngineFactory.create_deploy_engine(ctx)
@@ -67,7 +69,9 @@ class EngineFactory:
     Usage:
         from echolon.config.markets.factory import MarketFactory
 
-        ctx = MarketFactory.from_session()
+        ctx = MarketFactory.create(
+        market='SHFE', instrument='al', frequency='interday', bar_size='1d',
+    )
         engine = EngineFactory.create_backtest_engine(ctx)
 
         # Or create deploy engine
