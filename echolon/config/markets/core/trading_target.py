@@ -443,14 +443,21 @@ class TradingTarget(BaseModel):
     # ==========================================================================
 
     @classmethod
-    def load(cls, path: Optional[str] = None) -> 'TradingTarget':
+    def load(
+        cls,
+        path: Optional[str] = None,
+        *,
+        paths: Optional["PathsConfig"] = None,  # type: ignore[name-defined]
+    ) -> 'TradingTarget':
         """
         Load and validate trading target from JSON file.
 
         Args:
-            path: Path to state.json. When None, resolves via
-                ``PathsConfig.from_env().session_dir / "state.json"`` — respects
-                ``ECHOLON_PROJECT_ROOT`` env var or falls back to the process cwd.
+            path: Explicit path to state.json. Takes precedence over ``paths=``.
+            paths: Optional :class:`PathsConfig` to resolve the default
+                ``paths.session_dir / "state.json"`` location. Falls back to
+                ``PathsConfig.from_env()`` when neither ``path`` nor ``paths``
+                is supplied (respects ``ECHOLON_PROJECT_ROOT`` / cwd).
 
         Returns:
             Validated TradingTarget instance
@@ -461,7 +468,8 @@ class TradingTarget(BaseModel):
         """
         if path is None:
             from echolon.config.paths_config import PathsConfig
-            path = PathsConfig.from_env().session_dir / "state.json"
+            resolved = paths if paths is not None else PathsConfig.from_env()
+            path = resolved.session_dir / "state.json"
         else:
             path = Path(path)
 

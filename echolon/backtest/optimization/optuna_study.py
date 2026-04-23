@@ -173,6 +173,7 @@ class OptunaOptimizer:
         run_context: str = "optimization",
         optuna_config: Optional[OptunaConfig] = None,
         indicator_dir: Optional[Path] = None,
+        paths: Optional["PathsConfig"] = None,  # type: ignore[name-defined]
     ):
         if optuna_config is None:
             raise ValueError(

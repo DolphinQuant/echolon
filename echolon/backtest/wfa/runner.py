@@ -52,6 +52,7 @@ class WFARunner:
         optuna_config: Optional[OptunaConfig] = None,
         backtest_config: Optional[BacktestConfig] = None,
         backtest_results_dir: Optional[Path] = None,
+        paths: Optional["PathsConfig"] = None,  # type: ignore[name-defined]
     ):
         if optuna_config is None:
             raise ValueError(
@@ -71,7 +72,8 @@ class WFARunner:
         self.config = config
         if backtest_results_dir is None:
             from echolon.config.paths_config import PathsConfig
-            backtest_results_dir = PathsConfig.from_env().backtest_results_dir
+            resolved_paths = paths if paths is not None else PathsConfig.from_env()
+            backtest_results_dir = resolved_paths.backtest_results_dir
         self.output_dir = Path(backtest_results_dir)
         self.wfa_dir = self.output_dir / "wfa_windows"
 
