@@ -1,1 +1,5 @@
-{"indicators_with_lookback": {"HIGH": [10, 50], "LOW": [5, 20]}, "indicators_without_lookback": [], "indicators_with_special_params": ["market_regime"]}
+{
+  "highest_high": {"timeperiod": [10, 50]},
+  "lowest_low": {"timeperiod": [5, 20]},
+  "market_regime": {}
+}

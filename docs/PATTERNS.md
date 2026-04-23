@@ -7,7 +7,7 @@ Canonical strategy patterns in Echolon. Each pattern includes when to use it, th
 1. **Column names are always lowercase.** `ATR` in JSON → `atr_14`, `atr_15`, ... in code.
 2. **Use `self.get_indicator('lowercase_name')`.** Uppercase causes silent `KeyError` or `NaN`.
 3. **Declare every indicator in `strategy_indicator_list.json`.** Undeclared indicators aren't pre-computed.
-4. **System indicators** (`market_regime`, `session_phase`) go in `indicators_with_special_params`.
+4. **System indicators** (`market_regime`, `session_phase`) are declared in the flat-dict like any other — `{"market_regime": {}, ...}` — with an empty params dict to use library defaults.
 
 See [IND-001](errors/IND-001.md) for the casing-mismatch error.
 
@@ -78,7 +78,7 @@ def generate_signal(self) -> EntrySignalOutput:
 
 **Files to customize:**
 - `entry.py` — outer `if regime == "trending_up"` branches
-- `strategy_indicator_list.json` — add `market_regime` to `indicators_with_special_params`
+- `strategy_indicator_list.json` — add `"market_regime": {}` to the flat-dict
 - `strategy_params.py` — define per-regime thresholds (e.g., `trend_threshold`, `range_threshold`)
 
 **Sketch:**
