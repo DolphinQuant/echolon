@@ -19,11 +19,10 @@ Usage:
 
 from dataclasses import dataclass, field
 from datetime import time, datetime
-from typing import Dict, List, Optional, Callable
+from typing import Dict, List, Callable
 
 # Import types at runtime (required for Pydantic models that use TradingContext)
 from .types import MarketConfig, InstrumentSpec, SessionWindow, SessionPhaseSpec
-from .trading_target import TradingTarget
 
 
 @dataclass
@@ -39,15 +38,16 @@ class TradingContext:
         instrument: Instrument specification (al, btc, etc.)
         frequency: Trading frequency ('intraday' or 'interday')
         bar_size: Bar size string ('5m', '15m', '1d', etc.)
-        target: User's trading target (TradingTarget from state.json)
+        initial_capital: Starting capital for backtesting and live trading.
     """
     market: MarketConfig
     instrument: InstrumentSpec
     frequency: str  # 'intraday' | 'interday'
     bar_size: str   # '1m', '5m', '15m', '30m', '1h', '1d'
 
-    # User's trading target (TradingTarget from session/state.json)
-    target: Optional[TradingTarget] = field(default=None, repr=False)
+    # Starting capital — was previously on TradingTarget; promoted to
+    # first-class field at E2 when TradingTarget was deleted.
+    initial_capital: float = 200000.0
 
     # Encoding functions (set by factory based on market)
     _encode_phase: Callable[[str], int] = field(default=lambda x: 0, repr=False)
@@ -100,13 +100,6 @@ class TradingContext:
     def has_night_session(self) -> bool:
         """Whether instrument trades in night session."""
         return self.instrument.has_night_session
-
-    @property
-    def initial_capital(self) -> float:
-        """Initial capital for backtesting and live trading."""
-        if self.target:
-            return self.target.initial_capital
-        return 200000.0
 
     # =========================================================================
     # Session Access
