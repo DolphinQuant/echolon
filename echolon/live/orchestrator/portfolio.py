@@ -513,7 +513,7 @@ class PortfolioTradingRunner:
         per instrument.
         """
         import json as _json
-        from echolon.indicators.utils.merge_indicators import load_indicator_list
+        from echolon.indicators.utils.loader import load_indicator_list
         from ..platforms.miniqmt.xtdc_client import XtdcClient
 
         # Connect XtdcClient once for all instruments
