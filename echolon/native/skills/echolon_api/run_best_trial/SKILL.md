@@ -46,7 +46,7 @@ custom_results = run_backtest(ctx, strategy_params={...}, run_context="custom")
 
 - After an Optuna study + `TrialSelector.select()` has written `selected_robust_trial.json` into the strategy code directory, and you want to validate that trial over the full period or an OOS window.
 - Inside `WFARunner.run()` — called once per window for the OOS slice and once more for the final full-period backtest with the last window's parameters. The function does not accept a parameters dict argument; it always reads from disk via `BacktestRunner.best_trial`.
-- From the CLI `python -m modules.quant_engine.run_backtest --mode best_trial`. `main()` calls `MarketFactory.from_session()` first, then routes to `run_best_trial`.
+- From the CLI `python -m echolon.backtest.runner --mode best_trial --market <M> --instrument <I> --frequency <F> --bar-size <B>`. `main()` calls `MarketFactory.create(...)` with those kwargs, then routes to `run_best_trial`.
 - Do *not* use this to run a freshly-optimized set of parameters that hasn't been written to `selected_robust_trial.json` yet — use `run_backtest(ctx, strategy_params=…)` instead.
 
 ## Parameters / Returns
@@ -63,7 +63,7 @@ Returned dict includes at least (all values may be 0 if the backtest trades noth
 
 - **`FileNotFoundError` on `selected_robust_trial.json`** — `best_params_path` is `None` and `PathsConfig.from_env().strategy_code_dir / "selected_robust_trial.json"` does not exist. Run `TrialSelector.select()` first, or pass an explicit `best_params_path`. No Echolon code issued.
 - **`pydantic.ValidationError` from `SelectedTrialSchema`** — the JSON on disk has the wrong shape (e.g. from hand-edits or a stale format). Re-run `TrialSelector.select()` to rewrite the file via `SelectedTrialSchema.model_validate(...).model_dump()`.
-- **`BT-001`** — any exception inside the platform-agnostic strategy's `on_bar()` during the replay. See `docs/errors/BT-001.md` and the `get_strategy_class` skill.
+- **`BT-001`** — any exception inside the platform-agnostic strategy's `_execute_bar()` (or any callback it invokes — entry, exit, risk, sizer component methods) during the replay. `on_bar()` is the Template Method that calls `_execute_bar()`; strategies override `_execute_bar()` only. See `docs/errors/BT-001.md` and the `get_strategy_class` skill.
 - **`CFG-001`** — if the caller-supplied `start_date`/`end_date` or underlying `BacktestConfig` has `end_date < start_date`. See `docs/errors/CFG-001.md`.
 
 ## See also
