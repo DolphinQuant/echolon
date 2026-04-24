@@ -37,48 +37,88 @@
 
 ## File Organization
 
+Strategy files live in any directory on disk and are loaded by echolon via
+`StrategyLoader(strategy_dir).load_module("<name>")`. Host apps choose the
+directory location; no fixed filesystem path.
+
+**Qorka convention** (where the coding agent writes):
+
 ```
-modules/quant_engine/strategy/platform_agnostic/
+workspace/current/code/
 ├── entry.py              # Entry signal generation
 ├── exit.py               # Exit decision logic
 ├── risk.py               # Risk management
 ├── sizer.py              # Position sizing
 ├── strategy.py           # Main coordinator (strategy_main class)
 ├── strategy_params.py    # Parameter definitions
-└── strategy_indicator_list.json  # Required indicators
+├── component.py          # Strategy-local helpers (preflight requires presence)
+└── strategy_indicator_list.json  # Flat-dict indicator configuration
 ```
+
+**Required files** (per `echolon/strategy/preflight.py::REQUIRED_FILES`):
+`entry.py`, `exit.py`, `risk.py`, `sizer.py`, `component.py`,
+`strategy_params.py`, `strategy_indicator_list.json`.
+
+**Required class exports** (per `echolon/strategy/loader.py::_REQUIRED_CLASSES`):
+
+| File | Class name |
+|---|---|
+| `entry.py` | `entry_rule` |
+| `exit.py` | `exit_rule` |
+| `risk.py` | `risk_manager` |
+| `sizer.py` | `position_sizer` |
+
+`strategy.py`'s class must be named `strategy_main` (loaded via
+`StrategyLoader.load_function("strategy", "strategy_main")` — loader.py:13).
 
 ## Component Flow
 
 ```
-┌──────────────┐
-│  on_bar()    │  BaseStrategy coordinator
-└──────┬───────┘
-       │
-       ▼
-┌──────────────┐     RiskOutput
-│ risk_manager │────────────────┐
-│  .can_trade()│                │
-└──────────────┘                │
-       │                        │
-       ▼ (if trading_allowed)   │
-┌──────────────┐                │
-│  entry_rule  │ EntrySignalOutput
-│.generate_signal()─────────────┤
-└──────────────┘                │
-       │                        │
-       ▼ (if signal != HOLD)    │
-┌──────────────┐                │
-│position_sizer│ SizerOutput    │
-│.calculate_size()──────────────┤
-└──────────────┘                │
-       │                        │
-       ▼ (submit order)         │
-┌──────────────┐                │
-│  exit_rule   │ ExitSignalOutput
-│ .should_exit()────────────────┘
-└──────────────┘
+┌────────────────────────────────────────────────────────────────┐
+│  BaseStrategy._execute_bar()                                   │
+│  (override target — NOT on_bar(), which is a Template Method   │
+│   orchestrating hook lifecycle; see echolon/strategy/base.py)  │
+└──────────────────────────┬─────────────────────────────────────┘
+                           │
+                           ▼
+                ┌──────────────────────┐
+                │ risk_manager         │
+                │   .can_trade()       │──► RiskOutput
+                └──────────┬───────────┘
+                           │
+     ┌─────────────────────┴─────────────────────┐
+     │        has_position()?                    │
+     ▼                                           ▼
+┌─────────────────────────┐          ┌───────────────────────────┐
+│ Flat + trading_allowed: │          │ In position:              │
+│   entry_rule            │          │   exit_rule               │
+│     .generate_signal()  │── ESO ──►│     .should_exit()        │── XSO
+│   if signal != HOLD:    │          │   if should_exit:         │
+│     position_sizer      │          │     self.exit(intent)     │
+│       .calculate_size() │── SO ──► └───────────────────────────┘
+│   if size > 0:          │
+│     self.entry(...)     │
+└─────────────────────────┘
+  ESO = EntrySignalOutput
+  SO  = SizerOutput
+  XSO = ExitSignalOutput
 ```
+
+**Key invariants:**
+
+- `_execute_bar()` is the override target — never `on_bar()`. See
+  `echolon/strategy/base.py:934` for the Template Method docstring: *"Do NOT
+  override this method. Override _execute_bar() instead."*
+- Risk check always runs first; `trading_allowed=False` blocks new entries
+  but does NOT block exits on existing positions (exit logic still evaluates
+  when in position — circuit breakers are the exception; see STRATEGY.md).
+- Position-state branches: entry + sizer path fires only when **flat**; exit
+  path fires only when **in position**. Exit never runs "after" entry in the
+  same bar — they're mutually exclusive per-bar outcomes.
+- Always guard order submission with `has_pending_orders()` — see
+  STRATEGY.md for the full pattern (Backtrader orders execute at next bar's
+  open; without this guard, consecutive bars produce massive over-sized
+  positions).
 
 ## Documentation Hierarchy
 
