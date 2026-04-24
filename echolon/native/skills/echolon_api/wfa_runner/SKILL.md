@@ -55,7 +55,7 @@ final = runner.run()
 
 - As the canonical orchestration entry for validating a strategy across expanding-windows — any time you want IS optimization + OOS replay + robustness metrics (WFE, OOS Sharpe distribution) rather than a single full-period Optuna run.
 - When you need a Deployment Readiness Score (`drs`) written into `backtest_results.json`. `WFARunner` is the only echolon surface that currently computes DRS via `compute_drs(final_data, config=DRSConfig.from_trading_target(ctx.target.target))`.
-- Do *not* run WFA from a shell loop calling `OptunaOptimizer.run()` + `TrialSelector.select()` yourself — `WFARunner` handles the cross-window memory hygiene (`del is_indicators, study; gc.collect()` between windows), the per-window archive under `backtest_results_dir/wfa_windows/window_<id>/`, the shared `market_adapter` + `strategy_class` objects, and the cache-clearing call (`clean_backtest_folder()`) at the start.
+- Do *not* run WFA from a shell loop calling `OptunaOptimizer.run()` + `TrialSelector.select()` yourself — `WFARunner` handles the cross-window memory hygiene (`del is_indicators, study; gc.collect()` between windows), the per-window archive under `backtest_results_dir/wfa_windows/window_<id>/`, the shared `market_adapter` + `strategy_class` objects, and the inline stale-artifact cleanup loop at the start (previously delegated to qorka's `lib.file_operation.clean_backtest_folder` — inlined in `run()` as of commit `c4de31b` so the cleanup target is `self._paths.backtest_results_dir`).
 - Do *not* expect the final full-period backtest to stitch OOS windows. `WFARunner` runs a single `run_best_trial(ctx)` over the full `BacktestConfig` date range using the *last* window's `selected_robust_trial.json` — this gives consistent `performance_metrics`, trades, and equity curve from one parameter set rather than artificially stitched windows.
 
 ## Parameters / Returns
@@ -63,7 +63,7 @@ final = runner.run()
 | Method | Args | Returns | Purpose |
 |---|---|---|---|
 | `__init__(ctx, config, optuna_config=<required>, backtest_config=<required>, backtest_results_dir=None)` | `TradingContext`, `WFAConfig`, configs, optional output dir (defaults to `PathsConfig.from_env().backtest_results_dir`) | — | Validates that both `optuna_config` and `backtest_config` are provided (raises `ValueError` otherwise). Sets `self.wfa_dir = output_dir / "wfa_windows"`. |
-| `run()` | — | `Dict[str, Any]` | Full pipeline. Returns the augmented `backtest_results.json` content; returns `{}` if no windows completed. Deferred imports inside `run()` — the function explicitly imports `OptunaOptimizer`, `TrialSelector`, `run_best_trial`, `EngineFactory`, `get_strategy_class`, `load_backtest_data`, `load_indicator_metadata`, plus the strategy module's `optuna_search_space`/`DEFAULT_PARAMS`/`apply_shared_params`/`framework` symbols, after `clean_backtest_folder()`. |
+| `run()` | — | `Dict[str, Any]` | Full pipeline. Returns the augmented `backtest_results.json` content. **Raises `WFA-001`** if no windows completed (per commit `c4de31b`); the prior silent `{}` return was the exact silent-failure pattern WFA-001 replaces. Deferred imports inside `run()` — the function explicitly imports `OptunaOptimizer`, `TrialSelector`, `run_best_trial`, `EngineFactory`, `get_strategy_class`, `load_backtest_data`, `load_indicator_metadata`, plus the strategy module's `optuna_search_space`/`DEFAULT_PARAMS`/`apply_shared_params`/`framework` symbols, after an inline stale-artifact cleanup loop (previously delegated to qorka's `lib.file_operation.clean_backtest_folder` — now operates on `self._paths.backtest_results_dir` directly). |
 | `_extract_is_sharpe(study)` | `optuna.Study` | `float` | `max(t.values[0] for t in completed_trials)` — works for both single- and multi-objective (values[0] is always sharpe in the convention here). |
 | `_archive_window_artifacts(window, window_dir)` | `WFAWindow`, `Path` | `None` | Copies `backtest_results.json`, `backtest_trades.csv`, `equity_curve.csv` from `output_dir` to `window_dir/oos_*`. |
 | `_build_final_results(last_window, wfa_summary, wfa_window_details)` | internals | `Dict[str, Any]` | Reads `backtest_results.json`, adds `wfa_summary` + `wfa_windows` + `drs`, copies last window's `optimization_trials.csv` up into `output_dir`, re-writes `backtest_results.json`. |
@@ -71,7 +71,7 @@ final = runner.run()
 The per-window sequence inside `run()` (lines 115–247 of `runner.py`):
 1. Slice IS → `is_indicators`.
 2. `OptunaOptimizer(ctx, market_adapter, strategy_class, optuna_search_space, ...).run(...)`.
-3. `optimizer.save_study_results(..., save_trials_csv=True)`.
+3. `optimizer.save_study_results(..., save_trials_csv=True)`. Per commit `c4de31b`, WFARunner also passes `failure_report_dir=window_dir, failure_report_window_id=window.window_id` to `OptunaOptimizer.run()`, so a structured `trial_failure_summary.json` lands under `wfa_dir/window_<N>/` whenever any trial in that window failed. This is the canonical AI-readable breadcrumb for per-window failure diagnosis (debugger_agent consumes it first, before falling back to `optimization_trials.csv`).
 4. `window.is_sharpe = _extract_is_sharpe(study)`.
 5. `TrialSelector(..., default_params=DEFAULT_PARAMS, apply_shared_params_fn=apply_shared_params, param_classifications=framework.get_param_classifications()).select()` → writes `selected_robust_trial.json` into `PathsConfig.strategy_code_dir`.
 6. `run_best_trial(ctx, start_date=window.oos_start, end_date=window.oos_end, backtest_config=self._backtest_config)` → writes `backtest_results.json`, `backtest_trades.csv`, `equity_curve.csv` to `output_dir`.
@@ -80,9 +80,9 @@ The per-window sequence inside `run()` (lines 115–247 of `runner.py`):
 ## Common errors
 
 - **`ValueError: optuna_config is required ...` / `backtest_config is required ...`** — `__init__` invariants. Supply both or call `echolon.quick_start()` for defaults.
-- **`WFA: No windows completed successfully`** (logger error, returns `{}`) — every window failed at step 1–6 (empty IS slice, no trials CSV, no robust trial, OOS raised). Inspect per-window `logger.warning` entries to identify which step bailed.
+- **`WFA-001`** — every window produced zero valid trials. Raised (not silently returned `{}` — that was the old behavior, replaced in commit `c4de31b`). The raise carries structured context pointing at per-window `trial_failure_summary.json` artifacts under `wfa_dir/window_<N>/`. See `docs/errors/WFA-001.md`.
 - **Per-window silent skips** — "Window N: No IS data, skipping" (empty `is_indicators`), "Window N: No trials CSV, skipping" (study failure), "Window N: No robust trial found, skipping OOS" (TrialSelector returned `None`). Each is a warning, not an error; the window's OOS results stay `None` and it is excluded from `completed_windows`.
-- **Downstream `BT-001` / `BT-003`** — bubbled from the inner `OptunaOptimizer.run()` or `run_best_trial()`. See `docs/errors/BT-001.md`, `docs/errors/BT-003.md`.
+- **Downstream `BT-001` / `BT-003` / `WFA-001`** — bubbled from the inner `OptunaOptimizer.run()` or `run_best_trial()`. See `docs/errors/BT-001.md`, `docs/errors/BT-003.md`, `docs/errors/WFA-001.md`.
 
 ## See also
 
