@@ -206,6 +206,121 @@ def build_server() -> FastMCP:
         }
 
     @server.tool()
+    def validate_debug_completion(
+        artifact_path: str,
+        log_path: str,
+        required_json_keys: list[str] | None = None,
+        required_log_markers: list[str] | None = None,
+    ) -> dict:
+        """Validate post-run debug artifacts landed on disk with the right shape.
+
+        Three deterministic checks:
+        - STR-001: ``selected_robust_trial.json`` + log file both exist.
+        - VAL-003: artifact JSON parses and carries every required top-level key.
+        - BT-010: log contains each required marker substring (order irrelevant).
+
+        Args:
+            artifact_path: Absolute path to the JSON artifact (typically
+                ``<workspace>/backtest/selected_robust_trial.json``).
+            log_path: Absolute path to the debug log file.
+            required_json_keys: Top-level keys expected on the artifact.
+                Defaults to ``["trial_number", "params", "metrics"]``.
+            required_log_markers: Substrings expected in the log. Defaults
+                to ``["STAGE 4 COMPLETE", "STAGE 5 COMPLETE", "FINAL SUCCESS"]``.
+
+        Returns ``{"any_errors": bool, "findings": [{"code", "message",
+        "context"}, ...]}``. Never raises — parse / file-access failures
+        surface as findings with the appropriate error code.
+        """
+        from echolon.strategy.validators.debug_completion import (
+            validate_debug_completion as _impl,
+        )
+        kwargs = {}
+        if required_json_keys is not None:
+            kwargs["required_json_keys"] = required_json_keys
+        if required_log_markers is not None:
+            kwargs["required_log_markers"] = required_log_markers
+        report = _impl(artifact_path=artifact_path, log_path=log_path, **kwargs)
+        return report.to_dict()
+
+    @server.tool()
+    def validate_component_protocol_signatures(strategy_dir: str) -> dict:
+        """AST-check that each required component class has the required
+        method with a matching return-type annotation (if annotated at all).
+
+        - STR-003: class is missing the required method.
+        - VAL-006: method declares a return annotation but it doesn't match
+          the expected BaseModel (EntrySignalOutput / ExitSignalOutput / ...).
+
+        Missing annotations are NOT flagged (policy vs correctness — missing
+        annotation is a stylistic choice, Pydantic catches runtime
+        mismatches). Missing files are silently skipped (preflight STR-001
+        territory).
+
+        Returns ``{"any_errors": bool, "findings": [...]}``.
+        """
+        from echolon.strategy.validators.component_signatures import (
+            validate_component_signatures as _impl,
+        )
+        return _impl(strategy_dir=strategy_dir).to_dict()
+
+    @server.tool()
+    def validate_component_integration(strategy_dir: str) -> dict:
+        """Import each component module via StrategyLoader and check its
+        method arity + ``strategy_params.DEFAULT_PARAMS`` top-level shape.
+
+        - STR-002: module fails to import (= guaranteed runtime failure).
+        - PRM-002: DEFAULT_PARAMS missing a required top-level key, or a
+          value isn't a dict.
+        - VAL-005: method's required-positional arity (after ``self``)
+          doesn't match the protocol. Arg NAMES are not checked — the
+          framework calls positionally, so names are the author's choice.
+
+        Returns ``{"any_errors": bool, "findings": [...]}``.
+        """
+        from echolon.strategy.validators.component_integration import (
+            validate_component_integration as _impl,
+        )
+        return _impl(strategy_dir=strategy_dir).to_dict()
+
+    @server.tool()
+    def validate_component_logging(strategy_dir: str) -> dict:
+        """AST-check that each component's required method calls the
+        matching ``self.log_<component>_output(...)`` with a BaseModel
+        instance (not a dict, not a wrong schema).
+
+        Also flags ``self.params.get(...)`` anywhere in the file (PRM-004 —
+        defensive dict-access antipattern on the params container).
+
+        Returns ``{"any_errors": bool, "findings": [...]}``.
+        """
+        from echolon.strategy.validators.component_logging import (
+            validate_component_logging as _impl,
+        )
+        return _impl(strategy_dir=strategy_dir).to_dict()
+
+    @server.tool()
+    def validate_parameter_access(strategy_dir: str) -> dict:
+        """AST-check for hardcoded threshold literals (PRM-003) and defensive
+        ``self.params.get()`` calls (PRM-004) across the 4 component files.
+
+        Highest FP-risk of the B1 validators — PRM-003 findings include
+        ``context["severity"] = "warning"`` so callers can treat them as
+        non-blocking while the allowlist is tuned. PRM-004 findings are
+        always bugs (framework contract violation).
+
+        Allowlist covers: range() args, index slicing, keyword args, default
+        args, None comparisons, small integer constants ``{-1, 0, 1, -1.0, 0.0, 1.0}``,
+        and string-literal comparisons (framework-defined regime / signal enums).
+
+        Returns ``{"any_errors": bool, "findings": [...]}``.
+        """
+        from echolon.strategy.validators.parameter_access import (
+            validate_parameter_access as _impl,
+        )
+        return _impl(strategy_dir=strategy_dir).to_dict()
+
+    @server.tool()
     def generate_strategy_params(
         params_file_path: str,
         output_path: str,
