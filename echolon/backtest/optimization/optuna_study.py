@@ -439,11 +439,13 @@ class OptunaOptimizer:
                             if result.get('critical_error'):
                                 pbar.close()
                                 # Print critical error directly to terminal
+                                failure = result.get('failure') or {}
+                                err_msg = failure.get('message', 'Unknown error')
                                 print(f"\n{'='*60}")
                                 print(f"CRITICAL ERROR in trial {trial.number}")
-                                print(f"Error: {result['error_message']}")
+                                print(f"Error: {err_msg}")
                                 print(f"{'='*60}\n")
-                                raise RuntimeError(result['error_message'])
+                                raise RuntimeError(err_msg)
                     except Exception as e:
                         if "CRITICAL" in str(e):
                             pbar.close()

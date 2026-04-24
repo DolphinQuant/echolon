@@ -88,19 +88,67 @@ class OptimizationMetrics:
 
     # Optional: set when trial failed
     success: bool = True
-    error_message: Optional[str] = None
+    # Structured failure record. When the trial raised, ``failure`` carries
+    # the full exception metadata (type, EchelonError code, context,
+    # traceback, trial_params, docs_url). The controller aggregates these
+    # per-study and renders a terminal summary + JSON artifact when
+    # ``n_failed > 0``. See ``echolon.backtest.engine.failure``.
+    failure: Optional['OptimizationFailure'] = None
 
     @classmethod
     def failed(cls, error_message: str) -> 'OptimizationMetrics':
-        """Create a failed metrics result."""
+        """Create a failed metrics result from a bare message.
+
+        DEPRECATED — prefer :meth:`failed_from_exc` to preserve the full
+        exception structure. This constructor stays as a back-compat
+        fallback for call sites that don't have access to the original
+        exception (e.g., shared-data pre-checks).
+        """
+        from echolon.backtest.engine.failure import OptimizationFailure
         return cls(
             sharpe_ratio=-1.0,
             max_drawdown_pct=-999.0,
             annual_return_pct=-100.0,
             total_trades=0,
             success=False,
-            error_message=error_message,
+            failure=OptimizationFailure(
+                error_type="PreconditionError",
+                message=error_message,
+            ),
         )
+
+    @classmethod
+    def failed_from_exc(
+        cls,
+        exc: BaseException,
+        trial_params: Optional[Dict[str, Any]] = None,
+    ) -> 'OptimizationMetrics':
+        """Create a failed metrics result from a live exception.
+
+        Extracts EchelonError's structured fields (code, context, docs_url)
+        when present, and tail-truncates the traceback. The resulting
+        ``OptimizationFailure`` survives the worker→controller IPC (it's a
+        plain dataclass of JSON-serializable values).
+        """
+        from echolon.backtest.engine.failure import OptimizationFailure
+        return cls(
+            sharpe_ratio=-1.0,
+            max_drawdown_pct=-999.0,
+            annual_return_pct=-100.0,
+            total_trades=0,
+            success=False,
+            failure=OptimizationFailure.from_exception(exc, trial_params=trial_params),
+        )
+
+    @property
+    def error_message(self) -> Optional[str]:
+        """Back-compat accessor: return the structured failure's message.
+
+        Existing callers read ``metrics.error_message`` as a string. Keep
+        the attribute as a read-only view onto ``failure.message`` for one
+        release; new code should consume ``metrics.failure`` directly.
+        """
+        return self.failure.message if self.failure is not None else None
 
     def get_multi_objective_values(self) -> tuple:
         """Get values for multi-objective optimization (sharpe, -drawdown, return)."""
@@ -318,10 +366,13 @@ class OptimizationRunner:
             return cls._extract_metrics(results)
 
         except Exception as e:
-            error_msg = f"{type(e).__name__}: {e}"
-            # Use WARNING level so errors are visible during optimization
-            logger.warning(f"[OPTIMIZATION_RUNNER] Trial {trial_id} FAILED | {error_msg}")
-            return OptimizationMetrics.failed(error_msg)
+            # Structured failure — capture the exception with trial_params so
+            # the controller can dedup and surface a single aggregated report.
+            # Worker-side logging is intentionally omitted: worker loggers
+            # don't propagate across ProcessPoolExecutor, so any line here is
+            # invisible to the user. The OptunaOptimizer renders from the
+            # returned OptimizationFailure instead.
+            return OptimizationMetrics.failed_from_exc(e, trial_params=trial_params)
 
     @classmethod
     def _extract_metrics(cls, results: BacktestResults) -> OptimizationMetrics:
@@ -388,7 +439,7 @@ def run_optimization_trial(
     if not metrics.success:
         return {
             'success': False,
-            'error_message': metrics.error_message,
+            'failure': metrics.failure.to_dict() if metrics.failure else None,
             'critical_error': False,
         }
 
