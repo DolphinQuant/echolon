@@ -32,6 +32,26 @@ The infrastructure converts to lowercase internally, but consistent lowercase na
 
 ---
 
+## Valid `market_regime` values (interday only)
+
+The `market_regime` indicator emits **exactly these 4 string values** — via
+`self.get_market_regime()`, NOT via `self.get_indicator('market_regime')`
+(which returns numeric codes). Source of truth:
+`echolon/indicators/calculators/interday/market_regime.py`.
+
+| Value | Numeric code | Meaning |
+|---|---|---|
+| `trending_up` | 1 | Strong upward trend |
+| `trending_down` | -1 | Strong downward trend |
+| `ranging` | 0 | No directional trend |
+| `volatile` | 2 | High-volatility mean-reversion regime |
+
+**No other values exist.** There is no `strong_trending_up`, no
+`strong_trending_down`, no `strong_*` variant of any kind. Branch logic
+against these exact 4 strings only.
+
+---
+
 ## Session Methods NOT Available
 
 Interday strategies do NOT have session methods. The following will NOT be available:
@@ -82,14 +102,15 @@ check_contract_expiry() -> bool           # Internal use
 
 ```python
 class strategy_main(BaseStrategy):
-    def on_bar(self):
+    def _execute_bar(self):
         """
-        Called on each new bar.
+        Override target — NOT ``on_bar()``. ``BaseStrategy.on_bar()`` is a
+        Template Method that orchestrates hook lifecycle; strategies must
+        override ``_execute_bar()`` only (echolon/strategy/base.py:934).
 
-        NOTE: For SHFE interday futures, contract expiry forced exits
-        are processed AUTOMATICALLY in BacktraderStrategyBridge.next()
-        BEFORE this method is called. DO NOT call check_and_process_forced_exits()
-        manually.
+        For SHFE interday futures, contract-expiry forced exits run in
+        BacktraderStrategyBridge.next() BEFORE this method fires. DO NOT
+        call check_and_process_forced_exits() manually.
         """
         # 1. Check risk constraints
         risk_output = self.risk_manager.can_trade()
@@ -170,14 +191,14 @@ class entry_rule(BaseComponent):
 
         if not self.has_position():
             # Trend-following with momentum confirmation
-            if regime in ['trending_up', 'strong_trending_up']:
+            if regime == 'trending_up':
                 if rsi < self.rsi_overbought and adx > self.adx_threshold:
                     signal = 'LONG'
                     intent = OrderIntent.ENTRY_LONG
                     strength = min(1.0, adx / 50)  # Strength based on ADX
                     reason = f'Uptrend entry: RSI {rsi:.1f}, ADX {adx:.1f}, regime {regime}'
 
-            elif regime in ['trending_down', 'strong_trending_down']:
+            elif regime == 'trending_down':
                 if rsi > self.rsi_oversold and adx > self.adx_threshold:
                     signal = 'SHORT'
                     intent = OrderIntent.ENTRY_SHORT
