@@ -34,10 +34,13 @@ Sub-Agent                          Validator/Exploitate Agent
 
 ## 1. Backup (Sub-Agent)
 
-Before making any code changes, sub-agent creates backup:
+Before making any code changes, sub-agent creates backup. The scripts ship
+inside the echolon package under `echolon/native/skills/echolon_api/validation-backup/scripts/`
+(moved from the qorka-local `.claude/skills/` path during Task 15 migration).
+Resolve the absolute path at call time so the command is install-location-agnostic:
 
 ```bash
-python3 .claude/skills/validation-backup/scripts/backup.py
+python3 "$(python3 -c 'import echolon, os; print(os.path.join(os.path.dirname(echolon.__file__), "native/skills/echolon_api/validation-backup/scripts/backup.py"))')"
 ```
 
 **What Gets Backed Up** (with `.backup` suffix):
@@ -60,7 +63,7 @@ After KEEP/REVERT decision, execute:
 ### KEEP Decision
 
 ```bash
-python3 .claude/skills/validation-backup/scripts/post_decision.py --keep
+python3 "$(python3 -c 'import echolon, os; print(os.path.join(os.path.dirname(echolon.__file__), "native/skills/echolon_api/validation-backup/scripts/post_decision.py"))')" --keep
 ```
 
 This will:
@@ -72,7 +75,7 @@ This will:
 ### REVERT Decision
 
 ```bash
-python3 .claude/skills/validation-backup/scripts/post_decision.py --revert
+python3 "$(python3 -c 'import echolon, os; print(os.path.join(os.path.dirname(echolon.__file__), "native/skills/echolon_api/validation-backup/scripts/post_decision.py"))')" --revert
 ```
 
 This will:
