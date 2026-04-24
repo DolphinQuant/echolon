@@ -6,8 +6,8 @@ Each component type has a dedicated logging method that enforces proper output f
 
 | Component | Logging Method | Output Type | Required Fields |
 |-----------|----------------|-------------|-----------------|
-| Entry | `self.log_entry_output(output)` | `EntrySignalOutput` | signal, strength, type, entry_reason, intent |
-| Exit | `self.log_exit_output(output)` | `ExitSignalOutput` | should_exit, exit_reason, intent |
+| Entry | `self.log_entry_output(output)` | `EntrySignalOutput` | signal, strength, type, entry_reason, intent, **regime** |
+| Exit | `self.log_exit_output(output)` | `ExitSignalOutput` | should_exit, exit_reason, **position_size, bars_since_entry**, intent |
 | Risk | `self.log_risk_output(output)` | `RiskOutput` | trading_allowed, risk_reason |
 | Sizer | `self.log_sizer_output(output)` | `SizerOutput` | calculated_size, signal_direction, sizing_reason, raw_size |
 
@@ -43,7 +43,7 @@ output = EntrySignalOutput(
     type='entry_long',             # Required: str
     entry_reason='TEMA crossover', # Required: str (non-empty)
     intent=OrderIntent.ENTRY_LONG, # Required when signal != 'HOLD'
-    regime='trending_up',          # Optional: str
+    regime='trending_up',          # Required: str (via self.get_market_regime())
     # Strategy-specific extras allowed
     rsi_value=45.2
 )
@@ -52,9 +52,11 @@ output = EntrySignalOutput(
 ### Exit Component
 ```python
 output = ExitSignalOutput(
-    should_exit=True,              # Required: bool
-    exit_reason='Stop hit',        # Required: str (non-empty)
-    intent=OrderIntent.EXIT_LONG,  # Required when should_exit=True
+    should_exit=True,                       # Required: bool
+    exit_reason='Stop hit',                 # Required: str (non-empty)
+    position_size=abs(position.size),       # Required: float
+    bars_since_entry=self.bars_in_position, # Required: int
+    intent=OrderIntent.EXIT_LONG,           # Required when should_exit=True
     # Strategy-specific extras allowed
     pnl_pct=0.05
 )
@@ -84,22 +86,25 @@ output = SizerOutput(
 
 ## Validation at Instantiation
 
-BaseModel validates fields at creation time:
+BaseModel validates fields at creation time with echolon catalog-coded errors:
 
 ```python
-# This raises ValidationError immediately:
+# This raises echolon catalog errors immediately (not generic Pydantic errors):
 output = EntrySignalOutput(
-    signal='INVALID',  # ValidationError: not 'LONG'|'SHORT'|'HOLD'
+    signal='INVALID',  # VAL-002: signal must be 'LONG' | 'SHORT' | 'HOLD'
     strength=1.5,      # ValidationError: > 1.0
     type='',           # ValidationError: empty string
-    entry_reason='',   # ValidationError: empty string
+    entry_reason='',   # VAL-001: missing required fields (if others omitted)
     intent=None
 )
-
-# Always validate before creating:
-if signal not in ('LONG', 'SHORT', 'HOLD'):
-    raise ValueError(f"Invalid signal: {signal}")
 ```
+
+**Do NOT pre-validate** with an `if/raise` pattern before instantiation —
+echolon's schema already does this via `_validate_signal_enum` (raises VAL-002
+in `mode='before'`) and `_check_required_fields` (raises VAL-001 in
+`mode='before'`). An extra pre-check duplicates work AND violates the No Error
+Handling Policy (adds unnecessary defensive logic). Let the schema raise the
+catalog-coded error; downstream tooling routes by code.
 
 ## Logging Diagnostics
 
