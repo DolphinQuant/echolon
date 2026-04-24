@@ -17,10 +17,15 @@ Currently ships four generators:
 - :func:`generate_risk` — scaffolding generator for ``risk.py`` component
   stub. Produces a framework-correct minimal risk manager that returns trading
   allowed by default — coding agents refine into real risk checks.
+
+- :func:`generate_sizer` — scaffolding generator for ``sizer.py`` component
+  stub. Produces a framework-correct minimal position sizer that returns fixed
+  1-unit size by default — coding agents refine into real sizing logic.
 """
 from echolon.strategy.generators.entry_generator import generate_entry
 from echolon.strategy.generators.exit_generator import generate_exit
 from echolon.strategy.generators.risk_generator import generate_risk
+from echolon.strategy.generators.sizer_generator import generate_sizer
 from echolon.strategy.generators.strategy_params_generator import (
     GenerationResult,
     StrategyParamsGenerator,
@@ -34,4 +39,5 @@ __all__ = [
     "generate_entry",
     "generate_exit",
     "generate_risk",
+    "generate_sizer",
 ]
