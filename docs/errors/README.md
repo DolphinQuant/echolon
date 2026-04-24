@@ -35,6 +35,9 @@ showing the typical LLM-author mistake. `EchelonError.docs_url` points here.
 - [BT-002](BT-002.md): Zero trades
 - [BT-003](BT-003.md): Optuna constraint violation
 
+## Walk-Forward Analysis (WFA-*)
+- [WFA-001](WFA-001.md): Zero valid trials across all windows
+
 ## Live (LIV-*)
 - [LIV-001](LIV-001.md): Broker unavailable
 - [LIV-002](LIV-002.md): Order rejected

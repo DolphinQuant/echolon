@@ -29,6 +29,7 @@ import pandas as pd
 from echolon.config.markets.core.context import TradingContext
 from echolon.config.optuna_config import OptunaConfig
 from echolon.config.backtest_config import BacktestConfig
+from echolon.errors import raise_error
 from .window import WFAWindow, WFAConfig
 from .analyzer import WalkForwardAnalyzer
 from .drs_calculator import compute_drs, DRSConfig
@@ -71,10 +72,10 @@ class WFARunner:
 
         self.ctx = ctx
         self.config = config
+        from echolon.config.paths_config import PathsConfig
+        self._paths = paths if paths is not None else PathsConfig.from_env()
         if backtest_results_dir is None:
-            from echolon.config.paths_config import PathsConfig
-            resolved_paths = paths if paths is not None else PathsConfig.from_env()
-            backtest_results_dir = resolved_paths.backtest_results_dir
+            backtest_results_dir = self._paths.backtest_results_dir
         self.output_dir = Path(backtest_results_dir)
         self.wfa_dir = self.output_dir / "wfa_windows"
 
@@ -99,12 +100,36 @@ class WFARunner:
         from echolon.data.loaders.backtest_data_loader import (
             load_backtest_data, load_indicator_metadata
         )
-        from echolon.quant_engine.strategy.platform_agnostic.strategy_params import (
-            optuna_search_space, DEFAULT_PARAMS, apply_shared_params, framework
-        )
-        from echolon.lib.file_operation import clean_backtest_folder
+        # Load strategy_params dynamically from the configured strategy code
+        # directory (workspace/current/code/strategy_params.py). StrategyLoader
+        # handles the file-path → module resolution; a static import would
+        # hardcode a pre-v0.3 path that no longer exists.
+        from echolon.strategy.loader import StrategyLoader as _StrategyLoader
+        _sp_loader = _StrategyLoader(self._paths.strategy_code_dir)
+        _sp = _sp_loader.load_module("strategy_params")
+        optuna_search_space = _sp.optuna_search_space
+        DEFAULT_PARAMS = _sp.DEFAULT_PARAMS
+        apply_shared_params = _sp.apply_shared_params
+        framework = _sp.framework
 
-        clean_backtest_folder()
+        # Clean stale backtest artefacts from the prior run before starting
+        # a fresh WFA pass. Previously delegated to qorka's
+        # ``lib.file_operation.clean_backtest_folder`` — inlined here to
+        # remove the host-app dependency; the cleanup target is
+        # ``self._paths.backtest_results_dir`` (already injected).
+        _stale_artefacts = [
+            "backtest_results.json",
+            "backtest_trades.csv",
+            "equity_curve.csv",
+            "optimization_trials.csv",
+            "full_trial_selection_record.json",
+            "optuna_study_info.json",
+        ]
+        for _name in _stale_artefacts:
+            _p = Path(self.output_dir) / _name
+            if _p.exists():
+                _p.unlink()
+                logger.info(f"[WFA] cleaned stale artefact: {_name}")
 
         # Load full indicators ONCE (covers entire date range)
         full_indicators, trading_calendar_df = load_backtest_data(ctx=self.ctx)
@@ -174,6 +199,11 @@ class WFARunner:
                 trading_calendar_df=trading_calendar_df,
                 study_name=f"WFA_window_{window.window_id}",
                 indicator_metadata=indicator_metadata,
+                # Persist per-window trial_failure_summary.json alongside
+                # optimization_trials.csv. LLM debugger agents consume this
+                # as the canonical AI-readable breadcrumb.
+                failure_report_dir=window_dir,
+                failure_report_window_id=window.window_id,
             )
 
             # Save per-window optimization results
@@ -257,8 +287,20 @@ class WFARunner:
         completed_windows = [w for w in self.config.windows if w.oos_results is not None]
 
         if not completed_windows:
-            logger.error("WFA: No windows completed successfully")
-            return {}
+            # Loud failure — previously this was a silent ``return {}`` which
+            # let the host app (qorka's main.py) exit zero with no artifacts.
+            # Every window's ``trial_failure_summary.json`` already carries
+            # the structured root cause; WFA-001 simply stops the pipeline
+            # and points the user/agent at those breadcrumbs.
+            logger.error("WFA: No windows completed successfully — raising WFA-001")
+            raise_error(
+                "WFA-001",
+                n_windows=len(self.config.windows),
+                reason="All WFA windows produced zero valid trials",
+                suggestion=(
+                    f"See per-window trial_failure_summary.json under {self.wfa_dir}"
+                ),
+            )
 
         wfa_analyzer = WalkForwardAnalyzer(completed_windows)
         wfa_summary = wfa_analyzer.compute_summary()

@@ -395,6 +395,24 @@ ERROR_CATALOG: dict[str, dict] = {
             "  broker_message: {broker_message}"
         ),
     },
+    "WFA-001": {
+        "class": EchelonError,
+        "what": "WFA pipeline produced zero valid trials across all windows",
+        "why": (
+            "Every walk-forward window ran its Optuna optimization but "
+            "produced no successful trials. This is almost always a strategy "
+            "or configuration bug rather than a market-fit issue — the same "
+            "error is repeating on every trial. Per-window "
+            "trial_failure_summary.json artifacts carry the structured root "
+            "cause for each window."
+        ),
+        "fix_template": (
+            "Inspect per-window trial_failure_summary.json artifacts:\n"
+            "  n_windows:           {n_windows}\n"
+            "  reason:              {reason}\n"
+            "  per_window_artifacts: {suggestion}"
+        ),
+    },
     "LIV-003": {
         "class": EchelonError,
         "what": "QMT async callback delivered an error",
