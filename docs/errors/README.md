@@ -11,11 +11,15 @@ showing the typical LLM-author mistake. `EchelonError.docs_url` points here.
 ## Parameter framework (PRM-*)
 - [PRM-001](PRM-001.md): Missing `printlog`
 - [PRM-002](PRM-002.md): Params structure mismatch
+- [PRM-003](PRM-003.md): Hardcoded parameter value in component logic
+- [PRM-004](PRM-004.md): Defensive `.get()` on self.params
 
 ## Component signal validation (VAL-*)
 - [VAL-001](VAL-001.md): Missing required field
 - [VAL-002](VAL-002.md): Invalid signal enum value
-- [VAL-003](VAL-003.md): Signature mismatch
+- [VAL-003](VAL-003.md): Required JSON key missing from expected artifact
+- [VAL-005](VAL-005.md): Component method signature doesn't match protocol
+- [VAL-006](VAL-006.md): Component method's return-type annotation is wrong
 
 ## Indicators (IND-*)
 - [IND-001](IND-001.md): Name casing mismatch
@@ -34,6 +38,7 @@ showing the typical LLM-author mistake. `EchelonError.docs_url` points here.
 - [BT-001](BT-001.md): Strategy on_bar exception
 - [BT-002](BT-002.md): Zero trades
 - [BT-003](BT-003.md): Optuna constraint violation
+- [BT-010](BT-010.md): Required log marker absent from backtest output
 
 ## Walk-Forward Analysis (WFA-*)
 - [WFA-001](WFA-001.md): Zero valid trials across all windows

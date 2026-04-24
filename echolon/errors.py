@@ -83,16 +83,54 @@ ERROR_CATALOG: dict[str, dict] = {
         ),
     },
     "VAL-003": {
-        "class": ValidationError,
-        "what": "Component class signature mismatch",
+        "class": EchelonError,
+        "what": "Required JSON key missing from expected artifact",
         "why": (
-            "Component classes must accept (trading_engine, **params) and "
-            "call super().__init__(trading_engine, **params)."
+            "A validator that expected a JSON file to carry specific top-level "
+            "keys (e.g., trial_number, params, metrics in "
+            "selected_robust_trial.json) found the file but not the keys. The "
+            "artifact may be corrupt, truncated, or from a different stage."
         ),
         "fix_template": (
-            "In {file}, {class_name}.__init__ must have signature:\n"
-            "  def __init__(self, trading_engine, **params):\n"
-            "      super().__init__(trading_engine, **params)"
+            "Inspect the artifact and verify the producing stage ran to completion:\n"
+            "  file:             {file}\n"
+            "  missing_keys:     {missing_keys}\n"
+            "  present_keys:     {present_keys}"
+        ),
+    },
+    "VAL-005": {
+        "class": EchelonError,
+        "what": "Component method signature doesn't match protocol",
+        "why": (
+            "A component class (entry_rule / exit_rule / risk_manager / "
+            "position_sizer) defines its required method but with arguments "
+            "that don't match the protocol. The strategy will fail at "
+            "engine binding time."
+        ),
+        "fix_template": (
+            "Align the signature with the protocol:\n"
+            "  component:        {component}\n"
+            "  method:           {method}\n"
+            "  expected:         {expected}\n"
+            "  actual:           {actual}"
+        ),
+    },
+    "VAL-006": {
+        "class": EchelonError,
+        "what": "Component method's return-type annotation is wrong",
+        "why": (
+            "A component method declares a return-type annotation, but it "
+            "doesn't match the expected BaseModel (EntrySignalOutput / "
+            "ExitSignalOutput / etc.). At runtime the strategy would either "
+            "fail Pydantic validation or emit the wrong schema to downstream "
+            "logging/analytics."
+        ),
+        "fix_template": (
+            "Update the annotation to the expected BaseModel:\n"
+            "  component:         {component}\n"
+            "  method:            {method}\n"
+            "  expected_return:   {expected_return}\n"
+            "  actual_annotation: {actual_annotation}"
         ),
     },
     "CFG-001": {
@@ -196,6 +234,40 @@ ERROR_CATALOG: dict[str, dict] = {
             "  {{'entry_params': {{...}}, 'exit_params': {{...}}, \n"
             "   'risk_params': {{...}}, 'sizer_params': {{...}}}}\n"
             "Missing keys: {missing_keys}"
+        ),
+    },
+    "PRM-003": {
+        "class": ParameterError,
+        "what": "Hardcoded parameter value in component logic",
+        "why": (
+            "A numeric/string literal in a condition or threshold position "
+            "was not sourced from self.params. The strategy cannot be "
+            "Optuna-tuned at that threshold; the optimizer will walk past "
+            "the real degree of freedom blindly."
+        ),
+        "fix_template": (
+            "Move the literal into strategy_params and reference via self.<param>:\n"
+            "  file:             {file}\n"
+            "  line:             {line}\n"
+            "  literal:          {literal}\n"
+            "  suggestion:       {suggestion}"
+        ),
+    },
+    "PRM-004": {
+        "class": ParameterError,
+        "what": "Defensive .get() on self.params",
+        "why": (
+            "Using self.params.get('x', default) masks missing-parameter "
+            "bugs by silently falling back. Framework contract: every "
+            "parameter declared in strategy_params.py is present on self, "
+            "accessed via self.x — a missing param is a load-time error, "
+            "not a runtime fallback."
+        ),
+        "fix_template": (
+            "Replace with direct attribute access (self.x):\n"
+            "  file:             {file}\n"
+            "  line:             {line}\n"
+            "  call:             {call}"
         ),
     },
     "DAT-001": {
@@ -360,6 +432,22 @@ ERROR_CATALOG: dict[str, dict] = {
             "  required:       {required}\n"
             "  actual:         {actual}\n"
             "  params:         {params}"
+        ),
+    },
+    "BT-010": {
+        "class": EchelonError,
+        "what": "Required log marker absent from backtest output",
+        "why": (
+            "A debug-completion check expected a specific marker substring "
+            "(e.g., 'STAGE 4 COMPLETE', 'FINAL SUCCESS') in the backtest "
+            "log, meaning the producing stage ran to completion. Marker is "
+            "missing — the stage either failed or was skipped."
+        ),
+        "fix_template": (
+            "Inspect the log around the last completed stage:\n"
+            "  log_path:         {log_path}\n"
+            "  missing_marker:   {missing_marker}\n"
+            "  last_marker_seen: {last_marker_seen}"
         ),
     },
     "LIV-001": {
