@@ -13,9 +13,14 @@ Currently ships four generators:
 - :func:`generate_exit` — scaffolding generator for ``exit.py`` component
   stub. Produces a framework-correct minimal exit rule that returns no_exit by
   default — coding agents refine into real pathways.
+
+- :func:`generate_risk` — scaffolding generator for ``risk.py`` component
+  stub. Produces a framework-correct minimal risk manager that returns trading
+  allowed by default — coding agents refine into real risk checks.
 """
 from echolon.strategy.generators.entry_generator import generate_entry
 from echolon.strategy.generators.exit_generator import generate_exit
+from echolon.strategy.generators.risk_generator import generate_risk
 from echolon.strategy.generators.strategy_params_generator import (
     GenerationResult,
     StrategyParamsGenerator,
@@ -28,4 +33,5 @@ __all__ = [
     "generate_strategy_params",
     "generate_entry",
     "generate_exit",
+    "generate_risk",
 ]
