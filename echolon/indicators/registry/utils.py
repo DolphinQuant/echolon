@@ -43,11 +43,11 @@ def get_function(indicator_key: str, frequency: str = "day") -> Optional[Callabl
     """
     if frequency in ("minute", "intraday"):
         mapping_module = importlib.import_module(
-            "modules.indicators.calculators.intraday.indicator_mapping"
+            "echolon.indicators.calculators.intraday.indicator_mapping"
         )
     else:
         mapping_module = importlib.import_module(
-            "modules.indicators.calculators.interday.indicator_mapping"
+            "echolon.indicators.calculators.interday.indicator_mapping"
         )
 
     return mapping_module.get_function(indicator_key)
@@ -71,11 +71,11 @@ def get_indicator_info(indicator_key: str, frequency: str = "day") -> Optional[D
     """
     if frequency in ("minute", "intraday"):
         mapping_module = importlib.import_module(
-            "modules.indicators.calculators.intraday.indicator_mapping"
+            "echolon.indicators.calculators.intraday.indicator_mapping"
         )
     else:
         mapping_module = importlib.import_module(
-            "modules.indicators.calculators.interday.indicator_mapping"
+            "echolon.indicators.calculators.interday.indicator_mapping"
         )
 
     return mapping_module.get_indicator_info(indicator_key)

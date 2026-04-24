@@ -29,9 +29,9 @@ def _make_df(n=200):
 def _echolon_get_function(indicator_key: str, frequency: str = "day"):
     """Resolve indicator functions directly from echolon's bundled calculators.
 
-    The registry's get_function imports from ``modules.indicators.calculators.*``
-    (a monorepo path).  In the standalone echolon test env that module tree is
-    absent, so we import from ``echolon.indicators.calculators.*`` instead.
+    Kept as a direct-resolution helper so this test doesn't depend on
+    ``echolon.indicators.registry.utils.get_function``; lets the test
+    isolate the computation path from the registry/dispatch path.
     """
     from echolon.indicators.calculators.interday import ta_lib as talib_module
     from echolon.indicators.calculators.interday import market_regime as regime_module

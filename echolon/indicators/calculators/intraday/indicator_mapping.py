@@ -309,7 +309,7 @@ def get_function(indicator_key: str):
 
     # All intraday calculators are in the intraday subdirectory
     module = importlib.import_module(
-        f"modules.indicators.calculators.intraday.{file_name}"
+        f"echolon.indicators.calculators.intraday.{file_name}"
     )
 
     return getattr(module, function_name, None)

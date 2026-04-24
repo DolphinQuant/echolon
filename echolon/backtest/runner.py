@@ -43,8 +43,8 @@ Usage:
     results = runner.load_data().run(params=my_params, context='custom')
 
     # Command line
-    python -m modules.quant_engine.run_backtest --mode debug
-    python -m modules.quant_engine.run_backtest --mode best_trial
+    python -m echolon.backtest.runner --mode debug --market SHFE --instrument al --frequency interday --bar-size 1d
+    python -m echolon.backtest.runner --mode best_trial --market SHFE --instrument al --frequency interday --bar-size 1d
 """
 
 import argparse
@@ -238,8 +238,8 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-    python -m modules.quant_engine.run_backtest --mode debug
-    python -m modules.quant_engine.run_backtest --mode best_trial
+    python -m echolon.backtest.runner --mode debug --market SHFE --instrument al --frequency interday --bar-size 1d
+    python -m echolon.backtest.runner --mode best_trial --market SHFE --instrument al --frequency interday --bar-size 1d
         """
     )
     parser.add_argument(

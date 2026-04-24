@@ -256,7 +256,7 @@ def get_function(indicator_key, frequency: str = "day"):
 
     # Import from interday calculators
     module = importlib.import_module(
-        f"modules.indicators.calculators.interday.{file_name}"
+        f"echolon.indicators.calculators.interday.{file_name}"
     )
 
     # Get the function from the module
