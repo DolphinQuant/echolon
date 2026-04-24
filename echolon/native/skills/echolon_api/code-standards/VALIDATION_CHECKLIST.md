@@ -71,8 +71,16 @@
 # Syntax check
 python -m py_compile <file.py>
 
-# Import check
-python -c "from modules.quant_engine.strategy.platform_agnostic import entry, exit, risk, sizer"
+# Import check — use StrategyLoader (strategy code lives in arbitrary dirs;
+# no fixed sys.path module path). Substitute the strategy_dir you are validating.
+python -c "
+from pathlib import Path
+from echolon.strategy.loader import StrategyLoader
+loader = StrategyLoader(Path('path/to/strategy_dir'))
+for m in ('entry', 'exit', 'risk', 'sizer', 'strategy', 'strategy_params'):
+    loader.load_module(m)
+print('All component modules load cleanly')
+"
 
 # Check for try-except (should return nothing)
 grep -n "try:" <file.py>
@@ -158,21 +166,26 @@ return output
 
 ## Automated Checks
 
-Run these before committing:
+Run these before committing. Set `STRATEGY_DIR` to your strategy-code directory first:
 
 ```bash
+# Example strategy_dir values:
+#   qorka:                export STRATEGY_DIR=workspace/current/code
+#   echolon test fixture: export STRATEGY_DIR=echolon/tests/fixtures/baselines/al_v6_1_migrated
+#   live deploy slot:     export STRATEGY_DIR=~/.dolphin/slots/<slot_id>/code
+
 # 1. No error handling patterns
-! grep -rn "try:" modules/quant_engine/strategy/platform_agnostic/
-! grep -rn "except" modules/quant_engine/strategy/platform_agnostic/
-! grep -rn "\.get\s*(" modules/quant_engine/strategy/platform_agnostic/
+! grep -rn "try:" "$STRATEGY_DIR/"
+! grep -rn "except" "$STRATEGY_DIR/"
+! grep -rn "\.get\s*(" "$STRATEGY_DIR/"
 
 # 2. BaseModel returns (check for return statements)
-grep -rn "return.*Output" modules/quant_engine/strategy/platform_agnostic/
+grep -rn "return.*Output" "$STRATEGY_DIR/"
 
 # 3. Proper logging methods
-grep -rn "log_entry_output\|log_exit_output\|log_risk_output\|log_sizer_output" modules/quant_engine/strategy/platform_agnostic/
+grep -rn "log_entry_output\|log_exit_output\|log_risk_output\|log_sizer_output" "$STRATEGY_DIR/"
 
 # 4. Attribute access (not dict access)
-! grep -rn "\['signal'\]" modules/quant_engine/strategy/platform_agnostic/
-! grep -rn "\['strength'\]" modules/quant_engine/strategy/platform_agnostic/
+! grep -rn "\['signal'\]" "$STRATEGY_DIR/"
+! grep -rn "\['strength'\]" "$STRATEGY_DIR/"
 ```
