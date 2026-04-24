@@ -161,11 +161,11 @@ def generate_signal(self) -> EntrySignalOutput:
 from typing import List, Dict, Any
 import optuna
 
-from ..core.parameter_architecture import (
+from echolon.strategy.parameter_architecture import (
     ComponentParameterTemplate,
     ParameterSpec,
     ParameterType,
-    StrategyParameterFramework
+    StrategyParameterFramework,
 )
 
 
