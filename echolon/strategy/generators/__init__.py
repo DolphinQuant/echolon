@@ -1,6 +1,6 @@
 """Echolon strategy code generators.
 
-Currently ships two generators:
+Currently ships four generators:
 
 - :func:`generate_strategy_params` — deterministic Python-code generation of
   ``strategy_params.py`` from a ``params_to_optimize.json`` input. Exposed
@@ -9,8 +9,13 @@ Currently ships two generators:
 - :func:`generate_entry` — scaffolding generator for ``entry.py`` component
   stub. Produces a framework-correct minimal entry rule that returns HOLD by
   default — coding agents refine into real pathways.
+
+- :func:`generate_exit` — scaffolding generator for ``exit.py`` component
+  stub. Produces a framework-correct minimal exit rule that returns no_exit by
+  default — coding agents refine into real pathways.
 """
 from echolon.strategy.generators.entry_generator import generate_entry
+from echolon.strategy.generators.exit_generator import generate_exit
 from echolon.strategy.generators.strategy_params_generator import (
     GenerationResult,
     StrategyParamsGenerator,
@@ -22,4 +27,5 @@ __all__ = [
     "StrategyParamsGenerator",
     "generate_strategy_params",
     "generate_entry",
+    "generate_exit",
 ]
