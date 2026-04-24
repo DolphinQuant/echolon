@@ -175,6 +175,10 @@ class TradingContext:
         if 'd' in bar_size_lower:
             return 1440  # 24 * 60
 
+    @property
+    def bars_per_hour(self) -> int:
+        """Bars contained in one hour at current frequency (minimum 1)."""
+        return max(1, 60 // self.bar_size_minutes)
 
     def hours_to_bars(self, hours: float) -> int:
         """

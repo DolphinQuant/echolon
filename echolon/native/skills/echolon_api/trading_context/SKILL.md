@@ -67,7 +67,8 @@ macd_fast = ctx.minutes_to_bars(25)
 | `is_intraday` / `is_interday` | — | `bool` | Based on `self.frequency`. |
 | `bars_per_day` | — | `int` | Looks up SHFE `BARS_PER_DAY` / `BARS_PER_DAY_NO_NIGHT` or CRYPTO `BARS_PER_DAY`; returns 1 for interday, 288 as a crypto fallback. |
 | `bar_size_minutes` | — | `int` | Parses `"1m"`/`"5min"`/`"1h"`/`"1d"` (`1440`). |
-| `hours_to_bars(hours)` | `float` | `int ≥ 1` | `max(1, int(hours * bars_per_hour))`. **Note:** uses a `bars_per_hour` attribute that is not defined in this class — callers hit `AttributeError` at runtime if intraday-ctx is not configured elsewhere. Flag: source drift / latent bug. |
+| `bars_per_hour` | — | `int ≥ 1` | `max(1, 60 // bar_size_minutes)`. Interday (`1d`) / sub-hour-multiple bars floor to `1`. |
+| `hours_to_bars(hours)` | `float` | `int ≥ 1` | `max(1, int(hours * bars_per_hour))`. |
 | `minutes_to_bars(minutes)` | `int` | `int ≥ 1` | `max(1, minutes // bar_size_minutes)`. |
 | `get_indicator_params()` | — | `dict` | Frequency-aware indicator defaults. Interday returns classic TA-Lib defaults (`rsi_period=14`, `adx_period=14`, `macd=12/26/9`, `channel_periods=[5,10,20]`, ...). Intraday scales those to `hours_to_bars(...)` so a 2.3h RSI period is constant across 5m/15m/1h bars. |
 | `encode_phase(phase_str)` / `decode_phase(phase_code)` | `str` / `int` | `int` / `str` | Bar-size-aware: granular (`5m`/`15m`) uses `night=1, morning=2, afternoon=5`; aggregated (`30m`/`1h`) uses `night_session=1, day_session=2`. Returns `0` / `'unknown'` for unrecognised inputs. |
@@ -76,7 +77,6 @@ macd_fast = ctx.minutes_to_bars(25)
 
 ## Common errors
 
-- **`AttributeError: 'TradingContext' object has no attribute 'bars_per_hour'`** — thrown by `hours_to_bars` on any intraday ctx as shipped. The method references `self.bars_per_hour` but the class only defines `bars_per_day`. Treat this as a live bug / honesty flag: callers invoking `hours_to_bars` today do so from strategy code that monkey-patches a `bars_per_hour` attribute on the ctx, or the call path is simply unused. Mitigation: compute via `max(1, int(hours * 60 // ctx.bar_size_minutes))` until the class is fixed.
 - **`bars_per_day` returning `None`** — `BARS_PER_DAY.get(self.bar_size)` on SHFE with an unmapped bar size (e.g. `"7m"`). No Echolon code — the caller typically trips a downstream TypeError. Restrict `bar_size` to the values in `EngineFactory.BAR_SIZE_MAP`.
 - **`encode_phase` / `decode_phase` returning `0` / `'unknown'`** — `MarketFactory` failed to wire the callbacks for this bar size, or the caller passed a phase name that doesn't exist in the phase table (e.g. `"morning"` on 1h bars, where only `"day_session"` exists). Inspect `ctx.phases.keys()`.
 - **`self.initial_capital == 200000.0` unexpectedly** — the ctx was constructed without a `TradingTarget`. Either pass `target=` explicitly or use `MarketFactory.from_session()` so it loads `trading_target_*.json`.

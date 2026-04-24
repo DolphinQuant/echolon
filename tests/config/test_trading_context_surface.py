@@ -6,7 +6,7 @@ from echolon.config.markets.core.context import TradingContext
 
 DEAD_METHODS = [
     "currency", "is_24h", "tick_size", "sessions", "design_paradigm_description",
-    "bars_per_hour", "trading_minutes_per_day",
+    "trading_minutes_per_day",
     "get_session_bars", "get_phase_for_time", "get_phase_for_time_bar_aware",
     "is_trading_time", "get_phase_bars", "get_phase_buffer_bars",
     "calculate_commission", "calculate_margin", "calculate_contract_value",
