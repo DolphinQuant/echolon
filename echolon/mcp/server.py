@@ -136,6 +136,76 @@ def build_server() -> FastMCP:
         return _catalog.suggest_similar(name, limit=limit)
 
     @server.tool()
+    def scaffold_component(
+        kind: str,
+        strategy_dir: str,
+        force: bool = False,
+    ) -> dict:
+        """Write a framework-correct scaffold for a strategy component file.
+
+        Produces a minimal stub that matches echolon's loader contract —
+        class name + method signature + return schema — but contains no
+        trading logic. Coding agents refine the stub into real pathways.
+
+        Args:
+            kind: One of ``"entry"``, ``"exit"``, ``"risk"``, ``"sizer"``, ``"strategy"``.
+            strategy_dir: Absolute path to the directory where the file is written.
+            force: If True, overwrite an existing file. If False (default), refuse
+                and return ``success=False`` with ``error="file_exists"``.
+
+        Returns:
+            {
+                "success": bool,
+                "output_path": str (path to the scaffolded file, if success),
+                "kind": str (echoes the input),
+                "error": str | None (one of: "unknown_kind", "file_exists", None),
+                "message": str (human-readable summary),
+            }
+        """
+        from echolon.strategy.generators import (
+            generate_entry as _gen_entry,
+            generate_exit as _gen_exit,
+            generate_risk as _gen_risk,
+            generate_sizer as _gen_sizer,
+            generate_strategy as _gen_strategy,
+        )
+
+        _DISPATCH = {
+            "entry":    _gen_entry,
+            "exit":     _gen_exit,
+            "risk":     _gen_risk,
+            "sizer":    _gen_sizer,
+            "strategy": _gen_strategy,
+        }
+
+        fn = _DISPATCH.get(kind)
+        if fn is None:
+            return {
+                "success": False,
+                "output_path": None,
+                "kind": kind,
+                "error": "unknown_kind",
+                "message": f"Unknown kind {kind!r}. Valid: {sorted(_DISPATCH)}",
+            }
+        try:
+            out_path = fn(strategy_dir=strategy_dir, force=force)
+        except FileExistsError as e:
+            return {
+                "success": False,
+                "output_path": None,
+                "kind": kind,
+                "error": "file_exists",
+                "message": str(e),
+            }
+        return {
+            "success": True,
+            "output_path": str(out_path),
+            "kind": kind,
+            "error": None,
+            "message": f"Scaffolded {kind} at {out_path}",
+        }
+
+    @server.tool()
     def generate_strategy_params(
         params_file_path: str,
         output_path: str,
