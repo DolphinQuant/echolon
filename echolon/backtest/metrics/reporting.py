@@ -98,9 +98,9 @@ def convert_to_serializable(obj: Any) -> Any:
         return {str(k): convert_to_serializable(v) for k, v in obj.items()}
     elif isinstance(obj, list):
         return [convert_to_serializable(elem) for elem in obj]
-    elif isinstance(obj, (np.integer, np.int_)):
+    elif isinstance(obj, np.integer):
         return int(obj)
-    elif isinstance(obj, (np.floating, np.float_)):
+    elif isinstance(obj, np.floating):
         return float(obj)
     elif isinstance(obj, np.ndarray):
         return obj.tolist()
