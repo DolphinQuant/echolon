@@ -67,11 +67,28 @@ class OptimizationFailure:
         ctx = dict(getattr(exc, "context", {}) or {})
         docs = getattr(exc, "docs_url", None)
 
-        message = (str(exc) or exc.__class__.__name__)
+        # Strip leading whitespace so the Message line in the terminal
+        # summary isn't empty. EchelonError.__str__ starts with "\n" by
+        # design (the CLI rendering wants the block to begin on its own
+        # line), which meant ``message.splitlines()[0]`` was "" for every
+        # EchelonError — the group header printed ``Message:`` with
+        # nothing after it. Stripping preserves the downstream rendering
+        # while making the first line informative.
+        message = (str(exc) or exc.__class__.__name__).lstrip()
         if len(message) > _MSG_MAX_CHARS:
             message = message[:_MSG_MAX_CHARS] + "…"
 
-        tb = "".join(_tb.format_exception(type(exc), exc, exc.__traceback__))
+        # Stack frames only — NOT ``format_exception`` which appends the
+        # exception's own ``__str__`` at the tail. For EchelonError that's
+        # another ~500 chars of what/why/fix/context decoration that we
+        # already capture in ``message`` + ``context`` + ``docs_url``, and
+        # it crowds out the actual stack frames when the 4KB tail-slice
+        # fires. ``format_tb`` gives the raw "File … line …, in …" frames.
+        frames = _tb.format_tb(exc.__traceback__)
+        tb = "Traceback (most recent call last):\n" + "".join(frames)
+        # Append a short terminator so consumers can distinguish end-of-tb
+        # from EchelonError's own formatting.
+        tb += f"{type(exc).__name__}: {message.splitlines()[0] if message else ''}\n"
         if len(tb) > _TB_MAX_CHARS:
             # Tail-truncate: the innermost frame (where the error actually
             # happened) is at the end, so we keep that.

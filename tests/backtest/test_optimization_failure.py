@@ -24,7 +24,7 @@ import pytest
 
 from echolon.backtest.engine.failure import OptimizationFailure
 from echolon.backtest.engine.optimization_runner import OptimizationMetrics
-from echolon.errors import EchelonError
+from echolon.errors import EchelonError, raise_error
 
 
 def _raise_and_capture(exc_cls, *args, **kwargs):
@@ -33,6 +33,15 @@ def _raise_and_capture(exc_cls, *args, **kwargs):
         raise exc_cls(*args, **kwargs)
     except exc_cls as e:
         return e
+
+
+def _raise_and_capture_from(callable_):
+    """Invoke ``callable_()`` expecting it to raise, and return the instance."""
+    try:
+        callable_()
+    except BaseException as e:  # noqa: BLE001 — any exception is the point
+        return e
+    raise AssertionError("expected an exception, got none")
 
 
 def test_from_exception_captures_vanilla_exception():
@@ -176,6 +185,58 @@ def test_optimization_metrics_failed_legacy_constructor():
     assert metrics.failure.error_type == "PreconditionError"
     assert metrics.failure.message == "Shared data not initialized"
     assert metrics.failure.trial_params == {}
+
+
+def test_echolon_error_message_strips_leading_newline():
+    """EchelonError.__str__ starts with '\\n' by design so the CLI block
+    renders on its own line. Prior to the fix, ``message.splitlines()[0]``
+    was '' for every EchelonError — the terminal summary showed
+    ``Message:`` with nothing after it. Lock the strip behavior."""
+    e = _raise_and_capture(
+        EchelonError,
+        code="BT-001",
+        what="Strategy.on_bar raised",
+        why="component threw",
+        fix="inspect component",
+        context={"component": "entry"},
+        docs_url="https://echolon.dev/docs/errors/BT-001",
+    )
+    f = OptimizationFailure.from_exception(e, trial_params={})
+
+    # First non-empty line must be the BT-001 tagline, not an empty string.
+    first_line = f.message.splitlines()[0]
+    assert first_line != ""
+    assert "BT-001" in first_line
+
+
+def test_traceback_contains_stack_frames_not_exception_self_description():
+    """EchelonError's ``__str__`` is ~500 chars of what/why/fix decoration.
+    ``traceback.format_exception`` appends that at the tail. With a 4KB
+    cap, the tail-slice kept the decoration and threw away the stack
+    frames — the captured traceback showed the error's own message twice
+    instead of the Python stack. Lock the stack-frames-only capture."""
+    def inner():
+        raise_error(
+            "BT-001",
+            file="test",
+            bar_index=0,
+            trading_date="2026-04-24",
+            contract="test",
+            position_size=0,
+            exception_repr="demo",
+        )
+
+    e = _raise_and_capture_from(inner)
+    f = OptimizationFailure.from_exception(e, trial_params={})
+
+    # Traceback must open with the canonical header.
+    assert f.traceback.startswith("Traceback") or "…(traceback truncated)…" in f.traceback
+    # Must contain at least one "File ..., line ..., in ..." frame.
+    assert "File " in f.traceback
+    assert "line " in f.traceback
+    # Must NOT duplicate the EchelonError decoration that's already in .context + .docs_url.
+    assert "Why:" not in f.traceback
+    assert "Fix:" not in f.traceback
 
 
 def test_optimization_metrics_failed_from_exc_serializable_end_to_end():
