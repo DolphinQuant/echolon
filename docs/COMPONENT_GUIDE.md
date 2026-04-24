@@ -13,9 +13,9 @@ Called every bar when there is no open position and no pending orders.
 **Example:**
 
 ```python
-from echolon.quant_engine.core.base.base_component import BaseComponent
-from echolon.quant_engine.core.interfaces.trading_interfaces import OrderIntent
-from echolon.quant_engine.types import EntrySignalOutput
+from echolon.strategy.component import BaseComponent
+from echolon.strategy.interfaces import OrderIntent
+from echolon.strategy.schemas import EntrySignalOutput
 
 
 class entry_rule(BaseComponent):
