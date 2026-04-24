@@ -37,10 +37,21 @@ Sub-Agent                          Validator/Exploitate Agent
 Before making any code changes, sub-agent creates backup. The scripts ship
 inside the echolon package under `echolon/native/skills/echolon_api/validation-backup/scripts/`
 (moved from the qorka-local `.claude/skills/` path during Task 15 migration).
-Resolve the absolute path at call time so the command is install-location-agnostic:
+Resolve the absolute path at call time so the command is install-location-agnostic.
+
+**Default (recommended):** paths come from `PathsConfig.from_env()` —
+`$ECHOLON_PROJECT_ROOT/workspace/current/code/` and
+`$ECHOLON_PROJECT_ROOT/workspace/current/backtest/`:
 
 ```bash
 python3 "$(python3 -c 'import echolon, os; print(os.path.join(os.path.dirname(echolon.__file__), "native/skills/echolon_api/validation-backup/scripts/backup.py"))')"
+```
+
+**Override paths** (tests, non-default workspace layouts):
+
+```bash
+python3 "$(python3 -c 'import echolon, os; print(os.path.join(os.path.dirname(echolon.__file__), "native/skills/echolon_api/validation-backup/scripts/backup.py"))')" \
+    --strategy-dir /path/to/code --backtest-dir /path/to/backtest
 ```
 
 **What Gets Backed Up** (with `.backup` suffix):
@@ -59,6 +70,9 @@ python3 "$(python3 -c 'import echolon, os; print(os.path.join(os.path.dirname(ec
 ## 2. Post-Decision (Validator/Exploitate Agent)
 
 After KEEP/REVERT decision, execute:
+
+Both commands accept the same optional `--strategy-dir` / `--backtest-dir`
+overrides as `backup.py`; omit them to use `PathsConfig.from_env()`.
 
 ### KEEP Decision
 
