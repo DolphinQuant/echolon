@@ -3,9 +3,9 @@
 ## Entry Component Example
 
 ```python
-from modules.quant_engine.core.base.base_component import BaseComponent
-from modules.quant_engine.core.interfaces.trading_interfaces import ITradingEngine, OrderIntent
-from modules.quant_engine.types import EntrySignalOutput
+from echolon.strategy.component import BaseComponent
+from echolon.strategy.interfaces import ITradingEngine, OrderIntent
+from echolon.strategy.schemas import EntrySignalOutput
 
 class entry_rule(BaseComponent):
     def __init__(self, trading_engine: ITradingEngine, **params):
@@ -57,9 +57,9 @@ class entry_rule(BaseComponent):
 ## Exit Component Example
 
 ```python
-from modules.quant_engine.core.base.base_component import BaseComponent
-from modules.quant_engine.core.interfaces.trading_interfaces import ITradingEngine, OrderIntent
-from modules.quant_engine.types import ExitSignalOutput
+from echolon.strategy.component import BaseComponent
+from echolon.strategy.interfaces import ITradingEngine, OrderIntent
+from echolon.strategy.schemas import ExitSignalOutput
 
 class exit_rule(BaseComponent):
     def __init__(self, trading_engine: ITradingEngine, **params):
@@ -114,7 +114,10 @@ class exit_rule(BaseComponent):
             should_exit=should_exit,
             exit_reason=reason,
             position_size=abs(position.size),
-            bars_since_entry=0,  # Track this via self.bars_in_position in real implementation
+            # Simplified scaffold — real implementations track bars via
+            # self.bars_in_position state, incremented in should_exit(); see
+            # INTERDAY.md's exit example for the full pattern.
+            bars_since_entry=0,
             intent=intent,
             # Strategy-specific fields
             atr_value=atr,
@@ -130,9 +133,9 @@ class exit_rule(BaseComponent):
 **CRITICAL: For futures, MUST use contract multiplier in risk calculation!**
 
 ```python
-from modules.quant_engine.core.base.base_component import BaseComponent
-from modules.quant_engine.core.interfaces.trading_interfaces import ITradingEngine
-from modules.quant_engine.types import SizerOutput, EntrySignalOutput
+from echolon.strategy.component import BaseComponent
+from echolon.strategy.interfaces import ITradingEngine
+from echolon.strategy.schemas import SizerOutput, EntrySignalOutput
 
 class position_sizer(BaseComponent):
     def __init__(self, trading_engine: ITradingEngine, frequency_context=None, market_adapter=None, **params):
@@ -170,14 +173,15 @@ class position_sizer(BaseComponent):
         # Calculate stop distance
         stop_distance = atr * self.stop_atr_multiplier
 
-        # CRITICAL: Get contract multiplier from market adapter
-        multiplier = 1.0  # Default for spot/no-leverage
+        # CRITICAL: Get contract multiplier from market adapter.
+        # Multiplier is mandatory for futures. If the market_adapter doesn't
+        # expose it (e.g. misconfigured), that's a configuration error — let
+        # the exception propagate (No Error Handling Policy in SKILL.md).
         if self.market_adapter is not None:
-            try:
-                contract_spec = self.market_adapter.get_contract_spec(self.market_adapter.symbol)
-                multiplier = contract_spec.multiplier
-            except (KeyError, AttributeError):
-                pass
+            contract_spec = self.market_adapter.get_contract_spec(self.market_adapter.symbol)
+            multiplier = contract_spec.multiplier
+        else:
+            multiplier = 1.0  # Spot/no-leverage default — explicit, not fallback
 
         # Calculate risk per contract WITH multiplier
         risk_per_contract = stop_distance * multiplier
@@ -235,9 +239,9 @@ class position_sizer(BaseComponent):
 ## Risk Manager Example
 
 ```python
-from modules.quant_engine.core.base.base_component import BaseComponent
-from modules.quant_engine.core.interfaces.trading_interfaces import ITradingEngine
-from modules.quant_engine.types import RiskOutput
+from echolon.strategy.component import BaseComponent
+from echolon.strategy.interfaces import ITradingEngine
+from echolon.strategy.schemas import RiskOutput
 
 class risk_manager(BaseComponent):
     def __init__(self, trading_engine: ITradingEngine, **params):
