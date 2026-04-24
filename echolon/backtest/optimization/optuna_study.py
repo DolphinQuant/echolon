@@ -432,13 +432,20 @@ class OptunaOptimizer:
         failed_trials = 0
         batch_size = max_workers
 
-        # Progress bar with ETA
+        # Progress bar with ETA.
+        # Throttled to keep logs readable when stdout isn't a live TTY
+        # (captured logs, piped runs, CI). ``mininterval=0.5`` caps render
+        # rate at 2/sec; ``miniters`` ensures we don't render every trial
+        # on fast studies. ``dynamic_ncols`` lets tqdm honor the current
+        # terminal width instead of the old hardcoded ``ncols=100``.
         pbar = tqdm(
             total=self.n_trials,
             desc="Optimization",
             unit="trial",
             bar_format="{l_bar}{bar}| {n_fmt}/{total_fmt} [{elapsed}<{remaining}, {rate_fmt}] {postfix}",
-            ncols=100
+            mininterval=0.5,
+            miniters=max(1, self.n_trials // 50),
+            dynamic_ncols=True,
         )
 
         while completed_trials < self.n_trials:
@@ -505,9 +512,11 @@ class OptunaOptimizer:
                         failed_trials += 1
                         study.tell(trial, state=optuna.trial.TrialState.FAIL)
 
-                    # Update progress bar
+                    # Update progress bar — postfix without ``refresh=True``
+                    # so tqdm batches the redraw with the throttled update
+                    # cycle instead of forcing one render per trial.
                     pbar.update(1)
-                    pbar.set_postfix({'failed': failed_trials}, refresh=True)
+                    pbar.set_postfix({'failed': failed_trials})
 
             completed_trials += current_batch
 
