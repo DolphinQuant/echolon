@@ -12,7 +12,7 @@ origin_module: echolon_audit_phase0
 
 ## Purpose
 
-`StrategyLoader` is the one loading pattern echolon uses for strategy code that lives on disk — it replaces ad-hoc combinations of static imports, `importlib.import_module`, and `spec_from_file_location + manual __package__` with a single `importlib.util.spec_from_file_location`-based path that handles the tricky bits: assigning `__package__` so strategy code can use relative imports like `from ...core.base.base_strategy import BaseStrategy`, registering the module in `sys.modules` under a fully-qualified name (`{package_base}.{module_name}`) so pickle can find it during multiprocessing, caching the module to avoid re-execution, and surfacing typed `EchelonError`s (via the paired `load_strategy_from_dir` helper) so LLM authors get actionable structural errors.
+`StrategyLoader` is the one loading pattern echolon uses for strategy code that lives on disk — it replaces ad-hoc combinations of static imports, `importlib.import_module`, and `spec_from_file_location + manual __package__` with a single `importlib.util.spec_from_file_location`-based path that handles the tricky bits: assigning `__package__` so strategy code can use either absolute imports (canonical — e.g., `from echolon.strategy.base import BaseStrategy`) or legacy relative imports (for strategies archived before the v0.3 package rename, e.g., `from ...core.base.base_strategy import BaseStrategy`), registering the module in `sys.modules` under a fully-qualified name (`{package_base}.{module_name}`) so pickle can find it during multiprocessing, caching the module to avoid re-execution, and surfacing typed `EchelonError`s (via the paired `load_strategy_from_dir` helper) so LLM authors get actionable structural errors.
 
 ## Interface
 
@@ -71,7 +71,7 @@ components = load_strategy_from_dir("/workspace/current/code")
 
 - **`FileNotFoundError: Strategy module not found: .../entry.py`** — `load_module` couldn't find the file. Usually a bad `strategy_dir` argument or an uninitialized workspace.
 - **`AttributeError: Module 'strategy_params' in /path has no attribute 'optuna_search_space'`** — `load_attr` target missing. The file exists but the symbol isn't exported.
-- **`STR-001`** (from `load_strategy_from_dir`) — a required file (`strategy.py`, `entry.py`, `exit.py`, `risk.py`, `sizer.py`, `strategy_params.py`) is missing. See `docs/errors/STR-001.md`.
+- **`STR-001`** (from `load_strategy_from_dir`) — a required file is missing. Full list per `echolon/strategy/preflight.py::REQUIRED_FILES`: `entry.py`, `exit.py`, `risk.py`, `sizer.py`, `component.py`, `strategy_params.py`, `strategy_indicator_list.json`. `strategy.py` is loaded separately via `loader.load_function("strategy", "strategy_main")` and is required in practice by the coordinator load path but not in preflight's list. See `docs/errors/STR-001.md`.
 - **`STR-002`** (from `load_strategy_from_dir`) — a required class is not exported by its module (e.g. `entry.py` without `entry_rule`). See `docs/errors/STR-002.md`.
 - **`PRM-001` / `PRM-002`** (from `load_strategy_from_dir`) — `strategy_params.DEFAULT_PARAMS` is malformed (missing `printlog` or wrong structure). See `docs/errors/PRM-001.md`, `docs/errors/PRM-002.md`.
 - **Stale cache after file rewrite** — subsequent `load_*` calls return the previous module contents. Call `clear_cache()` between iterations.
