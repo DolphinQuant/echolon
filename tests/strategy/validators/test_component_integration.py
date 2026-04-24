@@ -138,13 +138,13 @@ def test_default_params_top_level_not_a_dict_surfaces_PRM_002(tmp_path: Path):
 
 def test_method_signature_mismatch_surfaces_VAL_005(tmp_path: Path):
     _canonical_strategy(tmp_path)
-    # sizer: remove the required entry_signal arg.
+    # sizer: remove the required positional arg entirely (arity drops from 1 to 0).
     _write(tmp_path / "sizer.py", '''
         from echolon.strategy.component import BaseComponent
         from echolon.strategy.schemas import SizerOutput
 
         class position_sizer(BaseComponent):
-            def calculate_size(self) -> SizerOutput:  # missing entry_signal
+            def calculate_size(self) -> SizerOutput:  # missing required positional arg
                 return SizerOutput(
                     calculated_size=1, signal_direction="HOLD",
                     sizing_reason="x", raw_size=1.0,
@@ -156,7 +156,35 @@ def test_method_signature_mismatch_surfaces_VAL_005(tmp_path: Path):
     assert "VAL-005" in codes
     f = next(f for f in report.findings if f.code == "VAL-005")
     assert f.context.get("method") == "calculate_size"
-    assert "entry_signal" in (f.context.get("expected") or "")
+    # Expected arity is 1; actual arity is 0.
+    assert "1" in (f.context.get("expected") or "")
+    assert "0" in f.message
+
+
+def test_sizer_signature_with_different_arg_name_does_not_raise(tmp_path: Path):
+    """The framework calls calculate_size positionally — arg name is the
+    author's choice. ``signal_data`` is just as valid as ``entry_signal``.
+    FP insurance against the name-matching over-fit that was fixed by
+    moving to arity-only checking."""
+    _canonical_strategy(tmp_path)
+    _write(tmp_path / "sizer.py", '''
+        from echolon.strategy.component import BaseComponent
+        from echolon.strategy.schemas import EntrySignalOutput, SizerOutput
+
+        class position_sizer(BaseComponent):
+            def calculate_size(self, signal_data: EntrySignalOutput) -> SizerOutput:
+                return SizerOutput(
+                    calculated_size=1, signal_direction="HOLD",
+                    sizing_reason="x", raw_size=1.0,
+                )
+    ''')
+
+    report = validate_component_integration(strategy_dir=tmp_path)
+    codes = [f.code for f in report.findings]
+    assert "VAL-005" not in codes, (
+        f"FP: arg name difference must not flag — only arity matters. "
+        f"Got: {report.findings}"
+    )
 
 
 def test_fp_insurance_extra_subkeys_must_not_raise(tmp_path: Path):

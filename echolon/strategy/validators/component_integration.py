@@ -14,7 +14,11 @@ Error codes:
   error here = guaranteed runtime failure).
 - PRM-002: DEFAULT_PARAMS missing a required top-level key, or the
   value isn't a dict.
-- VAL-005: method signature has wrong positional args after ``self``.
+- VAL-005: method signature has wrong arity (number of required positional
+  args after ``self``). Argument names are the author's choice — the
+  framework calls these methods positionally (principle 5: structural over
+  lexical). A sizer with ``def calculate_size(self, signal_data)`` is
+  just as valid as ``def calculate_size(self, entry_signal)``.
 
 Silently skips absent files (preflight STR-001 territory).
 """
@@ -27,13 +31,16 @@ from typing import Dict, Tuple
 from echolon.strategy.validators import Finding, Report
 
 
-# Each entry: (module_name_without_py, class_name, method_name,
-#              expected_positional_params_after_self).
-_COMPONENT_CONTRACT: Dict[str, Tuple[str, str, Tuple[str, ...]]] = {
-    "entry": ("entry_rule",     "generate_signal", ()),
-    "exit":  ("exit_rule",      "should_exit",     ()),
-    "risk":  ("risk_manager",   "can_trade",       ()),
-    "sizer": ("position_sizer", "calculate_size",  ("entry_signal",)),
+# Each entry: (class_name, method_name, required_positional_arity_after_self).
+# Only arity matters — the framework calls these positionally, so
+# argument names are the author's choice (principle 5: structural over
+# lexical). A sizer with ``def calculate_size(self, signal_data)`` is
+# just as valid as ``def calculate_size(self, entry_signal)``.
+_COMPONENT_CONTRACT: Dict[str, Tuple[str, str, int]] = {
+    "entry": ("entry_rule",     "generate_signal", 0),
+    "exit":  ("exit_rule",      "should_exit",     0),
+    "risk":  ("risk_manager",   "can_trade",       0),
+    "sizer": ("position_sizer", "calculate_size",  1),
 }
 
 _REQUIRED_PARAM_KEYS = ("entry_params", "exit_params", "risk_params", "sizer_params")
@@ -44,7 +51,7 @@ def _check_component(
     module_stem: str,
     class_name: str,
     method_name: str,
-    expected_args: Tuple[str, ...],
+    expected_arity: int,
     report: Report,
 ) -> None:
     from echolon.strategy.loader import StrategyLoader
@@ -84,29 +91,33 @@ def _check_component(
     except (TypeError, ValueError):
         return  # built-in or otherwise unreadable; skip
 
-    # Drop ``self`` then compare positional param names.
+    # Drop ``self`` then check arity of required positional params.
     params = list(sig.parameters.values())
     if params and params[0].name == "self":
         params = params[1:]
-    actual_names = tuple(
-        p.name for p in params
+    required_positional = [
+        p for p in params
         if p.kind in (
             inspect.Parameter.POSITIONAL_OR_KEYWORD,
             inspect.Parameter.POSITIONAL_ONLY,
         )
-    )
-    if actual_names != expected_args:
+        and p.default is inspect.Parameter.empty
+    ]
+    actual_arity = len(required_positional)
+    if actual_arity != expected_arity:
+        actual_names = [p.name for p in required_positional]
         report.add(Finding(
             code="VAL-005",
             message=(
-                f"{class_name}.{method_name} signature mismatch: "
-                f"got positional args {list(actual_names)}, expected {list(expected_args)}"
+                f"{class_name}.{method_name} arity mismatch: "
+                f"got {actual_arity} required positional args {actual_names}, "
+                f"expected {expected_arity}"
             ),
             context={
                 "file": str(file_path),
                 "component": class_name,
                 "method": method_name,
-                "expected": f"{method_name}(self, {', '.join(expected_args)})",
+                "expected": f"{method_name}(self, + {expected_arity} required positional arg(s))",
                 "actual": f"{method_name}(self, {', '.join(actual_names)})",
             },
         ))
@@ -182,9 +193,9 @@ def validate_component_integration(strategy_dir: "Path | str") -> Report:
     strategy_dir = Path(strategy_dir)
     report = Report()
 
-    for module_stem, (class_name, method_name, expected_args) in _COMPONENT_CONTRACT.items():
+    for module_stem, (class_name, method_name, expected_arity) in _COMPONENT_CONTRACT.items():
         _check_component(
-            strategy_dir, module_stem, class_name, method_name, expected_args, report,
+            strategy_dir, module_stem, class_name, method_name, expected_arity, report,
         )
 
     _check_default_params(strategy_dir, report)
