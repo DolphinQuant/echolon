@@ -169,20 +169,26 @@ class Position:
 
 ## Output BaseModels
 
+All schemas use **Pydantic v2** with `model_config = ConfigDict(extra="allow",
+arbitrary_types_allowed=True)`. Strategy-specific diagnostic fields
+(e.g., `cci_value`, `rsi_value`, `atr_value`) are accepted on every output
+type — see echolon commit `8d64c43` for the schema fix that restored this
+after a silent-failure regression (`extra='forbid'` was blocking legitimate
+diagnostic extras emitted by real strategies).
+
 ### EntrySignalOutput
 
 ```python
 class EntrySignalOutput(BaseModel):
-    """Entry component output."""
-    signal: Literal['LONG', 'SHORT', 'HOLD']
-    strength: float  # 0.0 <= x <= 1.0
-    type: str  # e.g., 'entry_long', 'entry_short', 'hold'
-    entry_reason: str
-    intent: Optional[OrderIntent] = None
-    regime: str  # Trading context: market regime for interday, session phase for intraday (bar-size-dependent)
+    """Entry component output. All fields except ``intent`` are REQUIRED."""
+    signal: Literal['LONG', 'SHORT', 'HOLD']        # required
+    strength: float                                  # required, 0.0 <= x <= 1.0
+    type: str                                        # required, e.g., 'entry_long'
+    entry_reason: str                                # required
+    intent: Optional[OrderIntent] = None             # optional (None for HOLD)
+    regime: str                                      # required, string via get_market_regime() / get_session_phase()
 
-    class Config:
-        extra = 'allow'  # Allows strategy-specific fields
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 ```
 
 ### ExitSignalOutput
@@ -196,8 +202,7 @@ class ExitSignalOutput(BaseModel):
     bars_since_entry: int  # Bars since entry
     intent: Optional[OrderIntent] = None
 
-    class Config:
-        extra = 'allow'
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 ```
 
 ### RiskOutput
@@ -208,8 +213,7 @@ class RiskOutput(BaseModel):
     trading_allowed: bool
     risk_reason: str
 
-    class Config:
-        extra = 'allow'
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 ```
 
 ### SizerOutput
@@ -222,8 +226,7 @@ class SizerOutput(BaseModel):
     sizing_reason: str
     raw_size: float  # Pre-validation float value
 
-    class Config:
-        extra = 'allow'
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 ```
 
 ## BaseComponent Methods
