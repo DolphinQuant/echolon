@@ -51,10 +51,19 @@ from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor, as_completed
 from tqdm import tqdm
 
+import sys
+
 from ..engine.optimization_runner import (
     OptimizationRunner,
     OptimizationConfig,
     run_optimization_trial,
+)
+from ..engine.failure import OptimizationFailure
+from .failure_reporter import (
+    FailureGroup,
+    aggregate as _aggregate_failure,
+    render_terminal as _render_failure_terminal,
+    write_json_artifact as _write_failure_json,
 )
 from echolon.backtest.logging_utils import (
     setup_backtest_logging,
@@ -207,6 +216,12 @@ class OptunaOptimizer:
         self.indicators_dir = str(Path(indicator_dir) / ctx.instrument_name)
         # Note: commission and multiplier are retrieved from market_adapter.get_contract_spec()
 
+        # Controller-side aggregation of per-trial failures. Keyed by
+        # OptimizationFailure.group_key(). Populated by _run_parallel /
+        # _objective; consumed at end of ``run()`` to render the terminal
+        # block and write ``trial_failure_summary.json``.
+        self._failure_groups: Dict[tuple, FailureGroup] = {}
+
     def run(
         self,
         indicators: pd.DataFrame,
@@ -214,6 +229,8 @@ class OptunaOptimizer:
         regime_data: Optional[pd.DataFrame] = None,
         study_name: Optional[str] = None,
         indicator_metadata: Optional[Dict[str, Any]] = None,
+        failure_report_dir: Optional[Path] = None,
+        failure_report_window_id: Optional[int] = None,
     ) -> Tuple[Optional[optuna.Study], Optional[Dict[str, Any]]]:
         """
         Run optimization study.
@@ -238,6 +255,11 @@ class OptunaOptimizer:
         """
         # trading_calendar_df reserved for future session filtering
         _ = trading_calendar_df
+
+        # Reset per-run aggregation state. A single OptunaOptimizer instance
+        # may drive multiple WFA windows sequentially; each window gets a
+        # fresh ``_failure_groups`` so reports don't leak across windows.
+        self._failure_groups = {}
 
         # Setup context-aware logging for optimization (suppresses backtest details)
         setup_backtest_logging("optimization")
@@ -352,6 +374,27 @@ class OptunaOptimizer:
                 elapsed=format_time_seconds(elapsed_time)
             )
 
+        # Failure reporting — always render a stderr block when any trial
+        # failed (making silent failures impossible), and persist the
+        # JSON artifact when a target directory was provided.
+        if failed_trials > 0 and self._failure_groups:
+            summary = _render_failure_terminal(
+                n_trials=self.n_trials,
+                n_failed=failed_trials,
+                groups=self._failure_groups.values(),
+                window_id=failure_report_window_id,
+            )
+            print(summary, file=sys.stderr)
+        if failure_report_dir is not None:
+            _write_failure_json(
+                out_path=Path(failure_report_dir) / "trial_failure_summary.json",
+                n_trials=self.n_trials,
+                n_failed=failed_trials,
+                n_complete=completed_trials,
+                groups=self._failure_groups.values(),
+                window_id=failure_report_window_id,
+            )
+
         return study, best_params
 
     def _run_sequential(self, study: optuna.Study) -> optuna.Study:
@@ -436,11 +479,20 @@ class OptunaOptimizer:
                         else:
                             study.tell(trial, state=optuna.trial.TrialState.FAIL)
                             failed_trials += 1
+                            # Aggregate structured failure for end-of-study
+                            # reporting. ``failure`` is the dict form of
+                            # OptimizationFailure — reconstruct and fold in.
+                            failure_dict = result.get('failure')
+                            if failure_dict is not None:
+                                failure = OptimizationFailure(**failure_dict)
+                                _aggregate_failure(
+                                    self._failure_groups, failure, trial.number,
+                                )
                             if result.get('critical_error'):
                                 pbar.close()
                                 # Print critical error directly to terminal
-                                failure = result.get('failure') or {}
-                                err_msg = failure.get('message', 'Unknown error')
+                                failure_repr = result.get('failure') or {}
+                                err_msg = failure_repr.get('message', 'Unknown error')
                                 print(f"\n{'='*60}")
                                 print(f"CRITICAL ERROR in trial {trial.number}")
                                 print(f"Error: {err_msg}")
@@ -490,6 +542,9 @@ class OptunaOptimizer:
 
         if not metrics.success:
             error_msg = metrics.error_message or "Unknown error"
+            # Sequential path aggregates failures directly (no result dict).
+            if metrics.failure is not None:
+                _aggregate_failure(self._failure_groups, metrics.failure, trial_id)
             if is_recoverable_error(Exception(error_msg)):
                 logger.warning(f"[{self.run_context.upper()}] Trial {trial_id} | "
                              f"RECOVERABLE: {error_msg}")
