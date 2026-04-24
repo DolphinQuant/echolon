@@ -225,6 +225,29 @@ def test_fp_insurance_7_default_argument_must_not_raise(tmp_path: Path):
     )
 
 
+def test_fp_insurance_8_float_sentinel_must_not_raise(tmp_path: Path):
+    """Float sentinels ``-1.0``, ``0.0``, ``1.0`` are structural constants
+    (minimum-lot gates, zero-check sentinels). Not tunable thresholds.
+    Canary (commit 93f7aad) found 34/34 baselines hit this via
+    ``if computed_raw_size >= 1.0:`` in sizer.py."""
+    _canonical_skeleton(tmp_path)
+    _write(tmp_path / "sizer.py", '''
+        class position_sizer:
+            def calculate_size(self, entry_signal):
+                computed_raw_size = self.raw_size_estimate()
+                if computed_raw_size >= 1.0:
+                    return int(computed_raw_size)
+                if computed_raw_size > 0.0:
+                    return 1
+                return 0
+    ''')
+    report = validate_parameter_access(strategy_dir=tmp_path)
+    assert not report.any_errors, (
+        f"FP-insurance-8 failed: float sentinels must not flag. "
+        f"Got: {report.findings}"
+    )
+
+
 # ============================================================================
 # Integration / negative tests
 # ============================================================================

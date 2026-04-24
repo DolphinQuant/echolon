@@ -36,8 +36,10 @@ from echolon.strategy.validators import Finding, Report
 
 _COMPONENT_FILES = ("entry.py", "exit.py", "risk.py", "sizer.py")
 
-# Small integer constants that are never trading thresholds.
-_SMALL_INT_ALLOWLIST: Set[int] = {-1, 0, 1}
+# Structural "sentinel" constants: -1/0/1 integer-or-float values that are
+# never trading thresholds (index arithmetic, loop counters, minimum-lot
+# gates). Do not flag as PRM-003.
+_STRUCTURAL_CONSTANT_ALLOWLIST: Set = {-1, 0, 1, -1.0, 0.0, 1.0}
 
 
 class _ParameterAccessVisitor(ast.NodeVisitor):
@@ -188,8 +190,8 @@ class _ParameterAccessVisitor(ast.NodeVisitor):
         if not isinstance(val, (int, float)):
             return
 
-        # Small integer constants are structural, not thresholds.
-        if isinstance(val, int) and val in _SMALL_INT_ALLOWLIST:
+        # Structural constants are not thresholds.
+        if val in _STRUCTURAL_CONSTANT_ALLOWLIST:
             return
 
         literal_repr = repr(val)
