@@ -187,16 +187,21 @@ The following is handled **automatically** by BaseStrategy:
 ## Strategy Implementation Pattern
 
 ```python
-from modules.quant_engine.core.base.base_strategy import BaseStrategy
-from modules.quant_engine.core.interfaces.trading_interfaces import ITradingEngine, OrderIntent
+from echolon.strategy.base import BaseStrategy
+from echolon.strategy.interfaces import ITradingEngine, OrderIntent
 
 class strategy_main(BaseStrategy):
     def __init__(self, trading_engine: ITradingEngine, **params):
         super().__init__(trading_engine, **params)
         # Components automatically set up by universal infrastructure
 
-    def on_start(self):
-        """Called when strategy starts."""
+    def _on_strategy_start(self):
+        """Called AFTER components and hooks are initialized.
+
+        Override this, NOT ``on_start()``. ``BaseStrategy.on_start()`` is a
+        Template Method that orchestrates component setup + validation +
+        hook callbacks (echolon/strategy/base.py:890).
+        """
         self.log("Strategy starting...")
 
     def _execute_bar(self):
@@ -216,8 +221,13 @@ class strategy_main(BaseStrategy):
         # - Position limits: Block entries BUT still allow exit evaluation
         if not risk_output.trading_allowed:
             if self.has_position():
-                # Circuit breaker? Flatten immediately
-                if risk_output.drawdown_halt_triggered or risk_output.session_halt_triggered:
+                # drawdown_halt_triggered / session_halt_triggered are
+                # STRATEGY-AUTHOR EXTRAS on RiskOutput — not declared on
+                # the base schema. They arrive via extra='allow'. Use
+                # getattr() so the code doesn't AttributeError when a
+                # generic risk.py only returns the required fields.
+                if getattr(risk_output, 'drawdown_halt_triggered', False) \
+                        or getattr(risk_output, 'session_halt_triggered', False):
                     self.exit()  # Flatten position
                     return  # Halt all activity
                 # Position limit? Fall through to exit logic (don't return!)
