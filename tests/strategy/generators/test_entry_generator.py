@@ -9,6 +9,8 @@ Scaffolder contract:
 """
 from pathlib import Path
 
+import pytest
+
 from echolon.strategy.generators.entry_generator import generate_entry
 from echolon.strategy.loader import StrategyLoader
 from echolon.strategy.schemas import EntrySignalOutput
@@ -37,31 +39,7 @@ def test_entry_generator_returns_trivial_hold(tmp_path: Path):
     loader = StrategyLoader(tmp_path)
     mod = loader.load_module("entry")
 
-    class _FakeEngine:
-        current_regime = "ranging"
-
-        def get_frequency_context(self):
-            return None
-
-        def get_market_adapter(self):
-            return None
-
-        def get_trading_context(self):
-            return None
-
-        def get_market_data(self):
-            return None
-
-        def get_portfolio(self):
-            return None
-
-        def get_logger(self):
-            return None
-
-        def get_strategy_logger(self):
-            return None
-
-    inst = mod.entry_rule(trading_engine=_FakeEngine())
+    inst = mod.entry_rule()  # engineless construction — BaseComponent supports trading_engine=None
     out = inst.generate_signal()
     assert isinstance(out, EntrySignalOutput)
     assert out.signal == "HOLD"
@@ -72,3 +50,20 @@ def test_entry_generator_has_no_platform_imports(tmp_path: Path):
     text = (tmp_path / "entry.py").read_text(encoding="utf-8")
     for forbidden in ("import backtrader", "from backtrader", "xtdata", "miniQMT"):
         assert forbidden not in text, f"platform-agnostic rule violated: {forbidden}"
+
+
+def test_entry_generator_refuses_to_overwrite_without_force(tmp_path: Path):
+    """Silent overwrite is unsafe — raise FileExistsError by default."""
+    generate_entry(strategy_dir=tmp_path)  # first call succeeds
+
+    with pytest.raises(FileExistsError, match="already exists"):
+        generate_entry(strategy_dir=tmp_path)  # second call without force raises
+
+
+def test_entry_generator_overwrites_with_force(tmp_path: Path):
+    """With force=True, overwrite existing entry.py."""
+    first_path = generate_entry(strategy_dir=tmp_path)
+    (tmp_path / "entry.py").write_text("# user-modified content", encoding="utf-8")
+
+    generate_entry(strategy_dir=tmp_path, force=True)
+    assert "# user-modified content" not in (tmp_path / "entry.py").read_text()

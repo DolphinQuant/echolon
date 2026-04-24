@@ -22,7 +22,6 @@ TODO (coding agent):
   - Return an EntrySignalOutput with signal, strength, type, entry_reason, intent, regime.
 """
 from echolon.strategy.component import BaseComponent
-from echolon.strategy.interfaces import ITradingEngine, OrderIntent
 from echolon.strategy.schemas import EntrySignalOutput
 
 
@@ -41,15 +40,33 @@ class entry_rule(BaseComponent):
             type="hold",
             entry_reason="scaffold default — no pathway wired",
             intent=None,
-            regime=getattr(self.engine, "current_regime", "unknown") if self.engine else "unknown",
+            # TODO: replace with self.get_market_regime() (interday) or
+            # self.get_session_phase() (intraday) once pathway logic is added.
+            regime="unknown",
         )
 '''
 
 
-def generate_entry(strategy_dir: Path) -> Path:
-    """Write ``entry.py`` into ``strategy_dir`` and return the path."""
+def generate_entry(strategy_dir: Path | str, *, force: bool = False) -> Path:
+    """Write ``entry.py`` into ``strategy_dir`` and return the path.
+
+    Args:
+        strategy_dir: Directory where entry.py will be written.
+        force: If False (default), raise FileExistsError if the target file exists.
+               If True, overwrite the target file.
+
+    Returns:
+        Path to the generated entry.py file.
+
+    Raises:
+        FileExistsError: if the target file exists and ``force`` is False.
+    """
     strategy_dir = Path(strategy_dir)
     strategy_dir.mkdir(parents=True, exist_ok=True)
     out = strategy_dir / "entry.py"
+    if out.exists() and not force:
+        raise FileExistsError(
+            f"{out} already exists — pass force=True to overwrite"
+        )
     out.write_text(_TEMPLATE, encoding="utf-8")
     return out
