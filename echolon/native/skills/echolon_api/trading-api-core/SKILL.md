@@ -52,11 +52,21 @@ tier-specific naming. Tier is a property of the underlying indicator
 
 ### Tier 3: Indicators without Lookback
 - **Format**: Bare name only
-- **Examples**: AD, OBV, TRANGE, CDL patterns, market_regime
+- **Examples**: AD, OBV, TRANGE, CDL patterns
 - **Code**: `'ad'`, `'obv'`, `'trange'`
-- **IMPORTANT**: For market context, use frequency-specific methods:
-  - INTERDAY: `get_market_regime()` → 'trending_up', 'ranging', etc.
-  - INTRADAY: `get_session_phase()` → phase names vary by bar size (see INTRADAY.md)
+
+### Market context — DO NOT access via `get_indicator`
+
+`market_regime` and `session_phase` are stored as **numeric codes** at runtime
+(1 / -1 / 0 / 2 for regimes; 0..N for phases). Calling
+`self.get_indicator('market_regime')` returns an int — subsequent
+`if regime == 'trending_up'` comparisons silently fail. Always use the
+frequency-specific string-returning accessors:
+
+- INTERDAY: `self.get_market_regime()` → `'trending_up'` / `'trending_down'` / `'ranging'` / `'volatile'`
+- INTRADAY: `self.get_session_phase()` → phase name (bar-size-dependent; see INTRADAY.md)
+
+These methods raise `RuntimeError` if called in the wrong frequency context.
 
 ## BaseModel Output Pattern (CRITICAL)
 
@@ -64,7 +74,7 @@ All components MUST return Pydantic BaseModel instances:
 
 | Component | Return Type | Required Fields |
 |-----------|-------------|-----------------|
-| Entry | `EntrySignalOutput` | signal, strength, type, entry_reason, intent |
+| Entry | `EntrySignalOutput` | signal, strength, type, entry_reason, intent, **regime** |
 | Exit | `ExitSignalOutput` | should_exit, exit_reason, position_size, bars_since_entry, intent |
 | Risk | `RiskOutput` | trading_allowed, risk_reason |
 | Sizer | `SizerOutput` | calculated_size, signal_direction, sizing_reason, raw_size |
@@ -91,6 +101,21 @@ output = EntrySignalOutput(
 self.log_entry_output(output)  # Log same instance
 return output                   # Return same instance
 ```
+
+### Catalog-Coded Validation Errors
+
+The BaseModel schemas raise echolon catalog-coded errors (not generic Pydantic
+errors) so the coding agent sees structured diagnostic fields:
+
+- **VAL-001** — missing required field on output. Context includes the list of
+  missing fields. Fix: add the missing fields to the instantiation.
+- **VAL-002** — invalid signal enum value. Context includes the invalid value
+  and the valid set `{LONG, SHORT, HOLD}`. Fix: use one of the valid enum
+  strings.
+
+Do NOT wrap output instantiation in `try/except pydantic.ValidationError` —
+let catalog errors propagate so downstream tooling (validators, log analyzers,
+debug agents) can route by code.
 
 ## No Error Handling Policy (CRITICAL)
 
