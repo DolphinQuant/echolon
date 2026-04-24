@@ -131,7 +131,7 @@ class EntrySignalOutput(BaseModel):
             )
         return values
 
-    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
 class ExitSignalOutput(BaseModel):
@@ -234,7 +234,7 @@ class ExitSignalOutput(BaseModel):
             )
         return values
 
-    model_config = ConfigDict(extra="forbid", arbitrary_types_allowed=True)
+    model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 
 
 class SizerOutput(BaseModel):
