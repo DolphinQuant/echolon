@@ -2,7 +2,20 @@
 
 Launched via the `echolon-mcp` console script. OpenAI Agents SDK consumers
 attach via `MCPServerStdio(command="echolon-mcp", args=[])`.
+
+Stdout discipline: under the MCP stdio transport, every byte written to
+fd 1 must be a valid JSONRPC message. Any tool implementation that calls
+``print(...)`` corrupts the channel and the client tears the server down
+with ``Failed to parse JSONRPC message from server`` (e.g. the
+``strategy_params_generator`` emits a ``✅ Generated: ...`` line on every
+write). ``main()`` defends the channel by handing MCP a private copy of
+the real stdout and rebinding ``sys.stdout`` to ``sys.stderr`` for the
+duration of the run, so any straggler print lands on stderr instead of
+the JSONRPC pipe.
 """
+import os
+import sys
+from io import TextIOWrapper
 from pathlib import Path
 
 from mcp.server.fastmcp import FastMCP
@@ -396,11 +409,42 @@ def build_server() -> FastMCP:
     return server
 
 
+def _build_isolated_stdout():
+    """Return an anyio-wrapped TextIOWrapper that writes to the original fd 1.
+
+    Captured BEFORE we rebind ``sys.stdout`` to stderr, so MCP's JSONRPC
+    output keeps flowing to the parent process while user-code prints land
+    on stderr.
+    """
+    import anyio
+    real_stdout_fd = os.dup(sys.stdout.fileno())
+    real_stdout = TextIOWrapper(
+        os.fdopen(real_stdout_fd, "wb", buffering=0),
+        encoding="utf-8",
+        write_through=True,
+    )
+    return anyio.wrap_file(real_stdout)
+
+
+async def _run_with_isolated_stdout(server: FastMCP) -> None:
+    """Run FastMCP on stdio with stdout protected from user-code prints."""
+    from mcp.server.stdio import stdio_server
+    isolated_stdout = _build_isolated_stdout()
+    sys.stdout = sys.stderr  # any print() now writes to stderr, not fd 1
+    async with stdio_server(stdout=isolated_stdout) as (read_stream, write_stream):
+        await server._mcp_server.run(
+            read_stream,
+            write_stream,
+            server._mcp_server.create_initialization_options(),
+        )
+
+
 def main():  # pragma: no cover — invoked by `echolon-mcp` console script
+    import anyio
     from echolon._internal.structured_logging import install_structured_logging
     install_structured_logging()
     server = build_server()
-    server.run()
+    anyio.run(_run_with_isolated_stdout, server)
 
 
 if __name__ == "__main__":
