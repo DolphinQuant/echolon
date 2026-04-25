@@ -439,10 +439,30 @@ async def _run_with_isolated_stdout(server: FastMCP) -> None:
         )
 
 
+def _silence_mcp_noise() -> None:
+    """Clamp the MCP framework's per-RPC INFO chatter to WARNING+.
+
+    Without this the child process emits ``Processing request of type
+    ListToolsRequest`` / ``CallToolRequest`` lines on stderr for every
+    handshake; under MCP stdio that lands in the parent terminal and
+    interleaves with the agent UI. The lines carry no failure info — only
+    request types — so suppressing them is purely cosmetic and safe.
+    """
+    import logging
+    for name in ("mcp", "mcp.server", "mcp.server.lowlevel.server",
+                 "mcp.client", "anyio"):
+        logger = logging.getLogger(name)
+        logger.setLevel(logging.WARNING)
+        logger.propagate = False
+        for handler in logger.handlers:
+            handler.setLevel(logging.WARNING)
+
+
 def main():  # pragma: no cover — invoked by `echolon-mcp` console script
     import anyio
     from echolon._internal.structured_logging import install_structured_logging
     install_structured_logging()
+    _silence_mcp_noise()
     server = build_server()
     anyio.run(_run_with_isolated_stdout, server)
 
