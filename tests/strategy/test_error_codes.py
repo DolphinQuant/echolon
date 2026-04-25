@@ -11,9 +11,9 @@ from echolon.errors import EchelonError, StrategyStructureError
 
 def test_loader_missing_file_raises_str_001(tmp_path: Path):
     """Loader should raise STR-001 when a required strategy file is missing."""
-    # Create a 6-file directory (missing strategy_indicator_list.json)
+    # Create a 5-file directory (missing strategy_indicator_list.json)
     for name in ("entry.py", "exit.py", "risk.py", "sizer.py",
-                 "component.py", "strategy_params.py"):
+                 "strategy_params.py"):
         (tmp_path / name).write_text("# stub")
 
     # Import the public loader — match the real name discovered in Step 1.
@@ -31,7 +31,7 @@ def test_loader_missing_file_raises_str_001(tmp_path: Path):
 
 def test_loader_missing_class_raises_str_002(tmp_path: Path):
     """Loader should raise STR-002 when a required class name is not exported."""
-    for name in ("exit.py", "risk.py", "sizer.py", "component.py", "strategy_params.py"):
+    for name in ("exit.py", "risk.py", "sizer.py", "strategy_params.py"):
         (tmp_path / name).write_text("# stub")
     (tmp_path / "strategy_indicator_list.json").write_text("{}")
     (tmp_path / "entry.py").write_text(dedent("""

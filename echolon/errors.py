@@ -156,7 +156,7 @@ ERROR_CATALOG: dict[str, dict] = {
     "STR-001": {
         "class": StrategyStructureError,
         "what": "Strategy directory missing required file",
-        "why": "Every Echolon strategy needs 7 files for the loader to work.",
+        "why": "Every Echolon strategy needs 6 files for the loader to work.",
         "fix_template": (
             "Add the missing file to {strategy_dir}:\n"
             "  missing: {missing_files}\n"

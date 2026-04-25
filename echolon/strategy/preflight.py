@@ -6,7 +6,7 @@ the appropriate catalog code on failure so LLM callers get the most specific,
 actionable error possible.
 
 Order of checks (fail fast on the cheapest check):
-    1. STR-001: all 7 required files present
+    1. STR-001: all 6 required files present
     2. STR-002: each <component>.py exports the expected class name
     3. PRM-002: strategy_params.DEFAULT_PARAMS has all 4 component keys
     4. PRM-001: every component sub-dict contains 'printlog'
@@ -26,7 +26,6 @@ REQUIRED_FILES = [
     "exit.py",
     "risk.py",
     "sizer.py",
-    "component.py",
     "strategy_params.py",
     "strategy_indicator_list.json",
 ]

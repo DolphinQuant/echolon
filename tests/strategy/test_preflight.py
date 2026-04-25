@@ -7,7 +7,7 @@ import pytest
 
 
 def _make_valid_strategy(root: Path) -> None:
-    """Write a minimal valid 7-file strategy tree."""
+    """Write a minimal valid 6-file strategy tree."""
     (root / "entry.py").write_text(dedent("""
         from echolon.strategy.component import EntryComponent
         class entry_rule(EntryComponent):
@@ -32,7 +32,6 @@ def _make_valid_strategy(root: Path) -> None:
             def calculate_size(self, signal, portfolio):
                 return 0
     """))
-    (root / "component.py").write_text("# marker file")
     (root / "strategy_params.py").write_text(dedent("""
         DEFAULT_PARAMS = {
             'entry_params': {'printlog': False},
@@ -151,3 +150,16 @@ def test_load_strategy_from_dir_calls_preflight(tmp_path):
     with pytest.raises(EchelonError) as exc:
         load_strategy_from_dir(tmp_path)
     assert exc.value.code == "PRM-002"
+
+
+def test_canary_baseline_passes_preflight():
+    """Migrated baseline strategy must satisfy preflight without a phantom component.py."""
+    from echolon.strategy.preflight import preflight
+
+    baseline = Path(__file__).parents[1] / "fixtures" / "baselines" / "al_v6_1_migrated"
+    assert baseline.exists(), f"canary baseline missing at {baseline}"
+    assert not (baseline / "component.py").exists(), (
+        "baseline must NOT contain a strategy-local component.py — that file "
+        "is a phantom requirement removed from REQUIRED_FILES."
+    )
+    preflight(baseline)

@@ -51,13 +51,17 @@ workspace/current/code/
 ├── sizer.py              # Position sizing
 ├── strategy.py           # Main coordinator (strategy_main class)
 ├── strategy_params.py    # Parameter definitions
-├── component.py          # Strategy-local helpers (preflight requires presence)
 └── strategy_indicator_list.json  # Flat-dict indicator configuration
 ```
 
 **Required files** (per `echolon/strategy/preflight.py::REQUIRED_FILES`):
-`entry.py`, `exit.py`, `risk.py`, `sizer.py`, `component.py`,
-`strategy_params.py`, `strategy_indicator_list.json`.
+`entry.py`, `exit.py`, `risk.py`, `sizer.py`,
+`strategy_params.py`, `strategy_indicator_list.json`. (`strategy.py` is
+required in practice — loaded separately by
+`StrategyLoader.load_function("strategy", "strategy_main")` — but it is
+not in preflight's list.) `BaseComponent` lives in the installed package
+at `echolon.strategy.component`; strategies import it, they do not ship a
+local copy.
 
 **Required class exports** (per `echolon/strategy/loader.py::_REQUIRED_CLASSES`):
 

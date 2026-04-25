@@ -17,20 +17,6 @@ from echolon.strategy.generators import (
 from echolon.strategy.preflight import preflight
 
 
-def _write_minimal_component_py(strategy_dir: Path) -> None:
-    """``preflight.py::REQUIRED_FILES`` requires ``component.py`` to be present.
-
-    The real strategies keep this file around as the import-root for
-    strategy-local helpers. The scaffold doesn't need a body — it just
-    needs to exist so the STR-001 file-presence check passes.
-    """
-    (strategy_dir / "component.py").write_text(
-        "# Intentionally empty — preflight only checks presence. "
-        "Coding agents add strategy-local utilities here.\n",
-        encoding="utf-8",
-    )
-
-
 def _write_minimal_strategy_indicator_list(strategy_dir: Path) -> None:
     """Empty flat-dict — preflight validates shape, not content."""
     (strategy_dir / "strategy_indicator_list.json").write_text(
@@ -48,7 +34,6 @@ def test_scaffolded_strategy_passes_preflight(tmp_path: Path):
     generate_strategy(strategy_dir=tmp_path)
 
     # 2. Add the non-scaffolded required files.
-    _write_minimal_component_py(tmp_path)
     _write_minimal_strategy_indicator_list(tmp_path)
 
     # 3. Generate strategy_params.py via generate_strategy_params.
