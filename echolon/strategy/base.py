@@ -659,9 +659,17 @@ class BaseStrategy(IStrategyCallbacks):
                     "Use get_session_phase() instead."
                 )
 
+        # Use the canonical numeric→string regime map from indicators.utils so
+        # this method agrees with market_metrics, backtest_metrics, and the
+        # market_regime calculator. The previous local map ({0: ranging,
+        # 1: trending_up, 2: trending_down, 3: volatile}) was inconsistent with
+        # the canonical encoding (1: trending_up, -1: trending_down, 0: ranging,
+        # 2: volatile) — strategies reading regime here would silently
+        # mis-classify volatile bars as trending_down and treat valid -1
+        # values as 'unknown'.
+        from echolon.indicators.utils.regime_utils import REGIME_NUMERIC_TO_STRING
         numeric_regime = self.market_data.get_indicator('market_regime', index)
-        regime_map = {0: 'ranging', 1: 'trending_up', 2: 'trending_down', 3: 'volatile'}
-        return regime_map.get(int(numeric_regime), 'unknown')
+        return REGIME_NUMERIC_TO_STRING.get(int(numeric_regime), 'unknown')
 
     def get_session_phase(self, index: int = 0) -> str:
         """
