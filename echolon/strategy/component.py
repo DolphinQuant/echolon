@@ -402,10 +402,17 @@ class BaseComponent(ABC):
 
         # Terminal decision logging for debugger_agent (debug/best_trial only)
         if output_data and should_log_details(get_run_context()):
+            # ExitSignalOutput / EntrySignalOutput use `entry_reason` / `exit_reason`
+            # (no plain `reason` field) — fall back through both for safety.
+            reason_text = (
+                getattr(output_data, 'entry_reason', None)
+                or getattr(output_data, 'reason', None)
+                or ""
+            )
             self._log_terminal_decision(
                 "Entry",
                 output_data.signal,
-                output_data.reason if hasattr(output_data, 'reason') else "",
+                reason_text,
                 intent=output_data.intent.value if hasattr(output_data, 'intent') and output_data.intent else "N/A"
             )
 
@@ -424,10 +431,17 @@ class BaseComponent(ABC):
         # Terminal decision logging for debugger_agent (debug/best_trial only)
         if output_data and should_log_details(get_run_context()):
             decision = "EXIT_TRIGGERED" if output_data.should_exit else "HOLD_POSITION"
+            # ExitSignalOutput uses `exit_reason` (no plain `reason`).  Fall
+            # back through both so older outputs still log correctly.
+            reason_text = (
+                getattr(output_data, 'exit_reason', None)
+                or getattr(output_data, 'reason', None)
+                or ""
+            )
             self._log_terminal_decision(
                 "Exit",
                 decision,
-                output_data.reason if hasattr(output_data, 'reason') else "",
+                reason_text,
                 bars_held=output_data.bars_since_entry if hasattr(output_data, 'bars_since_entry') else 0
             )
 

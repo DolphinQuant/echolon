@@ -426,6 +426,32 @@ class IPortfolio(ABC):
         pos = self.get_position()
         return pos.market_value if pos else 0.0
 
+    def get_position_contract(self) -> Optional[str]:
+        """Return the contract code of the currently held position, or None.
+
+        Default implementation falls back to ``get_position().symbol`` and
+        strips any exchange suffix (e.g. ``.SF``) so the returned code is
+        directly usable by adapter rollover logic such as
+        ``parse_contract(...)`` which expects the bare ``[a-z]+\\d{4}`` form.
+
+        Sufficient for:
+          - Crypto perpetuals (``symbol`` = e.g. 'BTC-PERP', no suffix)
+          - Deploy SHFE via QMT, where ``Position.symbol`` carries the
+            full QMT-formatted contract (``'al2602.SF'``) — this default
+            strips ``.SF`` and returns ``'al2602'``.
+
+        Markets where strategy-side ``symbol`` is the base instrument
+        (backtest SHFE futures: ``symbol='al'`` while held contract is
+        ``'al2602'``) MUST override to read the contract from the broker's
+        position record (e.g. ``EnhancedPosition.contract`` via
+        ``BacktraderPortfolio.get_position_contract``).
+        """
+        pos = self.get_position()
+        if pos is None or not pos.symbol:
+            return None
+        sym = pos.symbol
+        return sym.split('.', 1)[0] if '.' in sym else sym
+
     def get_account_info(self) -> AccountInfo:
         """Get account information."""
         return AccountInfo(

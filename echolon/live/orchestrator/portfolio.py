@@ -356,6 +356,11 @@ class PortfolioTradingRunner:
             try:
                 slot.execute_bar()
                 self.log.info(f"[{slot.slot_id}] execute_bar complete")
+                # Surface the strategy's decision (entry/exit reason) so the
+                # operator can understand WHY an order was queued before it
+                # is actually fired during the night-market open.  Goes to
+                # both terminal and qts_system.log via the runner logger.
+                self._log_strategy_decision(slot)
             except Exception as e:
                 slot.mark_error(f"execute_bar failed: {e}")
                 self.log.error(f"[{slot.slot_id}] execute_bar failed:\n{traceback.format_exc()}")
@@ -493,6 +498,52 @@ class PortfolioTradingRunner:
         )
 
         return results
+
+    # =========================================================================
+    # Decision logging
+    # =========================================================================
+
+    def _log_strategy_decision(self, slot: TradingSlot) -> None:
+        """Log the strategy's per-bar entry/exit decision via the runner logger.
+
+        Reads from the strategy's CSVStrategyLogger ``current_bar_data`` so the
+        same fields that land in ``qmt_<instrument>.csv`` (entry_signal,
+        entry_reason, exit_should_exit, exit_reason, risk reasons, etc.) are
+        also surfaced in ``qts_system.log`` and the terminal at execute_bar
+        time — i.e. before the night market opens and orders are fired.
+
+        Defensive against missing logger / missing fields: this is best-effort
+        diagnostic output and must never raise.
+        """
+        try:
+            strategy = getattr(slot, 'strategy', None)
+            slogger = getattr(strategy, 'strategy_logger', None) if strategy else None
+            bar = getattr(slogger, 'current_bar_data', None) if slogger else None
+            if not bar:
+                return
+
+            entry_signal = bar.get('entry_signal', 'HOLD')
+            entry_reason = bar.get('entry_reason', '')
+            should_exit = bar.get('exit_should_exit', False)
+            exit_reason = bar.get('exit_reason', '')
+            risk_allowed = bar.get('risk_trading_allowed', '')
+            risk_reason = bar.get('risk_reason', '')
+            position = bar.get('capital_position_size', 0.0)
+
+            self.log.info(
+                f"[{slot.slot_id}] DECISION: position={position} "
+                f"risk_allowed={risk_allowed} | "
+                f"entry={entry_signal} | exit_triggered={should_exit}"
+            )
+            if exit_reason:
+                self.log.info(f"[{slot.slot_id}]   exit_reason: {exit_reason}")
+            if entry_reason:
+                self.log.info(f"[{slot.slot_id}]   entry_reason: {entry_reason}")
+            if risk_reason:
+                self.log.info(f"[{slot.slot_id}]   risk_reason: {risk_reason}")
+        except Exception as e:
+            # Never let decision-logging break the cycle.
+            self.log.warning(f"[{slot.slot_id}] _log_strategy_decision failed: {e}")
 
     # =========================================================================
     # Phase 0: Data pipeline
@@ -671,6 +722,18 @@ class PortfolioTradingRunner:
         if not all_pending:
             self.log.info("No pending orders to execute")
             return
+
+        # Per-slot pending order detail — makes the source of each queued
+        # order unambiguous in qts_system.log.  Without this, "Firing N
+        # orders" alone does not identify which slots produced them.
+        self.log.info(f"Pending orders breakdown ({len(all_pending)} total):")
+        for slot, order in all_pending:
+            intent_str = order.intent.value if order.intent else "UNKNOWN"
+            price_str = f"{order.price}" if order.price is not None else "MARKET"
+            self.log.info(
+                f"  [{slot.slot_id}] {intent_str} size={int(order.size)} "
+                f"price={price_str} contract={order.symbol}"
+            )
 
         self.log.info(f"Firing {len(all_pending)} orders")
 

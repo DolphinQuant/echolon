@@ -105,7 +105,8 @@ class EngineFactory:
     def create_market_adapter(
         cls,
         ctx: TradingContext,
-        calendar_path: Optional[str] = None
+        calendar_path: Optional[str] = None,
+        mode: str = "backtest",
     ) -> IMarketAdapter:
         """
         Create market adapter based on TradingContext.
@@ -113,13 +114,33 @@ class EngineFactory:
         Args:
             ctx: TradingContext with market and instrument info
             calendar_path: Optional path to trading calendar file (for SHFE)
+            mode: "backtest" or "deploy". Both modes use
+                  days_before_rollover=1 for SHFE — unified semantics:
+                    Hook fires at start of bar T-1 (where T = last trading
+                    day before the contract's delivery month). If a position
+                    is held, hook submits force-exit and skips strategy.next
+                    on T-1. Order fills at the start of trading day T:
+                      - backtest: next-bar's open
+                      - deploy night-market: 21:00 calendar T-1 night-session
+                        open (= trading day T per SHFE convention)
+                      - deploy day-only: 14:55 calendar T-1 day-session
+                        (one trading day earlier; conservative-safe)
+                    Strategy.next resumes normally on bar T.
+                  The mode parameter is kept as a seam in case day-only
+                  deploy or another execution profile wants different timing
+                  in the future without rewiring callers.
 
         Returns:
             Configured market adapter
 
         Raises:
-            ValueError: If market type is unknown
+            ValueError: If market type is unknown or mode is invalid.
         """
+        if mode not in ("backtest", "deploy"):
+            raise ValueError(
+                f"Unknown mode: {mode!r}. Expected 'backtest' or 'deploy'."
+            )
+
         market = ctx.market_code.upper()
         instrument_code = ctx.instrument_code.lower()
 
@@ -128,13 +149,21 @@ class EngineFactory:
             available = ", ".join(cls.MARKET_ADAPTERS.keys())
             raise ValueError(f"Unknown market: {market}. Available: {available}")
 
-        logger.info(f"Creating {market} adapter for instrument: {instrument_code}")
+        logger.info(
+            f"Creating {market} adapter for instrument: {instrument_code}, mode={mode}"
+        )
+
+        # Force-exit timing — both modes signal on T-1 and fill on T's open.
+        # T = last trading day of the month before the contract's delivery
+        # month (the SHFE rule for "must close by"). Unified semantics.
+        days_before_rollover_by_mode = {"backtest": 1, "deploy": 1}
 
         # Market-specific initialization
         if market == "SHFE":
             return adapter_class(
                 symbol=instrument_code,
                 trading_calendar_path=calendar_path,
+                days_before_rollover=days_before_rollover_by_mode[mode],
             )
         elif market == "CRYPTO":
             return adapter_class(
@@ -233,7 +262,7 @@ class EngineFactory:
 
             ContractAwareHook: For interday futures (contract rollover)
             - Adds ContractAwareBroker for accurate PnL across contracts
-            - Adds ContractExpiryObserver for forced close before expiry
+            - ForcedExitStrategyHook handles forced close via check_contract_expiry()
 
             SessionAwareHook: For intraday trading (session context)
             - Adds session context provider (SHFE or Crypto specific)
@@ -243,7 +272,7 @@ class EngineFactory:
         from echolon.backtest.engine.hooks.contract_aware.hook import ContractAwareHook   # lazy
         from echolon.backtest.engine.hooks.session_aware import SessionAwareHook   # lazy
 
-        market_adapter = cls.create_market_adapter(ctx, calendar_path)
+        market_adapter = cls.create_market_adapter(ctx, calendar_path, mode="backtest")
         frequency_context = cls.create_frequency_context(ctx, market_adapter)
 
         # Determine trading mode
@@ -331,7 +360,7 @@ class EngineFactory:
         """
         platform = platform or "miniqmt"
 
-        market_adapter = cls.create_market_adapter(ctx, calendar_path)
+        market_adapter = cls.create_market_adapter(ctx, calendar_path, mode="deploy")
         frequency_context = cls.create_frequency_context(ctx, market_adapter)
 
         logger.info(

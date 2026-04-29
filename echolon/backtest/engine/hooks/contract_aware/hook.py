@@ -6,8 +6,11 @@ Hook for interday futures trading with contract rollover support.
 
 This hook adds:
 1. ContractAwareBroker: Handles position valuation across contract changes
-2. ContractExpiryObserver: Forces position close before contract expiry
-3. Contract price preloading: Optimization for repeated backtests
+2. Contract price preloading: Optimization for repeated backtests
+
+Force-exit decisions are owned by ForcedExitStrategyHook.check_contract_expiry()
+which calls market_adapter.should_rollover() — single source of truth shared
+with the deploy path. The ContractExpiryObserver was removed 2026-04-27.
 
 When to use:
 - Futures markets with contract expiry (SHFE, CME, etc.)
@@ -35,7 +38,6 @@ from .broker import (
     create_contract_aware_broker,
     preload_contract_prices,
 )
-from .observer import add_contract_expiry_observer
 
 if TYPE_CHECKING:
     from ...backtrader_engine import BacktraderEngine
@@ -49,17 +51,18 @@ class ContractAwareHook(IEngineHook):
     """
     Hook for interday futures trading with contract awareness.
 
-    Adds contract-aware broker and expiry observer to handle:
+    Adds contract-aware broker to handle:
     - Position valuation during contract rollovers
-    - Forced position close before contract expiry
     - Accurate PnL calculation across contracts
+
+    Force-exit decisions are owned by ForcedExitStrategyHook (single source of
+    truth shared with the deploy path). ContractExpiryObserver was removed
+    2026-04-27.
 
     Parameters:
         market_adapter: Market adapter with contract specifications
         indicators_dir: Path to indicators directory for contract prices
         contract_manager: Optional ContractIndicatorManager for extended features
-        force_close_time: When to force close ('market_close' or specific time)
-        log_forced_exits: Whether to log forced exit events
     """
 
     def __init__(
@@ -67,18 +70,13 @@ class ContractAwareHook(IEngineHook):
         market_adapter: 'IMarketAdapter',
         indicators_dir: str,
         contract_manager: Optional['ContractIndicatorManager'] = None,
-        force_close_time: str = 'market_close',
-        log_forced_exits: bool = True,
     ):
         self._market_adapter = market_adapter
         self._indicators_dir = indicators_dir
         self._contract_manager = contract_manager
-        self._force_close_time = force_close_time
-        self._log_forced_exits = log_forced_exits
 
         # Track state
         self._broker_configured = False
-        self._observer_added = False
 
     @property
     def name(self) -> str:
@@ -98,7 +96,7 @@ class ContractAwareHook(IEngineHook):
 
     def on_setup(self, cerebro: bt.Cerebro, engine: 'BacktraderEngine') -> None:
         """
-        Configure contract-aware broker and expiry observer.
+        Configure contract-aware broker.
         """
         symbol = engine.get_current_symbol()
 
@@ -139,16 +137,10 @@ class ContractAwareHook(IEngineHook):
             f"[{self.name}] ContractAwareBroker configured for {symbol}"
         )
 
-        # Add contract expiry observer
-        add_contract_expiry_observer(
-            cerebro=cerebro,
-            market_adapter=self._market_adapter,
-            force_close_time=self._force_close_time,
-            log_forced_exits=self._log_forced_exits,
-        )
-        self._observer_added = True
-
-        logger.info(f"[{self.name}] ContractExpiryObserver added")
+        # NOTE: ContractExpiryObserver was removed (2026-04-27). Force-exit
+        # decisions are now owned by ForcedExitStrategyHook.check_contract_expiry()
+        # which calls market_adapter.should_rollover() — single source of truth
+        # shared with the deploy path.
 
     def on_post_setup(self, cerebro: bt.Cerebro, engine: 'BacktraderEngine') -> None:
         """
@@ -163,7 +155,7 @@ class ContractAwareHook(IEngineHook):
         """
         logger.debug(
             f"[{self.name}] Pre-run check: "
-            f"broker={self._broker_configured}, observer={self._observer_added}"
+            f"broker={self._broker_configured}"
         )
 
     def on_post_run(
@@ -181,7 +173,6 @@ class ContractAwareHook(IEngineHook):
         results['contract_aware_enabled'] = True
         results['contract_awareness'] = {
             'broker_configured': self._broker_configured,
-            'observer_added': self._observer_added,
             'indicators_dir': self._indicators_dir,
         }
 

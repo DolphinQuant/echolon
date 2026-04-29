@@ -20,7 +20,7 @@ even if the strategy logic doesn't explicitly check for it.
 """
 
 from datetime import date
-from typing import Optional, TYPE_CHECKING
+from typing import Optional, TYPE_CHECKING, List, Dict, Any
 import logging
 
 from .strategy_hook_base import IStrategyHook
@@ -56,6 +56,7 @@ class ForcedExitStrategyHook(IStrategyHook):
         self._market_adapter = market_adapter
         self._strategy: Optional['BaseStrategy'] = None
         self._forced_exit_signal: Optional[dict] = None
+        self._forced_exits: List[Dict[str, Any]] = []
 
     @property
     def name(self) -> str:
@@ -90,11 +91,13 @@ class ForcedExitStrategyHook(IStrategyHook):
         """
         Check contract expiry and process forced exits BEFORE strategy logic.
 
-        In backtest, ContractExpiryObserver may have already set the signal.
-        In deploy, there is no observer — so we check expiry here directly.
+        Single source of truth: check_contract_expiry() runs every bar in both
+        backtest and deploy. It calls market_adapter.should_rollover() and
+        sets the signal if true.
 
         Returns:
-            True to continue processing, False if forced exit was handled
+            True to continue processing, False if forced exit was submitted
+            this bar (strategy.next is then skipped).
         """
         # Check contract expiry if no signal pending yet
         if not self._has_forced_exit_signal():
@@ -134,9 +137,8 @@ class ForcedExitStrategyHook(IStrategyHook):
         return self._process_forced_exit_signals()
 
     def _process_forced_exit_signals(self) -> bool:
-        """Process forced exit signals from contract expiry observer."""
-        # Check STRATEGY's signal (set by ContractExpiryObserver via agnostic_strategy)
-        signal = getattr(self._strategy, '_forced_exit_signal', None) or self._forced_exit_signal
+        """Process forced exit signals from contract expiry check."""
+        signal = self._forced_exit_signal
 
         if not signal or not signal.get('required', False):
             return False
@@ -153,10 +155,7 @@ class ForcedExitStrategyHook(IStrategyHook):
                 f"signal_snapshot={signal_position_size}, contract={contract_code}, "
                 f"signal_date={observer_date}, process_date={current_dt.date()}"
             )
-            # Clear both hook's and strategy's signal
             self._forced_exit_signal = None
-            if hasattr(self._strategy, '_forced_exit_signal'):
-                self._strategy._forced_exit_signal = None
             if hasattr(self._strategy, 'exit_rule'):
                 exit_rule = self._strategy.exit_rule
                 if hasattr(exit_rule, '_reset_position_state'):
@@ -205,11 +204,17 @@ class ForcedExitStrategyHook(IStrategyHook):
                 f"Forced exit order submitted: {intent.value} {exit_size} at {current_price:.2f}"
             )
 
+            self._forced_exits.append({
+                'date': self._strategy.get_current_datetime().isoformat(),
+                'contract_code': contract_code,
+                'position_size': signal_position_size,
+                'close_price': float(current_price),
+                'reason': reason,
+                'status': 'submitted',
+            })
+
             self._notify_components_of_forced_exit(signal)
-            # Clear both hook's and strategy's signal
             self._forced_exit_signal = None
-            if hasattr(self._strategy, '_forced_exit_signal'):
-                self._strategy._forced_exit_signal = None
             return True
         else:
             self._strategy.log(f"Forced exit order failed: {result.message}", "error")
@@ -217,12 +222,6 @@ class ForcedExitStrategyHook(IStrategyHook):
 
     def _has_forced_exit_signal(self) -> bool:
         """Check if there is a pending forced exit signal."""
-        # Check STRATEGY's signal (set by ContractExpiryObserver via agnostic_strategy)
-        strategy_signal = getattr(self._strategy, '_forced_exit_signal', None)
-
-        if strategy_signal is not None and strategy_signal.get('required', False):
-            return True
-        # Also check hook's own signal (for backward compatibility)
         return (
             self._forced_exit_signal is not None and
             self._forced_exit_signal.get('required', False)
@@ -249,7 +248,7 @@ class ForcedExitStrategyHook(IStrategyHook):
         """
         Signal that a forced exit is required.
 
-        Called by external observers (ContractExpiryObserver) or adapters.
+        Called internally by `check_contract_expiry()` or by adapters that signal expiry events.
 
         Args:
             reason: Reason for forced exit (e.g., "Contract expiry")
@@ -298,26 +297,43 @@ class ForcedExitStrategyHook(IStrategyHook):
         current_date = self._strategy.get_current_datetime().date()
         position_size = self._strategy.get_position_size()
 
-        # Get current contract (if available from adapter)
-        current_contract = ""
-        if hasattr(adapter, 'get_main_contract'):
-            current_contract = adapter.get_main_contract(current_date)
+        # Resolve the contract this position is HELD on (not today's main
+        # contract). Once the front-month rolls over the strategy may still
+        # hold the previous month, and that's the contract whose expiry
+        # drives the force-exit timing. Falls back to today's main contract
+        # only if the portfolio cannot expose the held contract.
+        held_contract: Optional[str] = None
+        portfolio = getattr(self._strategy, 'portfolio', None)
+        if portfolio is not None and hasattr(portfolio, 'get_position_contract'):
+            held_contract = portfolio.get_position_contract()
+        if not held_contract and hasattr(adapter, 'get_main_contract'):
+            held_contract = adapter.get_main_contract(current_date)
+        if not held_contract:
+            return False
 
         # Check if should rollover/exit (uses adapter's rollover logic)
         if hasattr(adapter, 'should_rollover'):
             should_exit = adapter.should_rollover(
-                current_contract, current_date, abs(int(position_size))
+                held_contract, current_date, abs(int(position_size))
             )
             if should_exit:
                 self.signal_forced_exit(
                     reason="Contract expiry - position must close",
-                    contract_code=current_contract,
+                    contract_code=held_contract,
                     position_size=position_size,
                     observer_date=current_date
                 )
                 return True
 
         return False
+
+    def get_forced_exits(self) -> List[Dict[str, Any]]:
+        """Return list of all forced exits this hook has executed (analytics).
+
+        Each entry is a dict with: date (ISO), contract_code, position_size,
+        close_price, reason, status. Returned list is a shallow copy.
+        """
+        return list(self._forced_exits)
 
     def __repr__(self) -> str:
         market = self._market_adapter.market_code if self._market_adapter else 'None'

@@ -139,7 +139,7 @@ class WFARunner:
         full_indicators = full_indicators.sort_index()
 
         # Create market adapter and strategy class ONCE
-        market_adapter = EngineFactory.create_market_adapter(ctx=self.ctx)
+        market_adapter = EngineFactory.create_market_adapter(ctx=self.ctx, mode="backtest")
         strategy_class = get_strategy_class(ctx=self.ctx)
 
         # Create per-window storage

@@ -586,6 +586,25 @@ class BacktraderPortfolio(IPortfolio):
             return 0.0
         return abs(bt_position.size) * self._data.close[0]
 
+    def get_position_contract(self) -> Optional[str]:
+        """Return the actual held contract code (e.g. 'al2602'), not the
+        base instrument symbol.
+
+        For SHFE futures backtest: ContractAwareBroker stores the held
+        contract on EnhancedPosition.contract (set when the position was
+        opened). Read it from there so ForcedExitStrategyHook can ask the
+        adapter about the *held* contract's expiry, not today's main contract
+        — those diverge once the front-month rolls over while the strategy
+        still holds the previous month.
+
+        Falls back to base symbol if the broker isn't ContractAware.
+        """
+        bt_position = self._broker.getposition(self._data)
+        if bt_position.size == 0:
+            return None
+        contract = getattr(bt_position, 'contract', None)
+        return contract if contract else self._symbol
+
     def get_account_info(self) -> AccountInfo:
         """Get account information."""
         equity = self._broker.getvalue()

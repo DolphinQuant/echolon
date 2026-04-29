@@ -106,7 +106,22 @@ class SHFEAdapter(BaseMarketAdapter):
         Args:
             symbol: Primary product symbol (e.g., 'al', 'cu')
             trading_calendar_path: Path to trading calendar CSV file
-            days_before_rollover: Trading days before expiry to trigger rollover
+            days_before_rollover: Trading days before contract expiry on which
+                to SIGNAL forced exit. Set by EngineFactory.create_market_adapter
+                — both backtest and deploy use 1, giving fills on trading day
+                T (last trading day before delivery month):
+                    backtest interday: hook fires T-1, submits exit, skips
+                        strategy.next on T-1, backtrader fills T's open.
+                    deploy night-market interday: hook fires 20:30 calendar
+                        T-1, place_order blocks until 21:00, fills 21:00
+                        calendar T-1 = night-session open of trading day T
+                        (per SHFE convention).
+                    deploy day-only interday: hook fires 14:55 calendar T-1,
+                        order fills before 15:00 calendar T-1 (= same trading
+                        day T-1, one day earlier than night-market — accepted
+                        as conservative-safe).
+                "Expiry" here = last trading day of the month before the
+                contract's delivery month (SHFE rule for "must close by").
         """
         super().__init__()
 
