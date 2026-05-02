@@ -63,24 +63,25 @@ def test_list_indicators_without_filter_returns_many():
     assert len(names) >= 170
 
 
-def test_list_indicators_with_cluster_filter():
+def test_list_indicators_with_has_lookback_filter():
+    """Phase F-5: list_indicators(has_lookback=True) replaces cluster filter."""
     fn = _get_tool_fn("list_indicators")
-    lookback = fn(cluster="indicators_with_lookback")
+    lookback = fn(has_lookback=True)
     assert "rsi" in lookback
     assert "atr" in lookback
-    assert "obv" not in lookback  # obv is no-lookback
+    assert "obv" not in lookback  # obv has no period param
 
 
 def test_indicator_info_enriched_from_catalog():
+    """Phase F-5: cluster + output_columns dropped; has_lookback added."""
     fn = _get_tool_fn("indicator_info")
     info = fn("rsi")
     assert info is not None
     assert info["name"] == "rsi"
-    assert info["cluster"] == "indicators_with_lookback"
+    assert info["has_lookback"] is True
     assert info["function"] == "rsi"
     assert info["file"] == "ta_lib"
     assert any(p["name"] == "timeperiod" for p in info["params"])
-    assert info["output_columns"] == ["rsi_{period}"]
 
 
 def test_indicator_info_unknown_returns_none():

@@ -1,4 +1,12 @@
-"""Echolon patterns — parse docs/PATTERNS.md, expose programmatic access."""
+"""Echolon patterns — parse the patterns SKILL.md, expose programmatic access.
+
+Phase F-9b: source moved from ``docs/PATTERNS.md`` (repo root, invisible to
+pip-installed users) to ``echolon/native/skills/echolon_api/patterns/SKILL.md``
+(package data, ships in wheel via the existing ``echolon/native/**/*.md``
+artifact pattern in pyproject.toml). The parser handles the YAML frontmatter
+that skill files carry (block delimited by ``---`` lines) by skipping it
+before the section walker starts.
+"""
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -15,7 +23,10 @@ class Pattern:
     raw_markdown: str
 
 
-_PATTERNS_MD = Path(__file__).resolve().parents[3] / "docs" / "PATTERNS.md"
+_PATTERNS_MD = (
+    Path(__file__).resolve().parent.parent
+    / "skills" / "echolon_api" / "patterns" / "SKILL.md"
+)
 
 # Matches a section header in one of two forms:
 #   **Label:**                (block: content on following lines)

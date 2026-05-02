@@ -51,7 +51,7 @@ macd_fast = ctx.minutes_to_bars(25)
 
 ## When to use
 
-- As the primary argument to every echolon backtest/deploy/data entry point. `EngineFactory.create_*`, `run_backtest`, `OptunaOptimizer`, `WFARunner`, `run_data_pipeline`, `run_indicator_calculation`, `optimize_regime_params`, `load_backtest_data`, `load_indicator_metadata`, `get_strategy_class` — every one takes `ctx`.
+- As the primary argument to every echolon backtest/deploy/data entry point. `EngineFactory.create_*`, `run_backtest`, `OptunaOptimizer`, `WFARunner`, `run_data_pipeline`, `run_indicator_calculation`, `load_backtest_data`, `load_indicator_metadata`, `get_strategy_class` — every one takes `ctx`. (TRS regime optimization is qorka-hosted — see `modules.paradigms.trs.regime_machinery`.)
 - To compute frequency-appropriate indicator lookbacks in platform-agnostic strategy code: call `ctx.get_indicator_params()` or the `hours_to_bars` / `minutes_to_bars` helpers rather than hardcoding periods.
 - To encode/decode SHFE session phases for a Backtrader data feed: always go through `ctx.encode_phase` / `ctx.decode_phase` — the factory picks the right granular (`night/morning/afternoon`) vs aggregated (`night_session/day_session`) lookup table based on `ctx.bar_size` at ctx construction time.
 - Do *not* instantiate `TradingContext(...)` by hand outside of `MarketFactory`. The `_encode_phase`/`_decode_phase` callables default to trivial lambdas (`x → 0` / `x → 'unknown'`) and must be overridden per market × bar-size. `TradingContext.from_market` is the only sanctioned bypass.
@@ -85,5 +85,5 @@ macd_fast = ctx.minutes_to_bars(25)
 
 - `market_factory` skill — builds `TradingContext` and sets the `_encode_phase`/`_decode_phase` callbacks.
 - `engine_factory` skill — primary consumer; every `create_*` method takes a `ctx`.
-- `load_backtest_data`, `load_indicator_metadata`, `run_data_pipeline`, `run_indicator_calculation`, `optimize_regime_params` skills — all accept `ctx` as the first positional argument.
-- echolon docs: `docs/CONFIG_REFERENCE.md`, `docs/COMPONENT_GUIDE.md`.
+- `load_backtest_data`, `load_indicator_metadata`, `run_data_pipeline`, `run_indicator_calculation` skills — all accept `ctx` as the first positional argument.
+- echolon docs: `the config_reference skill`, `the component_guide skill`.

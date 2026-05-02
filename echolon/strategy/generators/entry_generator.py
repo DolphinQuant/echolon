@@ -40,9 +40,10 @@ class entry_rule(BaseComponent):
             type="hold",
             entry_reason="scaffold default — no pathway wired",
             intent=None,
-            # TODO: replace with self.get_market_regime() (interday) or
-            # self.get_session_phase() (intraday) once pathway logic is added.
-            regime="unknown",
+            # Optional: TRS strategies populate regime with self.get_market_regime()
+            # (interday) or self.get_session_phase() (intraday). TSMOM and other
+            # paradigms typically leave regime unset.
+            # regime=self.get_market_regime(),
         )
 '''
 

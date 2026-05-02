@@ -22,9 +22,17 @@ from mcp.server.fastmcp import FastMCP
 
 from echolon.indicators import catalog as _catalog
 from echolon.native import patterns as _patterns
+from echolon.native import skills as _skills
 from echolon.native import templates as _templates
 from echolon.native.errors import get_error_doc as _get_error_doc
 from echolon.native.validation import validate_strategy as _validate_strategy
+
+
+# Phase F-10c: generic markdown fetcher constrained to echolon/native/.
+# Resolves to the package directory regardless of install location (sdist
+# checkout vs. pip-installed wheel).
+import echolon.native as _native
+_NATIVE_ROOT = Path(_native.__file__).parent
 
 
 def build_server() -> FastMCP:
@@ -57,7 +65,15 @@ def build_server() -> FastMCP:
 
     @server.tool()
     def get_error_doc(code: str) -> dict:
-        """Fetch the parsed error documentation for a given error code.
+        """Fetch the structured error documentation for a given error code.
+
+        ``what`` and ``why`` come from the in-memory registry
+        (``echolon.errors.ERROR_CATALOG``); the long-form sections (``fix``,
+        ``example``, ``common_causes``, ``related``) come from the per-code
+        markdown at ``echolon/native/errors/codes/{code}.md``. The full
+        markdown body is also returned as ``long_form_markdown`` so an
+        agent can consume the prose verbatim if the parsed sections are
+        empty (parser-resilience fallback).
 
         Args:
             code: Error code like 'VAL-001' or 'IND-003'.
@@ -70,37 +86,51 @@ def build_server() -> FastMCP:
             "fix": doc.fix,
             "common_causes": doc.common_causes,
             "related": doc.related,
+            "example": doc.example,
+            "long_form_markdown": doc.long_form_markdown,
         }
 
     @server.tool()
-    def list_indicators(cluster: str | None = None) -> list[str]:
-        """Return all indicator names in the echolon catalog, optionally filtered by cluster.
+    def list_indicators(has_lookback: bool | None = None) -> list[str]:
+        """Return all indicator names in the echolon catalog, optionally filtered by lookback semantics.
 
         Args:
-            cluster: Optional cluster filter. Valid values:
-                ``"indicators_with_lookback"``, ``"indicators_without_lookback"``,
-                ``"indicators_with_special_params"``, ``"intraday_context_indicators"``.
+            has_lookback: Optional filter.
+                ``True`` → only indicators with a period-like parameter
+                (e.g. RSI, ATR — sweepable single-dim lookback).
+                ``False`` → only indicators without a period parameter
+                (no-param indicators like OBV, multi-param scalar indicators
+                like BBANDS, special-config indicators).
                 Omit for all.
+
+        Phase F-5: replaced the ``cluster`` filter with ``has_lookback``.
+        The previous 4-way cluster split collapsed to a binary because two
+        of the three "non-lookback" categories were treated identically by
+        every consumer.
         """
-        return _catalog.list_all(cluster=cluster)
+        return _catalog.list_all(has_lookback=has_lookback)
 
     @server.tool()
     def indicator_info(name: str) -> dict | None:
         """Return structured info for one indicator, or None if unknown.
 
-        Keys: ``name``, ``cluster``, ``function``, ``file``, ``params``
-        (list of ``{name, default, type}`` dicts), ``output_columns``.
+        Keys: ``name``, ``has_lookback``, ``function``, ``file``, ``params``
+        (list of ``{name, default, type}`` dicts).
+
+        Phase F-5: ``cluster`` and ``output_columns`` fields removed —
+        ``has_lookback`` is the binary replacement; column names are
+        emitted by the runtime via ``processor._build_suffix`` (single
+        source of truth, correctly handles multi-param sweeps).
         """
         info = _catalog.info(name)
         if info is None:
             return None
         return {
             "name": info.name,
-            "cluster": info.cluster,
+            "has_lookback": info.has_lookback,
             "function": info.function,
             "file": info.file,
             "params": info.params,
-            "output_columns": info.output_columns,
         }
 
     @server.tool()
@@ -405,6 +435,139 @@ def build_server() -> FastMCP:
         if tpl is None:
             return None
         return {"name": tpl.name, "files": tpl.files}
+
+    @server.tool()
+    def list_skills() -> list[dict]:
+        """Return all in-package skills as ``[{name, description}]``.
+
+        Each skill is one ``SKILL.md`` packet under
+        ``echolon/native/skills/echolon_api/<name>/``. Description comes
+        from the YAML frontmatter ``description:`` field. Use this as a
+        directory of "what doctrine is available" before calling
+        ``get_skill(name)`` for the body.
+
+        Phase F-10b: previously skills were reachable only by in-runtime
+        skill loaders (Claude Code, OpenAI Agents SDK). MCP-only agents
+        now have parity access to the same content.
+        """
+        return [
+            {"name": name, "description": (_skills.get_skill(name).description if _skills.get_skill(name) else "")}
+            for name in _skills.list_skills()
+        ]
+
+    @server.tool()
+    def get_skill(name: str) -> dict | None:
+        """Return one skill's body, or None if unknown.
+
+        Returns ``{name, description, body, body_no_frontmatter}``.
+        ``body`` is the full file (including YAML frontmatter); use
+        ``body_no_frontmatter`` for the prose alone.
+        """
+        s = _skills.get_skill(name)
+        if s is None:
+            return None
+        return {
+            "name": s.name,
+            "description": s.description,
+            "body": s.body,
+            "body_no_frontmatter": s.body_no_frontmatter,
+        }
+
+    @server.tool()
+    def get_doc(path: str) -> dict | None:
+        """Read any markdown file under ``echolon/native/`` and return its body.
+
+        Phase F-10c: generic fallback for content not covered by the
+        dedicated tools (``get_pattern``, ``get_skill``, ``get_error_doc``,
+        ``load_template``). Useful for skill-cross-reference resolution and
+        supplementary files (``echolon/native/skills/SKILLS.md``,
+        ``echolon/native/errors/codes/README.md``, template READMEs).
+
+        Args:
+            path: Relative path under ``echolon/native/`` (e.g.
+                ``"skills/SKILLS.md"``, ``"errors/codes/README.md"``,
+                ``"templates/minimal/README.md"``). Absolute paths and
+                paths escaping the package root are refused with
+                ``error="path_outside_native"``.
+
+        Returns ``{path, body}`` on success, or
+        ``{error, message, path}`` on failure (path-traversal attempt,
+        file not found, not a markdown file).
+        """
+        if Path(path).is_absolute():
+            return {"error": "path_outside_native", "message": "Absolute paths are not allowed.", "path": path}
+        target = (_NATIVE_ROOT / path).resolve()
+        try:
+            target.relative_to(_NATIVE_ROOT.resolve())
+        except ValueError:
+            return {"error": "path_outside_native", "message": f"{path} resolves outside echolon/native/.", "path": path}
+        if not target.is_file():
+            return {"error": "file_not_found", "message": f"{path} is not a file under echolon/native/.", "path": path}
+        if target.suffix.lower() != ".md":
+            return {"error": "not_markdown", "message": f"{path} is not a .md file.", "path": path}
+        return {"path": str(target.relative_to(_NATIVE_ROOT.resolve())), "body": target.read_text()}
+
+    @server.tool()
+    def validate_strategy_full(strategy_dir: str) -> dict:
+        """Run every shipped validator and return merged findings.
+
+        Phase F-10d: composes all 6 individual MCP validators
+        (``validate_strategy`` / ``validate_component_protocol_signatures``
+        / ``validate_component_integration`` / ``validate_component_logging``
+        / ``validate_parameter_access``) so an agent gets a complete
+        validation report from a single tool call instead of having to
+        know which validators exist.
+
+        Args:
+            strategy_dir: Absolute path to the strategy directory.
+
+        Returns:
+            ``{status, any_errors, total_findings, findings: [{code, ...}],
+            invocations: [{validator, count}]}``. ``status`` is ``"VALID"``
+            iff no findings were reported by any validator.
+        """
+        from echolon.strategy.validators.component_signatures import (
+            validate_component_signatures as _vcs,
+        )
+        from echolon.strategy.validators.component_integration import (
+            validate_component_integration as _vci,
+        )
+        from echolon.strategy.validators.component_logging import (
+            validate_component_logging as _vcl,
+        )
+        from echolon.strategy.validators.parameter_access import (
+            validate_parameter_access as _vpa,
+        )
+
+        invocations: list[dict] = []
+        findings: list[dict] = []
+
+        result = _validate_strategy(Path(strategy_dir))
+        struct_findings = [
+            {"code": e.code, "what": e.what, "why": e.why, "fix": e.fix, "docs_url": e.docs_url}
+            for e in result.errors
+        ]
+        invocations.append({"validator": "validate_strategy", "count": len(struct_findings)})
+        findings.extend(struct_findings)
+
+        for name, impl in (
+            ("validate_component_protocol_signatures", _vcs),
+            ("validate_component_integration", _vci),
+            ("validate_component_logging", _vcl),
+            ("validate_parameter_access", _vpa),
+        ):
+            sub = impl(strategy_dir=strategy_dir).to_dict()
+            sub_findings = sub.get("findings", [])
+            invocations.append({"validator": name, "count": len(sub_findings)})
+            findings.extend(sub_findings)
+
+        return {
+            "status": "VALID" if not findings else "INVALID",
+            "any_errors": bool(findings),
+            "total_findings": len(findings),
+            "findings": findings,
+            "invocations": invocations,
+        }
 
     return server
 

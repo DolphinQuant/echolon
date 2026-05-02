@@ -1,8 +1,9 @@
 """Phase A9 — every bundled strategy_indicator_list.json must round-trip through IndicatorList.
 
-Walks echolon/native/templates/ + echolon/examples/ and validates each
-strategy_indicator_list.json against the catalog-aware schema. Catches drift
-between shipped fixtures and the catalog.
+Walks echolon/native/templates/ (the consolidated source — Phase F-8 merged
+the repo-root examples/ into it) and validates each strategy_indicator_list.json
+against the catalog-aware schema. Catches drift between shipped fixtures
+and the catalog.
 """
 import json
 from pathlib import Path
@@ -15,10 +16,8 @@ _REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def _all_fixture_paths():
-    roots = [
-        _REPO_ROOT / "echolon" / "native" / "templates",
-        _REPO_ROOT / "examples",
-    ]
+    # Phase F-8: examples + templates consolidated into one source.
+    roots = [_REPO_ROOT / "echolon" / "native" / "templates"]
     paths = []
     for r in roots:
         if r.exists():

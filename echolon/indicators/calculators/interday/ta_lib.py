@@ -245,6 +245,26 @@ def min_func(df: pd.DataFrame, timeperiod: int = 30, indicator_name: str = None)
     return min_values
 
 
+def highest_high(df: pd.DataFrame, timeperiod: int = 20, indicator_name: str = None) -> np.ndarray:
+    """Donchian channel upper — highest of HIGH prices over N periods.
+
+    Distinct from ``max_func`` (which uses CLOSE). Use this for breakout
+    strategies where the upper boundary is the rolling maximum of the
+    high series, not the close series.
+    """
+    return talib.MAX(df['high'].values, timeperiod=timeperiod)
+
+
+def lowest_low(df: pd.DataFrame, timeperiod: int = 20, indicator_name: str = None) -> np.ndarray:
+    """Donchian channel lower — lowest of LOW prices over N periods.
+
+    Distinct from ``min_func`` (which uses CLOSE). Use this for breakout
+    strategies where the lower boundary is the rolling minimum of the
+    low series, not the close series.
+    """
+    return talib.MIN(df['low'].values, timeperiod=timeperiod)
+
+
 def minindex(df: pd.DataFrame, timeperiod: int = 30, indicator_name: str = None) -> np.ndarray:
     """Index of lowest value over a specified period"""
     min_indices = talib.MININDEX(df['close'].values, timeperiod=timeperiod)

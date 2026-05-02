@@ -50,7 +50,6 @@ from .interfaces import (
 from echolon.errors import raise_error
 from echolon.strategy.schemas import EntrySignalOutput, ExitSignalOutput, RiskOutput, SizerOutput, validate_position_size
 from .hooks.component_hook_base import IComponentHook
-from echolon.indicators.calculators.interday.market_regime import convert_regime_to_string
 from echolon.backtest.logging_utils import get_run_context, should_log_details
 # decode_session_phase is now accessed via trading_context.decode_phase()
 
@@ -625,8 +624,12 @@ class BaseComponent(ABC):
                 "Use get_session_phase() instead."
             )
 
+        # Phase G: classifier label_map comes from the registered classifier
+        # (qorka registers via setup_classifiers when paradigm='trs').
+        from echolon.indicators.registry import get_regime_classifier
+        classifier = get_regime_classifier('market_regime')
         numeric_regime = self.market_data.get_indicator('market_regime', index)
-        return convert_regime_to_string(numeric_regime)
+        return classifier.label_map.get(int(numeric_regime), 'unknown')
 
     def get_session_phase(self, index: int = 0) -> str:
         """

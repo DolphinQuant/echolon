@@ -134,8 +134,15 @@ class IndicatorProcessor:
             n_jobs: Number of parallel processes (default: CPU count)
             regime_params: Regime classification parameters (required when
                 ``indicator_list`` contains ``market_regime`` on interday ctx).
-                Call ``echolon.indicators.optimize_regime_params(ctx)`` first
-                and pass the result here.
+                Produce via ``echolon.indicators.get_regime_optimizer(
+                "market_regime").optimize(df=None, n_trials=400, ctx=ctx)``
+                after qorka has registered the TRS optimizer at session start
+                (``modules.paradigms.trs.regime_machinery.setup_classifiers()``).
+
+                For custom regime classifiers, register via
+                ``echolon.indicators.registry.register_regime_classifier()``.
+                The pipeline routes by indicator name; the built-in
+                ``market_regime`` classifier is auto-registered at module load.
             backtest_start_year: Earliest year (e.g. 2018) used to filter
                 contracts in :meth:`_is_contract_in_backtest_period`.
         """
@@ -677,8 +684,13 @@ def _validate_regime_params(
     """Raise ValueError when ``market_regime`` is requested on interday ctx but
     ``regime_params`` is None.
 
-    Call ``echolon.indicators.optimize_regime_params(ctx, ohlcv_data)`` first and
-    pass the result as ``regime_params=``.
+    For TRS-paradigm regime params, install qorka and call
+    ``modules.paradigms.trs.regime_machinery.setup_classifiers()`` at session
+    start, then::
+
+        params = echolon.indicators.get_regime_optimizer("market_regime").optimize(
+            df=None, n_trials=400, ctx=ctx,
+        )
 
     Args:
         indicator_list: Flat-dict indicator spec (keys are indicator names).
@@ -687,12 +699,22 @@ def _validate_regime_params(
     """
     if ctx.is_intraday:
         return  # regime_params not needed for intraday
-    needs_regime = "market_regime" in {k.lower() for k in indicator_list.keys()}
+
+    # Phase G: registry-aware check. Any indicator name that matches a
+    # registered classifier requires regime_params (the classifier's
+    # hyperparameter dict).
+    from echolon.indicators.registry import list_classifiers
+    registered = {n.lower() for n in list_classifiers()}
+    keys_lower = {k.lower() for k in indicator_list.keys()}
+    needs_regime = bool(keys_lower & registered)
     if needs_regime and regime_params is None:
         raise ValueError(
-            "indicator_list contains 'market_regime' but regime_params is None. "
-            "Call echolon.indicators.optimize_regime_params(ctx, ohlcv_data) first "
-            "and pass the result as regime_params=, or provide an explicit dict."
+            "indicator_list contains a registered regime classifier name but "
+            "regime_params is None. Use the classifier registry: "
+            "echolon.indicators.get_regime_optimizer('<classifier_name>').optimize("
+            "df=None, n_trials=400, ctx=ctx). "
+            "For TRS rule-based optimization, install qorka and call "
+            "modules.paradigms.trs.regime_machinery.setup_classifiers() first."
         )
 
 
@@ -822,6 +844,10 @@ def _compute_indicators_for_contract(
         Dict mapping column names to computed numpy arrays.
     """
     from echolon.indicators.schema import expand_params_spec
+    from echolon.indicators.registry import (
+        is_registered_classifier,
+        get_regime_classifier,
+    )
 
     _validate_regime_params(indicator_list, regime_params, ctx)
 
@@ -829,6 +855,31 @@ def _compute_indicators_for_contract(
     results: Dict[str, np.ndarray] = {}
 
     for indicator_name, param_spec in indicator_list.items():
+        # Phase G: registry-driven dispatch for registered classifiers.
+        # If the indicator name matches a registered RegimeClassifier, use
+        # its fit_classify() instead of the indicator_mapping lookup. This
+        # is the extension path for paradigm-specific machinery — TRS, HMM,
+        # Carry. Echolon ships zero built-in classifiers; consumers register
+        # via ``echolon.indicators.registry.register_regime_classifier``.
+        if is_registered_classifier(indicator_name):
+            classifier = get_regime_classifier(indicator_name.lower())
+            # Build merged params (auto + caller spec). For classifiers,
+            # ``regime_params`` is the caller-supplied hyperparameter dict;
+            # _auto_params_for returns it as-is for ``MARKET_REGIME``.
+            auto_params = _auto_params_for(
+                indicator_name, regime_params, default_params, ctx
+            )
+            merged_params: Dict[str, Any] = {**auto_params, **param_spec}
+            series_or_array = classifier.fit_classify(df, merged_params)
+            # Normalize to ndarray expected by downstream consumers.
+            arr = (
+                series_or_array.values
+                if hasattr(series_or_array, "values")
+                else series_or_array
+            )
+            results[classifier.name] = arr
+            continue
+
         function = _resolve_function(indicator_name, frequency=frequency)
 
         # Library-derived params that caller need not specify

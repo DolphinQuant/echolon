@@ -42,12 +42,16 @@ class EntrySignalOutput(BaseModel):
     - type: Non-empty string (e.g., 'entry_long', 'entry_short', 'hold')
     - entry_reason: Non-empty human-readable reason for the signal
     - intent: OrderIntent for strategy coordination (ENTRY_LONG, ENTRY_SHORT, or None for HOLD)
-    - regime: Trading context at time of signal - market regime for interday (trending_up, ranging), session phase for intraday (night, morning, afternoon)
+
+    OPTIONAL CONTEXT FIELDS:
+    - regime: Optional paradigm-specific context label. TRS strategies populate
+      with a regime label (trending_up / ranging / volatile / trending_down).
+      TSMOM and other paradigms typically leave this None.
 
     STRATEGY-SPECIFIC FIELDS (Optional via extra='allow'):
     Components can add diagnostic fields like indicator values, etc.
 
-    Example:
+    Example (TRS strategy populating regime):
         >>> output = EntrySignalOutput(
         ...     signal='LONG',
         ...     strength=0.85,
@@ -57,6 +61,16 @@ class EntrySignalOutput(BaseModel):
         ...     regime='trending_up',
         ...     # Strategy-specific extras (allowed!)
         ...     tema_short=4580.2
+        ... )
+
+    Example (TSMOM strategy omitting regime):
+        >>> output = EntrySignalOutput(
+        ...     signal='LONG',
+        ...     strength=0.92,
+        ...     type='entry_long',
+        ...     entry_reason='momentum signal positive',
+        ...     intent=OrderIntent.ENTRY_LONG,
+        ...     # regime omitted — TSMOM is regime-blind
         ... )
     """
     signal: Literal['LONG', 'SHORT', 'HOLD'] = Field(
@@ -83,9 +97,15 @@ class EntrySignalOutput(BaseModel):
         default=None,
         description="Order intent for strategy execution (ENTRY_LONG, ENTRY_SHORT, or None for HOLD)"
     )
-    regime: str = Field(
-        ...,
-        description="Trading context at time of signal - market regime for interday (trending_up, ranging), session phase for intraday (night, morning, afternoon)"
+    regime: Optional[str] = Field(
+        default=None,
+        description=(
+            "Optional paradigm-specific context label at signal time. TRS "
+            "strategies populate with a regime label (trending_up / ranging / "
+            "volatile / trending_down) or session phase (intraday). TSMOM and "
+            "other paradigms typically leave this None. Free-form string — "
+            "echolon does not enumerate values."
+        )
     )
 
     @field_validator("signal", mode="before")

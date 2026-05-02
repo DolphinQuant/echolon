@@ -1,4 +1,4 @@
-"""Momentum breakout: exit on N-day trailing low."""
+"""Momentum breakout: exit on N-bar trailing low."""
 
 from echolon.strategy.component import BaseComponent
 from echolon.strategy.interfaces import OrderIntent
@@ -8,32 +8,33 @@ from echolon.strategy.schemas import ExitSignalOutput
 class exit_rule(BaseComponent):
     def __init__(self, trading_engine, **params):
         super().__init__(trading_engine, **params)
-        self.exit_lookback = self.params.get("exit_lookback", 10)
+        self.exit_lookback = self.params["exit_lookback"]
         self.bars_held = 0
 
     def should_exit(self) -> ExitSignalOutput:
         pos = self.portfolio.get_position()
         if not pos or pos.size == 0:
             self.bars_held = 0
-            return ExitSignalOutput(
+            out = ExitSignalOutput(
                 should_exit=False, exit_reason="No position",
                 position_size=0.0, bars_since_entry=0,
             )
-        self.bars_held += 1
-        close = self.get_current_price()
-        try:
-            low_n = self.get_indicator(f"low_{self.exit_lookback}")
-        except Exception:
-            low_n = None
-        if low_n is not None and close < low_n:
-            return ExitSignalOutput(
-                should_exit=True,
-                exit_reason=f"Close {close} < {self.exit_lookback}-day low {low_n}",
-                position_size=abs(pos.size),
-                bars_since_entry=self.bars_held,
-                intent=OrderIntent.EXIT_LONG,
-            )
-        return ExitSignalOutput(
-            should_exit=False, exit_reason="Holding",
-            position_size=abs(pos.size), bars_since_entry=self.bars_held,
-        )
+        else:
+            self.bars_held += 1
+            close = self.get_current_price()
+            low_n = self.get_indicator(f"lowest_low_{self.exit_lookback}")
+            if close < low_n:
+                out = ExitSignalOutput(
+                    should_exit=True,
+                    exit_reason=f"Close {close} < {self.exit_lookback}-bar low {low_n}",
+                    position_size=abs(pos.size),
+                    bars_since_entry=self.bars_held,
+                    intent=OrderIntent.EXIT_LONG,
+                )
+            else:
+                out = ExitSignalOutput(
+                    should_exit=False, exit_reason="Holding",
+                    position_size=abs(pos.size), bars_since_entry=self.bars_held,
+                )
+        self.log_exit_output(out)
+        return out

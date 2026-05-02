@@ -342,19 +342,21 @@ class BacktestRunner:
             ctx=self.ctx, strategy_code_dir=self.strategy_code_dir
         )
 
-        # Extract regime data for trade analyzers (regime attribution fix - BUG_001)
-        regime_data = None
+        # Extract segmentation data for trade analyzers (BUG_001 attribution fix).
+        # TRS-paradigm strategies use 'market_regime' as the segmentation column;
+        # other paradigms can stratify analyzers by their own categorical column.
+        segmentation_data = None
         if 'market_regime' in self._indicators.columns:
-            regime_data = self._indicators[['market_regime']].reset_index()
-            regime_data.columns = ['trading_date', 'market_regime']
-            logger.debug(f"Regime data extracted for analyzers: {len(regime_data)} records")
+            segmentation_data = self._indicators[['market_regime']].reset_index()
+            segmentation_data.columns = ['trading_date', 'market_regime']
+            logger.debug(f"Segmentation data extracted for analyzers: {len(segmentation_data)} records")
 
         # Setup and run (commission, slippage, multiplier auto-retrieved from market_adapter)
         engine.setup(
             data_feed=data_feed,
             strategy_class=strategy_class,
             strategy_params=params,
-            regime_data=regime_data,  # BUG_001 fix: pass regime data to analyzers
+            segmentation_data=segmentation_data,  # BUG_001 fix: pass segmentation data to analyzers
         )
 
         results = engine.run()

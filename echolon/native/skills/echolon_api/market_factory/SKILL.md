@@ -68,10 +68,10 @@ all_codes = MarketFactory.list_instruments("SHFE")
 
 - **`ValueError: Unsupported market: '...'`** — `create` / `get_instrument_flexible` was called with a market code outside `{'SHFE', 'CRYPTO'}`. Add a loader branch in `MarketFactory._load_market` to register the new market.
 - **`ValueError: Unsupported instrument: '...' for market '...'`** — the instrument code/name is not in that market's `instruments` registry. Check `MarketFactory.list_instruments(market)` or the market's `config.py`.
-- **`FileNotFoundError`** on `from_session` — `session/state.json` is missing. Most commonly the caller forgot to set `ECHOLON_SESSION_DIR` (see `PathsConfig.from_env()`) or the session wasn't initialised. Related: `CFG-002` in `docs/ERROR_CATALOG.md`.
+- **`FileNotFoundError`** on `from_session` — `session/state.json` is missing. Most commonly the caller forgot to set `ECHOLON_SESSION_DIR` (see `PathsConfig.from_env()`) or the session wasn't initialised. Related: `CFG-002` in `MCP get_error_doc(code)`.
 - **`pydantic.ValidationError`** from `TradingTarget.load` / `TradingTargetConfigSchema.model_validate` — the session or trading-target JSON is structurally invalid. Inspect the raised error; no Echolon error code is issued yet for this path.
 
 ## See also
 
 - `trading_context` skill — the `TradingContext` object `MarketFactory` returns
-- echolon docs: `docs/CONFIG_REFERENCE.md`, `docs/COMPONENT_GUIDE.md`
+- echolon docs: `the config_reference skill`, `the component_guide skill`

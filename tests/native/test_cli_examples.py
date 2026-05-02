@@ -13,13 +13,13 @@ runner = CliRunner()
 def test_examples_list():
     result = runner.invoke(app, ["examples", "--list"])
     assert result.exit_code == 0
-    assert "01_minimal" in result.stdout
-    assert "02_momentum_breakout" in result.stdout
+    assert "minimal" in result.stdout
+    assert "momentum_breakout" in result.stdout
 
 
 def test_examples_copy(tmp_path):
     dest = tmp_path / "my_copy"
-    result = runner.invoke(app, ["examples", "copy", "01_minimal", str(dest)])
+    result = runner.invoke(app, ["examples", "copy", "minimal", str(dest)])
     assert result.exit_code == 0
     assert dest.is_dir()
     assert (dest / "strategy.py").exists()

@@ -667,9 +667,15 @@ class BaseStrategy(IStrategyCallbacks):
         # 2: volatile) — strategies reading regime here would silently
         # mis-classify volatile bars as trending_down and treat valid -1
         # values as 'unknown'.
-        from echolon.indicators.utils.regime_utils import REGIME_NUMERIC_TO_STRING
+        # Phase G: classifier label_map comes from the registered classifier,
+        # not a hard-coded import. The 'market_regime' classifier must be
+        # registered (qorka does this via setup_classifiers when paradigm='trs').
+        # Strategies running without a registered classifier raise a clear
+        # error rather than silently returning 'unknown'.
+        from echolon.indicators.registry import get_regime_classifier
+        classifier = get_regime_classifier('market_regime')
         numeric_regime = self.market_data.get_indicator('market_regime', index)
-        return REGIME_NUMERIC_TO_STRING.get(int(numeric_regime), 'unknown')
+        return classifier.label_map.get(int(numeric_regime), 'unknown')
 
     def get_session_phase(self, index: int = 0) -> str:
         """

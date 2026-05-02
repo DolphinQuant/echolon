@@ -62,10 +62,13 @@ def test_known_indicator_with_no_params_passes():
 
 
 def test_multiple_valid_indicators_pass():
+    """Schema accepts a mix of paradigm-blind indicators. Phase G removed
+    `market_regime` from echolon's catalog; classifier names are validated
+    via the registry path at runtime, not at schema-validation time."""
     IndicatorList.model_validate({
         "rsi": {"timeperiod": [10, 20]},
         "atr": {"timeperiod": 14},
         "obv": {},
-        "market_regime": {},
+        "highest_high": {"timeperiod": 20},
         "bbands_upper": {"timeperiod": 20},
     })

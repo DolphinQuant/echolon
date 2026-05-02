@@ -50,7 +50,28 @@ import datetime
 import logging
 from typing import Optional, Dict, Any, List, TYPE_CHECKING
 
-from echolon.indicators.utils.regime_utils import convert_regime_to_string
+# Phase G: classifier labels come from the registered classifier's label_map.
+# The trade analyzer stratifies trades by segmentation column (typically the
+# TRS-paradigm 'market_regime' indicator). Conversion happens via the
+# registered classifier; if no classifier is registered, the analyzer returns
+# the raw value (numeric or string) without normalization.
+def convert_regime_to_string(value):
+    """Best-effort label conversion for trade-log display.
+
+    Tries the registered ``market_regime`` classifier's label_map first.
+    If unregistered, returns the value coerced to string ('unknown' for NaN/None).
+    """
+    import pandas as _pd
+    if value is None or _pd.isna(value):
+        return "unknown"
+    if isinstance(value, str):
+        return value  # already a label
+    try:
+        from echolon.indicators.registry import get_regime_classifier
+        classifier = get_regime_classifier("market_regime")
+        return classifier.label_map.get(int(value), "unknown")
+    except (KeyError, ValueError, TypeError):
+        return str(value)
 
 if TYPE_CHECKING:
     from echolon.strategy.interfaces import IMarketAdapter
@@ -784,7 +805,7 @@ def add_analyzers(
     use_contract_aware_trades: bool = True,
     market_adapter: Optional['IMarketAdapter'] = None,
     contract_manager: Optional['ContractIndicatorManager'] = None,
-    regime_data: Optional[pd.DataFrame] = None,
+    segmentation_data: Optional[pd.DataFrame] = None,
     session_context_provider: Optional[Any] = None,
 ):
     """
@@ -800,8 +821,10 @@ def add_analyzers(
         Market adapter for contract management
     contract_manager : ContractIndicatorManager, optional
         Manager for contract-specific data
-    regime_data : pd.DataFrame, optional
-        Pre-loaded regime data
+    segmentation_data : pd.DataFrame, optional
+        Pre-loaded per-bar categorical column for stratifying trade metrics
+        (e.g., TRS-paradigm 'market_regime'; other paradigms can use any
+        categorical column).
     contract_multiplier : float
         Contract multiplier for PnL calculations
     session_context_provider : ISessionContext, optional
@@ -838,14 +861,16 @@ def add_analyzers(
     cerebro.addanalyzer(bt.analyzers.PositionsValue, _name='positions')
     cerebro.addanalyzer(bt.analyzers.Transactions, _name='transactions')
 
-    # Trade analyzers
+    # Trade analyzers — pass segmentation_data via the analyzer's params dict
+    # under the legacy key 'regime_data' (Backtrader analyzers reference params
+    # by name; the analyzer body itself uses self.p.regime_data internally).
     if use_contract_aware_trades:
         cerebro.addanalyzer(
             ContractAwareTradeAnalyzer,
             _name='contract_aware_trades',
             market_adapter=market_adapter,
             contract_manager=contract_manager,
-            regime_data=regime_data,
+            regime_data=segmentation_data,
             contract_multiplier=contract_multiplier
         )
         logger.debug("Added ContractAwareTradeAnalyzer for corrected PnL calculations")
@@ -853,7 +878,7 @@ def add_analyzers(
         cerebro.addanalyzer(
             TradeList,
             _name='tradelist',
-            regime_data=regime_data,
+            regime_data=segmentation_data,
             contract_multiplier=contract_multiplier,
             session_context_provider=session_context_provider
         )

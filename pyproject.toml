@@ -56,6 +56,7 @@ packages = ["echolon"]
 artifacts = [
     "echolon/native/templates/**/*.json",
     "echolon/native/templates/**/*.md",
+    "echolon/native/errors/codes/*.md",
 ]
 
 [project.scripts]

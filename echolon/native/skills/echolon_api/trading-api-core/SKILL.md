@@ -12,11 +12,13 @@ origin_module: task15_migration_from_qorka
 
 ## Indicator discovery — use the catalog, not this file
 
-For indicator **existence / params / output columns**, use the echolon catalog
-tools — the authoritative source that stays in sync with `ta_lib.py`:
+For indicator **existence / params**, use the echolon catalog tools — the
+authoritative source that stays in sync with `ta_lib.py`:
 
-- `list_indicators(cluster=None)` — all 222+ catalog names; optional cluster filter
-- `indicator_info(name)` — canonical cluster, function, params, output_columns
+- `list_indicators(has_lookback=None)` — all catalog names; optional filter on
+  whether the indicator has a period-like parameter (sweepable single-dim
+  lookback)
+- `indicator_info(name)` — `{name, has_lookback, function, file, params}`
 - `indicator_params(name)` — just the params list
 - `validate_indicator_list(payload_json)` — validate a flat-dict
   `strategy_indicator_list.json` payload end-to-end
@@ -27,44 +29,83 @@ Available through two transports (same names + signatures + return shapes):
 - **openai-agents SDK**: `echolon-mcp` stdio subprocess
 - **LangGraph**: `lib/graph_util/indicator_tools.py::create_indicator_tools(ctx)`
 
-The tier terminology below is about `get_indicator(name)` **runtime call semantics**
-(what column name to pass at dispatch), not about the on-disk
+Phase F-5 collapsed the previous 4-way `cluster` taxonomy
+(`indicators_with_lookback` / `_without_lookback` / `_with_special_params` /
+`intraday_context_indicators`) to a single derived boolean
+`IndicatorInfo.has_lookback`. The runtime emits column names via
+`processor._build_suffix` (`echolon/indicators/engine/processor.py`) — the
+single source of truth for the resulting column-name shape, including
+multi-param sweeps.
+
+The naming sections below describe `get_indicator(name)` **runtime call
+semantics** (what column name to pass at dispatch), not the on-disk
 `strategy_indicator_list.json` wire format. The wire format is flat-dict:
 `{"<name>": {"<param>": scalar | list}}`.
 
-## Three-Tier Indicator Column Naming at get_indicator() (CRITICAL)
+## Indicator Column Naming at get_indicator() (CRITICAL)
 
-All indicator access at the `self.get_indicator(...)` call site MUST follow
-tier-specific naming. Tier is a property of the underlying indicator
-(available via `indicator_info(name).cluster`), not a wire-format section key:
+How the column name is built depends on what's swept in the JSON
+declaration. The runtime computes the suffix via
+`processor._build_suffix(combo, swept_keys)`:
 
-### Tier 1: Indicators with Lookback
-- **Format**: `f'{indicator_name}_{self.period}'`
-- **Examples**: ADX, ATR, RSI, EMA, SMA, HIGHEST_HIGH, LOWEST_LOW
-- **Code**: `f'adx_{self.adx_period}'` → `'adx_14'`
-- **NEVER** use bare names for Tier 1 indicators
+### Swept single period (single-dim lookback sweep)
 
-### Tier 2: Indicators with Special Parameters
-- **Format**: Bare name only (uses ta_lib.py defaults)
-- **Examples**: MACD, STOCH, BBANDS
-- **Code**: `'macd_line'`, `'stoch_k'`, `'bbands_upper'`
-- **NEVER** append parameters to Tier 2 indicators
+When the JSON sweeps exactly one period-like parameter
+(`{"rsi": {"timeperiod": [10, 20]}}`), the runtime emits one column per
+value with just the value as suffix: `rsi_10`, `rsi_11`, ..., `rsi_20`.
+At lookup time:
 
-### Tier 3: Indicators without Lookback
-- **Format**: Bare name only
-- **Examples**: AD, OBV, TRANGE, CDL patterns
-- **Code**: `'ad'`, `'obv'`, `'trange'`
+```python
+self.rsi_period = self.params['rsi_period']
+rsi = self.get_indicator(f"rsi_{self.rsi_period}")
+```
+
+### Multi-param sweep (Cartesian)
+
+When more than one param is a list (`{"bbands_upper": {"timeperiod": [10, 20], "nbdevup": [1.5, 2.0]}}`),
+the runtime emits `bbands_upper_timeperiod10_nbdevup1p5`, etc.
+(Float fractional parts encode `.` → `p`.) Lookup mirrors the suffix:
+
+```python
+col = (
+    f"bbands_upper_timeperiod{self.bbands_timeperiod}"
+    f"_nbdevup{_format_indicator_param(self.bbands_nbdevup)}"
+)
+upper = self.get_indicator(col)
+```
+
+(See plan `docs/superpowers/plans/2026-05-01-multi-param-indicator-sweep-strategy-codegen.md`
+for the qorka-side codegen workstream.)
+
+### Scalar params or no params (no sweep)
+
+When all params are scalars or there are no params
+(`{"obv": {}}`, `{"bbands_upper": {"timeperiod": 20, "nbdevup": 2.0}}`), the
+runtime emits the bare name: `obv`, `bbands_upper`. Lookup uses bare name:
+
+```python
+obv = self.get_indicator("obv")
+upper = self.get_indicator("bbands_upper")
+```
+
+Use `indicator_info(name).has_lookback` to decide whether a sweepable
+period is the right modeling choice for a given indicator.
 
 ### Market context — DO NOT access via `get_indicator`
 
-`market_regime` and `session_phase` are stored as **numeric codes** at runtime
-(1 / -1 / 0 / 2 for regimes; 0..N for phases). Calling
-`self.get_indicator('market_regime')` returns an int — subsequent
+`market_regime` and `session_phase` are stored as **numeric codes** at runtime.
+Calling `self.get_indicator('market_regime')` returns an int — subsequent
 `if regime == 'trending_up'` comparisons silently fail. Always use the
 frequency-specific string-returning accessors:
 
-- INTERDAY: `self.get_market_regime()` → `'trending_up'` / `'trending_down'` / `'ranging'` / `'volatile'`
-- INTRADAY: `self.get_session_phase()` → phase name (bar-size-dependent; see INTRADAY.md)
+- INTERDAY: `self.get_market_regime()` → label string from the registered
+  classifier's `label_map`. Echolon ships zero classifiers — the host
+  application registers one via
+  `echolon.indicators.registry.register_regime_classifier(...)`. Without a
+  registered classifier, this method raises. The qorka TRS classifier emits
+  `'trending_up'` / `'trending_down'` / `'ranging'` / `'volatile'`.
+- INTRADAY: `self.get_session_phase()` → phase name (bar-size-dependent; see
+  INTRADAY.md).
 
 These methods raise `RuntimeError` if called in the wrong frequency context.
 
@@ -72,12 +113,12 @@ These methods raise `RuntimeError` if called in the wrong frequency context.
 
 All components MUST return Pydantic BaseModel instances:
 
-| Component | Return Type | Required Fields |
-|-----------|-------------|-----------------|
-| Entry | `EntrySignalOutput` | signal, strength, type, entry_reason, intent, **regime** |
-| Exit | `ExitSignalOutput` | should_exit, exit_reason, position_size, bars_since_entry, intent |
-| Risk | `RiskOutput` | trading_allowed, risk_reason |
-| Sizer | `SizerOutput` | calculated_size, signal_direction, sizing_reason, raw_size |
+| Component | Return Type | Required Fields | Optional |
+|-----------|-------------|-----------------|----------|
+| Entry | `EntrySignalOutput` | signal, strength, type, entry_reason | intent (required for non-HOLD), regime (TRS-paradigm; defaults to None per Phase A relaxation) |
+| Exit | `ExitSignalOutput` | should_exit, exit_reason, position_size, bars_since_entry | intent (required when should_exit=True) |
+| Risk | `RiskOutput` | trading_allowed, risk_reason | — |
+| Sizer | `SizerOutput` | calculated_size, signal_direction, sizing_reason, raw_size | — |
 
 **Sizer MANDATORY Validation:**
 ```python

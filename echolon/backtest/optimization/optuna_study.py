@@ -226,7 +226,7 @@ class OptunaOptimizer:
         self,
         indicators: pd.DataFrame,
         trading_calendar_df: pd.DataFrame = None,  # noqa: F841 Reserved for session filtering
-        regime_data: Optional[pd.DataFrame] = None,
+        segmentation_data: Optional[pd.DataFrame] = None,
         study_name: Optional[str] = None,
         indicator_metadata: Optional[Dict[str, Any]] = None,
         failure_report_dir: Optional[Path] = None,
@@ -241,8 +241,9 @@ class OptunaOptimizer:
             Market data with indicators (indexed by date)
         trading_calendar_df : pd.DataFrame
             Trading calendar data
-        regime_data : pd.DataFrame, optional
-            Pre-loaded regime data for analyzers
+        segmentation_data : pd.DataFrame, optional
+            Pre-loaded per-bar categorical column for trade-analyzer
+            stratification (e.g., TRS-paradigm 'market_regime').
         study_name : str, optional
             Name for the Optuna study
         indicator_metadata : Dict[str, Any], optional
@@ -287,7 +288,7 @@ class OptunaOptimizer:
             strategy_class=self.strategy_class,
             market_adapter=self.market_adapter,
             indicators_dir=self.indicators_dir,
-            regime_data=regime_data,
+            segmentation_data=segmentation_data,
             optimization_config=opt_config,
             indicator_metadata=indicator_metadata,
         )

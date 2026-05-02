@@ -397,14 +397,21 @@ class TradeRecordSchema(BaseModel):
     )
 
     # CONDITIONAL FIELDS - Frequency Dependent
-    # INTERDAY ONLY
+    # INTERDAY ONLY (TRS-paradigm: regime label populated; other paradigms may leave None)
     entry_regime: Optional[str] = Field(
         None,
-        description="Market regime at entry execution date (ranging, trending_up, trending_down, volatile). INTERDAY only."
+        description=(
+            "TRS-paradigm: market regime label at entry execution date. Other "
+            "paradigms (TSMOM, etc.) typically leave None. Field name retained "
+            "for backward compatibility with existing trade logs."
+        )
     )
     decision_regime: Optional[str] = Field(
         None,
-        description="Market regime at signal generation date - previous trading day before entry. INTERDAY only."
+        description=(
+            "TRS-paradigm: market regime label at signal generation date "
+            "(previous trading day). Other paradigms typically leave None."
+        )
     )
 
     # INTRADAY ONLY - All optional to support interday
@@ -610,7 +617,12 @@ class StrategyLogRecordSchema(BaseModel):
     )
     entry_reason: str = Field(description="Human-readable explanation of entry decision")
     entry_regime: Optional[str] = Field(
-        None, description="Market regime/session phase at entry evaluation"
+        None,
+        description=(
+            "Optional context label at entry evaluation. TRS strategies "
+            "populate with market regime; intraday strategies may populate "
+            "with session phase. TSMOM strategies typically leave None."
+        )
     )
 
     # EXIT SIGNAL COMPONENT

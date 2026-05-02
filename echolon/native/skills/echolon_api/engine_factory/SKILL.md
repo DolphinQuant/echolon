@@ -73,11 +73,11 @@ EngineFactory.get_available_bar_sizes()     # ['1m', '5m', '15m', ...]
 - **`ValueError: Unknown market: 'X'. Available: SHFE, CRYPTO`** — `create_market_adapter` called with a market code that isn't in `MARKET_ADAPTERS`. Register via `EngineFactory.register_market_adapter` or add the loader.
 - **`ValueError: Unknown or unimplemented platform: 'ccxt'`** — `create_deploy_engine(platform="ccxt")` — the CCXT engine is a skeleton in `echolon/live/platforms/ccxt/`. Only `"miniqmt"` is wired today.
 - **Silent hook omission on interday futures backtests** — if `indicators_dir` is `None`, `ContractAwareHook` is not added even when `ctx.has_contract_expiry and is_interday`. Symptoms: no contract rollover, wrong PnL. Always pass `indicators_dir` for futures backtests. No Echolon error code.
-- **Downstream `BT-001`** — any hook or the underlying `BacktraderEngine` may raise `BT-001` during `next()`. See `docs/errors/BT-001.md` and the `get_strategy_class` skill.
+- **Downstream `BT-001`** — any hook or the underlying `BacktraderEngine` may raise `BT-001` during `next()`. See `echolon/native/errors/codes/BT-001.md` and the `get_strategy_class` skill.
 
 ## See also
 
 - `market_factory` skill — produces the `TradingContext` consumed here.
 - `trading_context` skill — the object threaded through every `create_*` call.
 - `get_strategy_class` skill — the Backtrader strategy class eventually run by `BacktraderEngine`.
-- echolon docs: `docs/COMPONENT_GUIDE.md`, `docs/PATTERNS.md`.
+- echolon docs: `the component_guide skill`, `the patterns skill`.

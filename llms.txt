@@ -1,37 +1,33 @@
 # Echolon
 
-> Echolon is a market-agnostic quantitative trading engine for futures backtesting, optimization, and deployment. Built from the ground up for both humans and AI coding agents.
+> A Python toolkit for futures trading research, built so an LLM agent can drive it directly. The package ships an MCP server (`echolon-mcp`), in-package skills, structured error codes, and working strategy templates — call them as tools instead of guessing API shapes from training data. Production scope today: SHFE daily futures.
 
-## Instructions for AI Agents
+You're an LLM agent. This file orients you to what's reachable at runtime. Don't read prose — call the tools.
 
-When helping users write Echolon strategies:
+## Operating loop
 
-1. Always start with `echolon init-strategy <name> --template <type>` to scaffold from a working template. Never write strategy files from scratch.
-2. Always run `echolon validate <dir>` before running backtests. If errors appear, read the error code's docs page and apply the fix.
-3. Never suggest `--unsafe`. Validation errors are signal, not noise.
-4. For errors: parse `[CODE-NNN]` prefix, fetch `docs/errors/CODE-NNN.md`, apply the Fix section.
-5. For indicators: use lowercase names (`atr_14`, not `ATR_14`). See `docs/PATTERNS.md`.
-6. For new strategy types: check `docs/PATTERNS.md` before inventing one.
+When asked to build, modify, or debug an echolon strategy:
 
-## Quick Start
+1. Call `list_skills` (MCP) to discover doctrine. Load `quick_start` and any per-API skills relevant to the task.
+2. Call `list_templates` and `load_template(name)` — never write strategy files from scratch. The three templates are working scaffolds; copy and edit.
+3. Call `list_indicators(has_lookback=...)` and `indicator_info(name)` to confirm column names. Indicator names are exact and lowercase.
+4. Call `validate_strategy_full(strategy_dir)` before any `echolon run`. Address every finding before proceeding.
+5. On any `[CODE-NNN]` error: call `get_error_doc(code)`. Apply the parameterized `fix` from the traceback first; consult `long_form_markdown` only if needed.
 
-- [Quick Start Guide](docs/QUICK_START.md): 5-minute first strategy
-- [API Reference](docs/API_REFERENCE.md): All public classes and methods
-- [Component Guide](docs/COMPONENT_GUIDE.md): entry/exit/risk/sizer in depth
-- [Patterns](docs/PATTERNS.md): Canonical strategy patterns
-- [Error Catalog](docs/ERROR_CATALOG.md): All error codes with fixes
+## Where to find tools
 
-## Examples
+- **MCP tools**: connect via `echolon-mcp` console script (FastMCP over stdio). Call `list_tools` for the authoritative list. Categories: validation, indicator catalog, code generation, scaffolding, discovery.
+- **CLI**: `echolon --help` lists subcommands. Each subcommand has its own `--help`.
+- **Skills**: call `list_skills` for the live list with descriptions. Orientation entry points: `quick_start`, `component_guide`, `trading-api-core`, `patterns`, `api_reference`, `config_reference`. Per-API skills exist for every public function (`market_factory`, `engine_factory`, `optuna_optimizer`, `wfa_runner`, etc.).
 
-- [01 Minimal](examples/01_minimal/): 30-line hello world
-- [02 Momentum Breakout](examples/02_momentum_breakout/): Channel breakout, interday
-- [03 RSI Mean Reversion](examples/03_rsi_mean_reversion/): Mean reversion, interday
+## Hard rules
 
-## Configuration
+- Don't write strategy files from scratch. Always start from a template (`load_template` or `echolon init-strategy`).
+- Don't pass `--unsafe` to `echolon run`. The validators are the safety net; if you're tempted to skip them, the strategy is wrong.
+- Don't use `try`/`except`, `self.params.get(default)`, or fallback logic in strategy components. Errors must propagate. The validators flag these as `PRM-004`.
+- Don't guess indicator names. Lowercase, exact match against the catalog. Casing mismatches are `IND-001`; undeclared lookups are `IND-002`.
+- Don't call `self.get_market_regime()` unless a regime classifier has been registered. Echolon ships zero classifiers — that's a host-application concern.
 
-- [Configuration Reference](docs/CONFIG_REFERENCE.md): BacktestConfig, OptunaConfig
-- Environment variables: `ECHOLON_WORKSPACE_DIR`, `ECHOLON_DATA_DIR`
+## Scope
 
-## Optional
-
-- [Architecture](docs/ARCHITECTURE.md): How the engine works internally (optional background)
+v0.1.1 production support is **SHFE daily futures, end-to-end**: data ingestion, indicator computation, backtesting, Optuna optimization, walk-forward analysis, validation. SHFE intraday, live deployment, crypto perpetuals, and US markets are in development — components may not work or may not exist. If the user asks for one of those, say so explicitly before generating code.

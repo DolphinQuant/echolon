@@ -9,11 +9,14 @@ class entry_rule(BaseComponent):
         super().__init__(trading_engine, **params)
 
     def generate_signal(self) -> EntrySignalOutput:
-        # TODO: replace this with your signal logic
-        return EntrySignalOutput(
+        # TODO: replace this with your signal logic.
+        # regime is optional — TRS strategies populate it; TSMOM strategies
+        # typically leave it unset. See echolon/strategy/schemas.py.
+        out = EntrySignalOutput(
             signal="HOLD",
             strength=0.0,
             type="hold",
             entry_reason="Template: no entry logic yet",
-            regime=self.get_market_regime(),
         )
+        self.log_entry_output(out)
+        return out

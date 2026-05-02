@@ -84,7 +84,6 @@ def setup_backtest_logging(run_context: RunContext) -> None:
             "echolon.backtest.optimization.optuna_study",
             "echolon.backtest.wfa.runner",
             "echolon.indicators.engine.processor",
-            "echolon.indicators.optimization.interday_regime_optimizer",
         ]:
             logging.getLogger(logger_name).setLevel(logging.ERROR)
 

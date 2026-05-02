@@ -69,7 +69,7 @@ ERROR_CATALOG: dict[str, dict] = {
         "fix_template": (
             "In {file}:{method}, add missing fields to the output object:\n"
             "  missing fields: {missing}\n"
-            "See docs/COMPONENT_GUIDE.md for the full contract."
+            "See the component_guide skill for the full contract."
         ),
     },
     "VAL-002": {
@@ -181,7 +181,7 @@ ERROR_CATALOG: dict[str, dict] = {
         "why": "Component base classes require specific abstract methods.",
         "fix_template": (
             "In {file}.{class_name}, implement method: {missing_method}\n"
-            "See docs/COMPONENT_GUIDE.md for signatures."
+            "See the component_guide skill for signatures."
         ),
     },
     "IND-001": {
@@ -195,7 +195,7 @@ ERROR_CATALOG: dict[str, dict] = {
             "Change code to use lowercase indicator name:\n"
             "  code uses: {code_name}\n"
             "  should be: {json_name}\n"
-            "See docs/PATTERNS.md#indicators for naming rules."
+            "See the patterns skill for naming rules."
         ),
     },
     "IND-002": {
@@ -414,7 +414,7 @@ ERROR_CATALOG: dict[str, dict] = {
             "  entry_signals_generated: {entry_signals_generated}\n"
             "  entry_signals_blocked:   {entry_signals_blocked}\n"
             "  risk_blocks:             {risk_blocks}\n"
-            "See docs/errors/BT-002.md for the decision tree."
+            "Call MCP get_error_doc('BT-002') (or read echolon/native/errors/codes/BT-002.md) for the decision tree."
         ),
     },
     "BT-003": {

@@ -67,10 +67,10 @@ def test_migrate_rewrites_common_mappings(tmp_path):
     """Smoke test covering the most common mappings."""
     test_cases = [
         ("from echolon.data_pipeline import X", "from echolon.data import X"),
-        ("from echolon.lib.regime_utils import X", "from echolon.indicators.utils.regime_utils import X"),
         ("from echolon.native.validation.errors import X", "from echolon.errors import X"),
         ("from echolon.quant_engine.types import X", "from echolon.strategy.schemas import X"),
         ("from echolon.quant_engine.market_adapters.shfe.shfe_adapter import X", "from echolon.markets.shfe.adapter import X"),
+        ("from echolon.indicators.run_indicators import X", "from echolon.indicators.run import X"),
     ]
     src_lines = "\n".join(old for old, _ in test_cases) + "\n"
     expected_lines = "\n".join(new for _, new in test_cases) + "\n"

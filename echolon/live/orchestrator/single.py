@@ -370,12 +370,12 @@ class TradingRunner:
         else:
             self.logger.error("Data pipeline failed -- proceeding with existing data")
 
-        # Load the strategy's flat-dict indicator list + regime params, then
-        # compute indicators up to the present trading date into the paths'
-        # indicators_backtest_dir.
-        import json as _json
+        # Load the strategy's flat-dict indicator list + calculator params,
+        # then compute indicators up to the present trading date into the
+        # paths' indicators_backtest_dir.
         import os as _os
         from echolon.indicators.utils.merge_indicators import load_indicator_list
+        from echolon._internal.strategy_files import get_regime_params
 
         strategy_code_dir = self._paths.strategy_code_dir
         ind_path = _os.path.join(str(strategy_code_dir), "strategy_indicator_list.json")
@@ -384,12 +384,10 @@ class TradingRunner:
             return
         indicator_list = load_indicator_list(ind_path)
 
-        regime_path = _os.path.join(str(strategy_code_dir), "regime_params.json")
-        regime_params = None
-        if _os.path.exists(regime_path):
-            with open(regime_path, "r") as f:
-                regime_data = _json.load(f)
-            regime_params = regime_data.get("params", regime_data)
+        # Phase E: read calculator_params.json (new format) or legacy
+        # regime_params.json (auto-migrated). Returns None if neither file
+        # has market_regime params.
+        regime_params = get_regime_params(strategy_code_dir)
 
         end_date = (
             self.present_date.strftime("%Y-%m-%d")

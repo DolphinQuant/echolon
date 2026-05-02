@@ -63,8 +63,8 @@ Returned dict includes at least (all values may be 0 if the backtest trades noth
 
 - **`FileNotFoundError` on `selected_robust_trial.json`** — `best_params_path` is `None` and `PathsConfig.from_env().strategy_code_dir / "selected_robust_trial.json"` does not exist. Run `TrialSelector.select()` first, or pass an explicit `best_params_path`. No Echolon code issued.
 - **`pydantic.ValidationError` from `SelectedTrialSchema`** — the JSON on disk has the wrong shape (e.g. from hand-edits or a stale format). Re-run `TrialSelector.select()` to rewrite the file via `SelectedTrialSchema.model_validate(...).model_dump()`.
-- **`BT-001`** — any exception inside the platform-agnostic strategy's `_execute_bar()` (or any callback it invokes — entry, exit, risk, sizer component methods) during the replay. `on_bar()` is the Template Method that calls `_execute_bar()`; strategies override `_execute_bar()` only. See `docs/errors/BT-001.md` and the `get_strategy_class` skill.
-- **`CFG-001`** — if the caller-supplied `start_date`/`end_date` or underlying `BacktestConfig` has `end_date < start_date`. See `docs/errors/CFG-001.md`.
+- **`BT-001`** — any exception inside the platform-agnostic strategy's `_execute_bar()` (or any callback it invokes — entry, exit, risk, sizer component methods) during the replay. `on_bar()` is the Template Method that calls `_execute_bar()`; strategies override `_execute_bar()` only. See `echolon/native/errors/codes/BT-001.md` and the `get_strategy_class` skill.
+- **`CFG-001`** — if the caller-supplied `start_date`/`end_date` or underlying `BacktestConfig` has `end_date < start_date`. See `echolon/native/errors/codes/CFG-001.md`.
 
 ## See also
 

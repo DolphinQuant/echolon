@@ -180,13 +180,15 @@ diagnostic extras emitted by real strategies).
 
 ```python
 class EntrySignalOutput(BaseModel):
-    """Entry component output. All fields except ``intent`` are REQUIRED."""
+    """Entry component output. signal, strength, type, entry_reason are REQUIRED."""
     signal: Literal['LONG', 'SHORT', 'HOLD']        # required
     strength: float                                  # required, 0.0 <= x <= 1.0
     type: str                                        # required, e.g., 'entry_long'
     entry_reason: str                                # required
     intent: Optional[OrderIntent] = None             # optional (None for HOLD)
-    regime: str                                      # required, string via get_market_regime() / get_session_phase()
+    regime: Optional[str] = None                     # optional: TRS-paradigm strategies populate
+                                                     # via self.get_market_regime() / get_session_phase();
+                                                     # TSMOM and other paradigms typically leave None.
 
     model_config = ConfigDict(extra="allow", arbitrary_types_allowed=True)
 ```

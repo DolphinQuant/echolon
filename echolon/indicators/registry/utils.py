@@ -126,21 +126,8 @@ def indicator_exists(indicator_key: str, frequency: str = "day") -> bool:
     return info is not None
 
 
-def get_cluster_name(indicator_key: str, frequency: str = "day") -> Optional[str]:
-    """
-    Get the cluster name for an indicator.
-
-    Parameters
-    ----------
-    indicator_key : str
-        Indicator name
-    frequency : str
-        Data frequency
-
-    Returns
-    -------
-    str or None
-        Cluster name (e.g., 'indicators_with_lookback')
-    """
-    info = get_indicator_info(indicator_key, frequency)
-    return info["cluster"] if info else None
+# Phase F-5: get_cluster_name removed. The cluster categorization was replaced
+# with IndicatorInfo.has_lookback (computed from function signature). Callers
+# that need the lookback property use:
+#     from echolon.indicators import catalog
+#     catalog.info(name).has_lookback

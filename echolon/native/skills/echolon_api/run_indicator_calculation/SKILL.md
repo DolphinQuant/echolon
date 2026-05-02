@@ -19,7 +19,9 @@ origin_module: echolon_audit_phase0
 ```python
 from echolon.config.markets.factory import MarketFactory
 from echolon.indicators.run import run_indicator_calculation
-from echolon.indicators import optimize_regime_params
+from echolon.indicators import get_regime_optimizer
+# (qorka registers the TRS optimizer at session start via
+# `modules.paradigms.trs.regime_machinery.setup_classifiers()`)
 
 ctx = MarketFactory.from_session()
 
@@ -38,7 +40,9 @@ df = run_indicator_calculation(
 
 # 2. Interday call that needs regime_params (when indicator_list
 #    contains "market_regime"). Optimize them first, then pass in.
-regime_params = optimize_regime_params(ctx, n_trials=400)
+regime_params = get_regime_optimizer("market_regime").optimize(
+    df=None, n_trials=400, ctx=ctx,
+)
 df = run_indicator_calculation(
     ctx,
     output_dir="/path/to/indicators/cu",
@@ -64,7 +68,7 @@ df = run_indicator_calculation(
 
 - Any time you need to (re)generate the `strategy_indicators.csv` that the backtest engine and `load_backtest_data` consume. Typical pipeline: `run_data_pipeline(ctx)` → `run_indicator_calculation(ctx, ...)` → backtest.
 - When defining a new indicator — provide a flat `{name: {param: values}}` dict. Lists enable Cartesian sweeps (e.g. `{"timeperiod": [5, 14, 30]}` produces `rsi_5`, `rsi_14`, `rsi_30`). Empty dict `{name: {}}` uses the indicator's built-in defaults.
-- When using `market_regime` on interday (daily-bar) data: pass a `regime_params` dict produced by `optimize_regime_params(ctx)`. Intraday regime handling uses `session_phase` + `volatility_state` instead and does not require this argument.
+- When using `market_regime` on interday (daily-bar) data: pass a `regime_params` dict produced by `get_regime_optimizer("market_regime").optimize(df=None, n_trials=400, ctx=ctx)` after qorka has registered the TRS optimizer (`modules.paradigms.trs.regime_machinery.setup_classifiers()`). Intraday regime handling uses `session_phase` + `volatility_state` instead and does not require this argument.
 - Do *not* pass raw, unvalidated `indicator_list` dicts that don't match `IndicatorList`. The function calls `IndicatorList.model_validate(indicator_list)` for fail-fast validation; malformed specs raise a `pydantic.ValidationError` before any calculation runs.
 - Do *not* omit both `trading_dates` and (`start_date`, `end_date`). The function raises `ValueError` when it has no way to derive the date list.
 
@@ -84,14 +88,44 @@ The processor writes `strategy_indicators.csv` and `strategy_indicator_metadata.
 
 - **`pydantic.ValidationError` from `IndicatorList.model_validate`** — `indicator_list` is malformed. Inspect the error message for the offending key.
 - **`ValueError: start_date and end_date are required when trading_dates is None.`** — must pass either `trading_dates` or both ISO date strings.
-- **Downstream `IND-001` / `IND-002`** — raised inside `IndicatorProcessor` when an indicator name has a casing mismatch (`IND-001`) or a calculated column is not declared in the spec (`IND-002`). See `docs/errors/IND-001.md`, `docs/errors/IND-002.md`.
-- **`IND-003`** — sidecar-only warning for high-NaN columns, surfaced later by `load_backtest_data`. See `docs/errors/IND-003.md`.
+- **Downstream `IND-001` / `IND-002`** — raised inside `IndicatorProcessor` when an indicator name has a casing mismatch (`IND-001`) or a calculated column is not declared in the spec (`IND-002`). See `echolon/native/errors/codes/IND-001.md`, `echolon/native/errors/codes/IND-002.md`.
+- **`IND-003`** — sidecar-only warning for high-NaN columns, surfaced later by `load_backtest_data`. See `echolon/native/errors/codes/IND-003.md`.
 - **Silent empty DataFrame** — `IndicatorProcessor.process_all_contracts` returned no data (bad date range, missing contract files). Logger warning only; downstream `load_backtest_data` will then fail on a missing or empty CSV.
+
+## Custom regime classifiers (Phase C extension point)
+
+Echolon ships a built-in TRS-paradigm rule-based regime classifier
+(``market_regime``) auto-registered at module-load time. To use a
+custom classifier — HMM, GMM, Carry term-structure, custom domain —
+register it via the classifier registry before calling this function:
+
+```python
+from echolon.indicators.protocols import RegimeClassifier
+from echolon.indicators.registry import register_regime_classifier
+
+class MyHMMClassifier:
+    name = "hmm_3state"
+    label_map = {0: "low_vol", 1: "med_vol", 2: "high_vol"}
+
+    def fit_classify(self, df, params):
+        # ... fit HMM and return numeric Series aligned to df.index
+        return pd.Series(states, index=df.index)
+
+register_regime_classifier(MyHMMClassifier())
+
+# Now indicator_list can reference 'hmm_3state' — pipeline finds it
+# via the registry.
+```
+
+See ``echolon.indicators.protocols.RegimeClassifier`` for the full
+Protocol contract, and ``echolon.indicators.registry`` for
+registration / lookup APIs (``register_regime_classifier``,
+``get_regime_classifier``, ``list_classifiers``).
 
 ## See also
 
 - `run_data_pipeline` skill — must run first to produce the contract CSVs this step reads.
-- `optimize_regime_params` skill — produces the `regime_params` argument needed when `indicator_list` contains `market_regime` on an interday ctx.
+- TRS regime optimizer (qorka-hosted) — produces the `regime_params` argument needed when `indicator_list` contains `market_regime` on an interday ctx. Install qorka and call `modules.paradigms.trs.regime_machinery.setup_classifiers()` at session start; the optimizer is then accessible via `echolon.indicators.get_regime_optimizer("market_regime")`.
 - `load_backtest_data`, `load_indicator_metadata` skills — downstream readers of this step's output.
 - `trading_context` skill — supplies `ctx.market_code`, `ctx.instrument_name`, `ctx.is_intraday`.
-- echolon docs: `echolon/indicators/schema.py` (`IndicatorList`), `echolon/indicators/engine/processor.py` (`IndicatorProcessor`).
+- echolon docs: `echolon/indicators/schema.py` (`IndicatorList`), `echolon/indicators/engine/processor.py` (`IndicatorProcessor`), `echolon/indicators/protocols.py` (`RegimeClassifier`).

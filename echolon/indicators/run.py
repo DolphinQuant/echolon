@@ -54,7 +54,18 @@ def run_indicator_calculation(
         use_parallel: Use parallel processing.
         regime_params: Regime classification parameters required when
             *indicator_list* contains ``market_regime`` on an interday ctx.
-            Call ``echolon.indicators.optimize_regime_params(ctx)`` and pass here.
+            Produce by calling
+            ``echolon.indicators.get_regime_optimizer("market_regime").optimize(
+            df=None, n_trials=400, ctx=ctx)`` after qorka has registered the
+            TRS optimizer at session start
+            (``modules.paradigms.trs.regime_machinery.setup_classifiers()``).
+
+            For custom regime classifiers (HMM, GMM, etc.), register them via
+            ``echolon.indicators.registry.register_regime_classifier()`` before
+            invoking this function. The pipeline dispatches by name via the
+            classifier registry; the built-in ``market_regime`` classifier is
+            auto-registered at module-load time. See
+            :mod:`echolon.indicators.protocols` for the Protocol.
         start_date: ISO date string for backtest start (e.g. ``"2018-01-01"``).
             Required if trading_dates is None.
         end_date: ISO date string for backtest end.

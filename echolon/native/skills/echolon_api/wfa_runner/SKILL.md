@@ -80,9 +80,9 @@ The per-window sequence inside `run()` (lines 115–247 of `runner.py`):
 ## Common errors
 
 - **`ValueError: optuna_config is required ...` / `backtest_config is required ...`** — `__init__` invariants. Supply both or call `echolon.quick_start()` for defaults.
-- **`WFA-001`** — every window produced zero valid trials. Raised (not silently returned `{}` — that was the old behavior, replaced in commit `c4de31b`). The raise carries structured context pointing at per-window `trial_failure_summary.json` artifacts under `wfa_dir/window_<N>/`. See `docs/errors/WFA-001.md`.
+- **`WFA-001`** — every window produced zero valid trials. Raised (not silently returned `{}` — that was the old behavior, replaced in commit `c4de31b`). The raise carries structured context pointing at per-window `trial_failure_summary.json` artifacts under `wfa_dir/window_<N>/`. See `echolon/native/errors/codes/WFA-001.md`.
 - **Per-window silent skips** — "Window N: No IS data, skipping" (empty `is_indicators`), "Window N: No trials CSV, skipping" (study failure), "Window N: No robust trial found, skipping OOS" (TrialSelector returned `None`). Each is a warning, not an error; the window's OOS results stay `None` and it is excluded from `completed_windows`.
-- **Downstream `BT-001` / `BT-003` / `WFA-001`** — bubbled from the inner `OptunaOptimizer.run()` or `run_best_trial()`. See `docs/errors/BT-001.md`, `docs/errors/BT-003.md`, `docs/errors/WFA-001.md`.
+- **Downstream `BT-001` / `BT-003` / `WFA-001`** — bubbled from the inner `OptunaOptimizer.run()` or `run_best_trial()`. See `echolon/native/errors/codes/BT-001.md`, `echolon/native/errors/codes/BT-003.md`, `echolon/native/errors/codes/WFA-001.md`.
 
 ## See also
 

@@ -9,4 +9,6 @@ class risk_manager(BaseComponent):
         super().__init__(trading_engine, **params)
 
     def can_trade(self) -> RiskOutput:
-        return RiskOutput(trading_allowed=True, risk_reason="Template: always allow")
+        out = RiskOutput(trading_allowed=True, risk_reason="Template: always allow")
+        self.log_risk_output(out)
+        return out

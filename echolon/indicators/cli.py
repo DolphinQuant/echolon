@@ -37,19 +37,23 @@ def _build_catalog() -> dict:
     """Return mapping of indicator_name -> metadata dict.
 
     Each entry has:
-      - ``cluster``: the indicator's cluster category
+      - ``has_lookback``: True if the indicator has a period-like parameter
+        (sweepable single-dim lookback). Phase F-5 replacement for cluster.
       - ``function``: the underlying calculator function name
       - ``frequencies``: list of supported frequencies ("interday", "intraday", or both)
 
     Useful as a discovery tool and starting template for building your own
     ``indicator_list`` config.
     """
+    from echolon.indicators import catalog as _meta_catalog
+
     catalog: dict[str, dict] = {}
 
     # Walk interday mapping
     for name, entry in interday_mapping.INDICATOR_MAPPING.items():
+        info = _meta_catalog.info(name.lower())
         catalog[name] = {
-            "cluster": entry["cluster"],
+            "has_lookback": info.has_lookback if info else False,
             "function": entry["function"],
             "frequencies": ["interday"],
         }
@@ -60,8 +64,9 @@ def _build_catalog() -> dict:
             # Indicator exists in both frequencies
             catalog[name]["frequencies"] = ["interday", "intraday"]
         else:
+            info = _meta_catalog.info(name.lower())
             catalog[name] = {
-                "cluster": entry["cluster"],
+                "has_lookback": info.has_lookback if info else False,
                 "function": entry["function"],
                 "frequencies": ["intraday"],
             }

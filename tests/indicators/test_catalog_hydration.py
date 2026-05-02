@@ -1,7 +1,8 @@
-"""Phase A1 — Tests for catalog hydration from INDICATOR_MAPPING + ta_lib signatures.
+"""Catalog hydration tests — Phase F-5 updated for has_lookback contract.
 
-These tests are written FIRST (TDD). They fail against the 7-item hardcoded seed
-and pass once catalog.py is rewritten to load from the real registry.
+Originally written TDD-style for Phase A1 (cluster-based hydration). Phase F-5
+collapsed the 4-way cluster split to a single ``has_lookback`` boolean derived
+from function signatures (period-like params → True). Tests updated accordingly.
 """
 from echolon.indicators import catalog
 
@@ -11,45 +12,46 @@ def test_catalog_has_at_least_170_entries():
     assert len(names) >= 170, f"Expected >= 170 entries, got {len(names)}"
 
 
-def test_catalog_supports_cluster_filter_lookback():
-    lookback = set(catalog.list_all(cluster="indicators_with_lookback"))
+def test_catalog_supports_has_lookback_filter_true():
+    lookback = set(catalog.list_all(has_lookback=True))
     for expected in ("rsi", "atr", "adx", "ema"):
         assert expected in lookback, (
-            f"'{expected}' missing from indicators_with_lookback cluster; "
+            f"'{expected}' missing from has_lookback=True; "
             f"got sample: {sorted(lookback)[:10]}"
         )
 
 
-def test_catalog_cluster_filter_no_lookback_excludes_lookback_names():
-    no_lookback = set(catalog.list_all(cluster="indicators_without_lookback"))
+def test_catalog_has_lookback_filter_false_excludes_lookback_names():
+    no_lookback = set(catalog.list_all(has_lookback=False))
     for name in ("rsi", "atr", "adx", "ema"):
         assert name not in no_lookback, (
-            f"'{name}' should NOT appear in indicators_without_lookback cluster"
+            f"'{name}' should NOT appear in has_lookback=False"
         )
 
 
-def test_catalog_info_returns_cluster_and_params_for_rsi():
+def test_catalog_info_returns_has_lookback_and_params_for_rsi():
     rsi = catalog.info("rsi")
     assert rsi is not None
-    assert rsi.cluster == "indicators_with_lookback"
+    assert rsi.has_lookback is True
     param_names = [p["name"] for p in rsi.params]
     assert "timeperiod" in param_names, f"timeperiod not in params: {param_names}"
     tp = next(p for p in rsi.params if p["name"] == "timeperiod")
     assert tp["default"] == 14, f"Expected default=14, got {tp['default']}"
 
 
-def test_catalog_info_bbands_upper_is_special_params():
+def test_catalog_info_bbands_upper_has_lookback_true():
+    """BBANDS has timeperiod → has_lookback=True. Phase F-5 collapsed the
+    previous 'indicators_with_special_params' category into has_lookback=True
+    because BBANDS does have a sweepable period."""
     bbands_upper = catalog.info("bbands_upper")
     assert bbands_upper is not None
-    assert bbands_upper.cluster == "indicators_with_special_params", (
-        f"Expected indicators_with_special_params, got {bbands_upper.cluster}"
-    )
+    assert bbands_upper.has_lookback is True
 
 
-def test_catalog_info_obv_is_no_lookback():
+def test_catalog_info_obv_has_lookback_false():
     obv = catalog.info("obv")
     assert obv is not None
-    assert obv.cluster == "indicators_without_lookback"
+    assert obv.has_lookback is False
 
 
 def test_catalog_info_is_case_insensitive():
@@ -58,7 +60,7 @@ def test_catalog_info_is_case_insensitive():
     assert upper is not None
     assert lower is not None
     assert upper.name == lower.name
-    assert upper.cluster == lower.cluster
+    assert upper.has_lookback == lower.has_lookback
     assert upper.params == lower.params
 
 
@@ -68,36 +70,20 @@ def test_catalog_info_unknown_returns_none():
     assert catalog.info("") is None
 
 
-def test_catalog_output_columns_for_lookback_contains_period_template():
-    rsi = catalog.info("rsi")
-    assert rsi is not None
-    assert any("{period}" in col for col in rsi.output_columns), (
-        f"Expected a template column with '{{period}}', got: {rsi.output_columns}"
-    )
-
-
-def test_catalog_output_columns_for_no_lookback_is_name():
-    obv = catalog.info("obv")
-    assert obv is not None
-    assert obv.output_columns == ["obv"]
-
-
 def test_catalog_list_all_is_sorted():
     names = catalog.list_all()
     assert names == sorted(names), "list_all() must return sorted names"
 
 
-def test_catalog_list_all_no_filter_includes_all_clusters():
+def test_catalog_list_all_filter_subsets_all_names():
     all_names = set(catalog.list_all())
-    for cluster_name in (
-        "indicators_with_lookback",
-        "indicators_without_lookback",
-        "indicators_with_special_params",
-    ):
-        cluster_names = set(catalog.list_all(cluster=cluster_name))
-        assert cluster_names.issubset(all_names), (
-            f"cluster '{cluster_name}' names are not a subset of list_all()"
-        )
+    lookback = set(catalog.list_all(has_lookback=True))
+    no_lookback = set(catalog.list_all(has_lookback=False))
+    assert lookback.issubset(all_names)
+    assert no_lookback.issubset(all_names)
+    # Partition: every name is in exactly one of the two filters.
+    assert lookback.isdisjoint(no_lookback)
+    assert lookback | no_lookback == all_names
 
 
 def test_catalog_info_has_function_and_file():

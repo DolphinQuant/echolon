@@ -5,7 +5,7 @@ Engine Factory
 Factory for creating trading engines with appropriate adapters and contexts.
 
 Responsibilities:
-- Create market adapters based on market type (SHFE, crypto, CME)
+- Create market adapters based on market type (SHFE, crypto)
 - Create frequency contexts based on trading frequency (interday, intraday)
 - Compose engine hooks based on trading mode
 - Assemble and return configured trading engines (backtest or deploy)
@@ -82,7 +82,6 @@ class EngineFactory:
     MARKET_ADAPTERS: Dict[str, Type[IMarketAdapter]] = {
         "SHFE": SHFEAdapter,
         "CRYPTO": CryptoAdapter,
-        # "CME": CMEAdapter,  # TODO: Implement CMEAdapter
     }
 
     # Bar size string to enum mapping

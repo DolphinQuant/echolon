@@ -200,7 +200,7 @@ class OptimizationRunner:
         'indicator_metadata': None,  # For creating data feed class
         'market_adapter': None,
         'ctx': None,  # TradingContext (single source of truth)
-        'regime_data': None,
+        'segmentation_data': None,
         'indicators_dir': None,
         'optimization_config': None,
     }
@@ -213,7 +213,7 @@ class OptimizationRunner:
         strategy_class: type,  # Kept for backward compat but not stored
         market_adapter: 'IMarketAdapter',
         indicators_dir: Optional[str] = None,
-        regime_data: Optional[pd.DataFrame] = None,
+        segmentation_data: Optional[pd.DataFrame] = None,
         optimization_config: Optional[OptimizationConfig] = None,
         indicator_metadata: Optional[Dict[str, Any]] = None,
     ) -> None:
@@ -238,8 +238,9 @@ class OptimizationRunner:
             Market adapter for market-specific rules
         indicators_dir : str, optional
             Path to indicators directory (for contract-aware broker)
-        regime_data : pd.DataFrame, optional
-            Pre-loaded regime data for analyzers
+        segmentation_data : pd.DataFrame, optional
+            Pre-loaded per-bar categorical column for trade-analyzer
+            stratification (e.g., TRS-paradigm 'market_regime').
         optimization_config : OptimizationConfig, optional
             Optimization-specific configuration
         indicator_metadata : Dict[str, Any], optional
@@ -251,7 +252,7 @@ class OptimizationRunner:
         # It will be recreated via get_strategy_class(ctx) in each worker
         cls._shared_data['market_adapter'] = market_adapter
         cls._shared_data['indicators_dir'] = indicators_dir
-        cls._shared_data['regime_data'] = regime_data
+        cls._shared_data['segmentation_data'] = segmentation_data
         cls._shared_data['optimization_config'] = optimization_config or OptimizationConfig()
         cls._shared_data['indicator_metadata'] = indicator_metadata
 
@@ -314,7 +315,7 @@ class OptimizationRunner:
         # Get shared data
         indicators = cls._shared_data['indicators']
         ctx = cls._shared_data['ctx']
-        regime_data = cls._shared_data['regime_data']
+        segmentation_data = cls._shared_data['segmentation_data']
         indicators_dir = cls._shared_data['indicators_dir']
         indicator_metadata = cls._shared_data['indicator_metadata']
 
@@ -354,7 +355,7 @@ class OptimizationRunner:
                 data_feed=data_feed,
                 strategy_class=strategy_class,
                 strategy_params=strategy_params,
-                regime_data=regime_data,
+                segmentation_data=segmentation_data,
             )
 
             results = engine.run()

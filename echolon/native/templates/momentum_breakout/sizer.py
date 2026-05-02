@@ -10,7 +10,9 @@ class position_sizer(BaseComponent):
 
     def calculate_size(self, signal_data: EntrySignalOutput) -> SizerOutput:
         size = self.validate_and_convert_position_size(1.0)
-        return SizerOutput(
+        out = SizerOutput(
             calculated_size=size, signal_direction=signal_data.signal,
             sizing_reason="Template: fixed 1 lot", raw_size=1.0,
         )
+        self.log_sizer_output(out)
+        return out

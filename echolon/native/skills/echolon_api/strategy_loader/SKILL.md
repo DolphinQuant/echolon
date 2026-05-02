@@ -71,9 +71,9 @@ components = load_strategy_from_dir("/workspace/current/code")
 
 - **`FileNotFoundError: Strategy module not found: .../entry.py`** — `load_module` couldn't find the file. Usually a bad `strategy_dir` argument or an uninitialized workspace.
 - **`AttributeError: Module 'strategy_params' in /path has no attribute 'optuna_search_space'`** — `load_attr` target missing. The file exists but the symbol isn't exported.
-- **`STR-001`** (from `load_strategy_from_dir`) — a required file is missing. Full list per `echolon/strategy/preflight.py::REQUIRED_FILES`: `entry.py`, `exit.py`, `risk.py`, `sizer.py`, `strategy_params.py`, `strategy_indicator_list.json`. `strategy.py` is loaded separately via `loader.load_function("strategy", "strategy_main")` and is required in practice by the coordinator load path but not in preflight's list. `BaseComponent` ships in the installed package (`echolon.strategy.component`) — strategies import it, no per-strategy `component.py` exists. See `docs/errors/STR-001.md`.
-- **`STR-002`** (from `load_strategy_from_dir`) — a required class is not exported by its module (e.g. `entry.py` without `entry_rule`). See `docs/errors/STR-002.md`.
-- **`PRM-001` / `PRM-002`** (from `load_strategy_from_dir`) — `strategy_params.DEFAULT_PARAMS` is malformed (missing `printlog` or wrong structure). See `docs/errors/PRM-001.md`, `docs/errors/PRM-002.md`.
+- **`STR-001`** (from `load_strategy_from_dir`) — a required file is missing. Full list per `echolon/strategy/preflight.py::REQUIRED_FILES`: `entry.py`, `exit.py`, `risk.py`, `sizer.py`, `strategy_params.py`, `strategy_indicator_list.json`. `strategy.py` is loaded separately via `loader.load_function("strategy", "strategy_main")` and is required in practice by the coordinator load path but not in preflight's list. `BaseComponent` ships in the installed package (`echolon.strategy.component`) — strategies import it, no per-strategy `component.py` exists. See `echolon/native/errors/codes/STR-001.md`.
+- **`STR-002`** (from `load_strategy_from_dir`) — a required class is not exported by its module (e.g. `entry.py` without `entry_rule`). See `echolon/native/errors/codes/STR-002.md`.
+- **`PRM-001` / `PRM-002`** (from `load_strategy_from_dir`) — `strategy_params.DEFAULT_PARAMS` is malformed (missing `printlog` or wrong structure). See `echolon/native/errors/codes/PRM-001.md`, `echolon/native/errors/codes/PRM-002.md`.
 - **Stale cache after file rewrite** — subsequent `load_*` calls return the previous module contents. Call `clear_cache()` between iterations.
 - **`ImportError: attempted relative import beyond top-level package`** — strategy code used more leading dots (`from ....x.y import z`) than the `package_base` allows. Lengthen the `package_base` or flatten the import.
 - **Pickle failure under multiprocessing** — only happens if `sys.modules` registration was skipped. `StrategyLoader` does it for you; don't bypass `load_module` to import the file by hand.
@@ -81,5 +81,5 @@ components = load_strategy_from_dir("/workspace/current/code")
 ## See also
 
 - `get_strategy_class` skill — `BacktraderStrategyBridge._initialize_strategy` uses a `StrategyLoader` instance to import `strategy.strategy_main`.
-- echolon docs: `echolon/strategy/preflight.py` (`preflight`), `docs/errors/STR-001.md`, `docs/errors/STR-002.md`, `docs/errors/PRM-001.md`, `docs/errors/PRM-002.md`.
+- echolon docs: `echolon/strategy/preflight.py` (`preflight`), `echolon/native/errors/codes/STR-001.md`, `echolon/native/errors/codes/STR-002.md`, `echolon/native/errors/codes/PRM-001.md`, `echolon/native/errors/codes/PRM-002.md`.
 - `run_best_trial` skill — indirect consumer via `BacktestRunner.best_trial → BacktraderStrategyBridge → StrategyLoader`.

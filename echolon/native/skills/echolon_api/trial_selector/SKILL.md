@@ -85,4 +85,4 @@ Internal steps (`_robust_parameter_identification`):
 - `optuna_optimizer` skill — writes the `optimization_trials.csv` consumed here.
 - `run_best_trial` skill — reads the `selected_robust_trial.json` written here.
 - `wfa_runner` skill — the standard orchestrator that pairs `OptunaOptimizer`, `TrialSelector`, and `run_best_trial` per window.
-- echolon docs: `echolon/backtest/schemas.py` (SelectedTrialSchema), `docs/COMPONENT_GUIDE.md`.
+- echolon docs: `echolon/backtest/schemas.py` (SelectedTrialSchema), `the component_guide skill`.

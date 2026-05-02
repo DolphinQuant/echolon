@@ -59,9 +59,11 @@ def test_optuna_optimizer_init_accepts_paths():
     assert _signature_accepts_paths(OptunaOptimizer.__init__)
 
 
-def test_optimize_regime_params_accepts_paths():
-    from echolon.indicators.optimization.interday_regime_optimizer import optimize_regime_params
-    assert _signature_accepts_paths(optimize_regime_params)
+# Phase D removed echolon.indicators.optimization — the TRS rule-based
+# optimizer is now owned by qorka under modules/paradigms/trs/regime_machinery/.
+# That module's `optimize_regime_params(...)` continues to accept `paths=`,
+# but it's no longer an echolon public surface, so it's not part of this
+# echolon-side paths-kwarg contract test.
 
 
 # MarketFactory.from_session / .load_target and TradingTarget.load were

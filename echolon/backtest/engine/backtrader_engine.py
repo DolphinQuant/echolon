@@ -1143,7 +1143,9 @@ class BacktraderEngine(ITradingEngine):
         # Optional components (set by hooks)
         self._session_context_provider: Optional[BaseSessionContextProvider] = None
         self._contract_manager: Optional['ContractIndicatorManager'] = None
-        self._regime_data: Optional[pd.DataFrame] = None
+        # Per-bar segmentation column for trade analyzers (e.g., TRS-paradigm
+        # 'market_regime'; other paradigms can use any categorical column).
+        self._segmentation_data: Optional[pd.DataFrame] = None
 
         # Backtrader components (set during setup)
         self._cerebro: Optional['bt.Cerebro'] = None
@@ -1184,7 +1186,7 @@ class BacktraderEngine(ITradingEngine):
         strategy_params: Optional[Dict[str, Any]] = None,
         analyzers: Optional[List[Type['bt.Analyzer']]] = None,
         strategy_name: Optional[str] = None,
-        regime_data: Optional[pd.DataFrame] = None,
+        segmentation_data: Optional[pd.DataFrame] = None,
     ) -> None:
         """
         Configure backtest.
@@ -1195,7 +1197,10 @@ class BacktraderEngine(ITradingEngine):
             strategy_params: Strategy parameters
             analyzers: List of analyzer classes to attach
             strategy_name: Name for strategy logger (uses class name if None)
-            regime_data: Pre-loaded regime data for analyzers
+            segmentation_data: Pre-loaded per-bar categorical column used by
+                trade analyzers to stratify metrics. TRS-paradigm strategies
+                pass a ``market_regime`` column; other paradigms can pass any
+                categorical column the analyzer should bucket by.
 
         Note:
             Commission, slippage, and contract multiplier are retrieved from
@@ -1205,7 +1210,7 @@ class BacktraderEngine(ITradingEngine):
         """
         self._cerebro = bt.Cerebro()
         self._data_feed = data_feed
-        self._regime_data = regime_data
+        self._segmentation_data = segmentation_data
 
         # Add data feed
         self._cerebro.adddata(data_feed, name=self._symbol)
@@ -1294,7 +1299,7 @@ class BacktraderEngine(ITradingEngine):
             use_contract_aware_trades=use_contract_aware,
             market_adapter=self._market_adapter,
             contract_manager=self._contract_manager,
-            regime_data=regime_data,
+            segmentation_data=segmentation_data,
             contract_multiplier=contract_multiplier,
             session_context_provider=self._session_context_provider,
         )

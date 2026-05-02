@@ -71,8 +71,6 @@ IMPORT_MIGRATIONS: dict[str, str] = {
     "echolon.quant_engine.market_adapters.crypto.crypto_adapter": "echolon.markets.crypto.adapter",
     "echolon.quant_engine.market_adapters.crypto.crypto_session_provider": "echolon.markets.crypto.sessions",
     "echolon.quant_engine.market_adapters.crypto": "echolon.markets.crypto",
-    "echolon.quant_engine.market_adapters.us_futures.cme_adapter": "echolon.markets.us_futures.adapter",
-    "echolon.quant_engine.market_adapters.us_futures": "echolon.markets.us_futures",
     "echolon.quant_engine.market_adapters.base_adapter": "echolon.markets.base",
     "echolon.quant_engine.market_adapters": "echolon.markets",
     # ---- data_pipeline → data ----
@@ -82,11 +80,6 @@ IMPORT_MIGRATIONS: dict[str, str] = {
     "echolon.data_pipeline": "echolon.data",
     # ---- indicators run renamed ----
     "echolon.indicators.run_indicators": "echolon.indicators.run",
-    # ---- lib distributed ----
-    "echolon.lib.regime_utils": "echolon.indicators.utils.regime_utils",
-    "echolon.lib.stats_utils": "echolon.backtest.metrics.stats",
-    "echolon.lib.strategy_log": "echolon.strategy.utils.strategy_log",
-    "echolon.lib.json_utils": "echolon._internal.json_utils",
     # ---- config merge ----
     "echolon.config.quant_engine": "echolon.config.settings",
 }

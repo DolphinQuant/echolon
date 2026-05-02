@@ -1,7 +1,7 @@
 """Indicator catalog — programmatic introspection of indicators echolon ships.
 
 Exposes:
-  list_all(cluster=None)                -> list[str]
+  list_all(has_lookback=None)           -> list[str]
   info(name)                            -> IndicatorInfo | None
   validate(flat_dict)                   -> list[dict]   (error dicts, empty = valid)
   suggest_similar(name, limit=5)        -> list[str]
@@ -11,6 +11,14 @@ Hydration happens at import time via `_load_from_registry()`, which walks
 INDICATOR_MAPPING (interday) + INTRADAY_INDICATOR_MAPPING (intraday) and extracts
 param defaults via ``inspect.signature`` on the calculator modules.
 
+Phase F-5: ``cluster`` categorization removed. The previous 4-way split
+(indicators_with_lookback / _without_lookback / _with_special_params /
+intraday_context_indicators) is replaced by a single derived boolean
+``IndicatorInfo.has_lookback`` — True when the indicator's signature has a
+period-like parameter (``timeperiod`` / ``period`` / ``time_period``). This
+collapses an artificial three-way distinction that was treating "no params"
+and "multi params" identically at the runtime layer.
+
 Merge rule: interday wins on name collision. The CTX passed at dispatch time
 governs which calculator actually runs; catalog is frequency-agnostic.
 """
@@ -19,9 +27,17 @@ from __future__ import annotations
 import difflib
 import importlib
 import inspect
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+
+# Period-like parameter names — an indicator with one of these in its signature
+# has "lookback" semantics (sweepable single-dim period). Same set as the
+# processor uses for column-name suffix logic.
+_PERIOD_PARAM_NAMES: frozenset = frozenset({
+    "period", "timeperiod", "time_period",
+})
 
 
 @dataclass
@@ -29,23 +45,23 @@ class IndicatorInfo:
     """Structured metadata for one indicator entry."""
 
     name: str                  # lowercase canonical name (e.g. "rsi")
-    cluster: str               # "indicators_with_lookback" | "indicators_without_lookback"
-                               # | "indicators_with_special_params" | "intraday_context_indicators"
     function: str              # underlying function name in the calculator module
-    file: str                  # calculator module name (e.g. "ta_lib", "market_regime")
+    file: str                  # calculator module name (e.g. "ta_lib")
     params: list[dict]         # [{"name": "timeperiod", "default": 14, "type": "int"}, ...]
-    output_columns: list[str]  # best-effort column names; lookback uses "{name}_{period}" template
 
     @property
-    def tier(self) -> int:
-        """Legacy tier derived from cluster for backward compat with echolon/mcp/server.py."""
-        _CLUSTER_TO_TIER = {
-            "indicators_with_lookback": 1,
-            "indicators_with_special_params": 2,
-            "indicators_without_lookback": 3,
-            "intraday_context_indicators": 3,
-        }
-        return _CLUSTER_TO_TIER.get(self.cluster, 3)
+    def has_lookback(self) -> bool:
+        """True when the indicator has a period-like parameter (sweepable lookback).
+
+        Derived from the function signature: if any param name is in
+        ``_PERIOD_PARAM_NAMES`` (``timeperiod`` / ``period`` / ``time_period``),
+        the indicator follows lookback semantics — runtime emits column names
+        templated as ``{name}_{period_value}`` for single-period sweeps.
+
+        Phase F-5 replacement for the previous ``cluster ==
+        "indicators_with_lookback"`` check.
+        """
+        return any(p["name"] in _PERIOD_PARAM_NAMES for p in self.params)
 
 
 # Reserved parameters stripped from inspect.signature() — these are plumbing,
@@ -101,25 +117,18 @@ def _extract_params(func_name: str, file_name: str, is_intraday: bool) -> list[d
     return params
 
 
-def _output_columns(name: str, cluster: str) -> list[str]:
-    """Best-effort output column names for an indicator.
-
-    - Tier 1 (lookback): template "{name}_{period}" — period substituted at dispatch.
-    - Tier 2 (special_params): [name] — the registry already decomposes multi-output
-      indicators into separate entries (e.g. BBANDS_UPPER / BBANDS_MIDDLE / BBANDS_LOWER).
-    - Tier 3 / intraday_context: [name].
-    """
-    if cluster == "indicators_with_lookback":
-        return [f"{name}_{{period}}"]
-    return [name]
-
-
 def _load_from_registry() -> dict[str, IndicatorInfo]:
     """Walk INDICATOR_MAPPING (interday) + INTRADAY_INDICATOR_MAPPING (intraday).
 
     Interday wins on collision: if the lowercase name already exists, skip the
-    intraday entry. Intraday-only names (VWAP, session indicators, intraday_context_*)
+    intraday entry. Intraday-only names (VWAP, session indicators, etc.)
     are added as new entries.
+
+    Phase F-5: ``output_columns`` removed from IndicatorInfo (the static
+    template lied for multi-param sweeps). Runtime column-naming via
+    ``processor._build_suffix`` is the single source of truth — it correctly
+    emits ``{name}_{period}`` for single-period sweeps and
+    ``{name}_{key1}{val1}_{key2}{val2}`` for multi-param sweeps.
     """
     from echolon.indicators.calculators.interday.indicator_mapping import (
         INDICATOR_MAPPING,
@@ -135,16 +144,13 @@ def _load_from_registry() -> dict[str, IndicatorInfo]:
             name_lower = key.lower()
             if name_lower in catalog:
                 continue
-            cluster = meta["cluster"]
             func_name = meta["function"]
             file_name = meta.get("file", "ta_lib")
             catalog[name_lower] = IndicatorInfo(
                 name=name_lower,
-                cluster=cluster,
                 function=func_name,
                 file=file_name,
                 params=_extract_params(func_name, file_name, is_intraday),
-                output_columns=_output_columns(name_lower, cluster),
             )
 
     _ingest(INDICATOR_MAPPING, is_intraday=False)
@@ -156,18 +162,26 @@ def _load_from_registry() -> dict[str, IndicatorInfo]:
 _CATALOG: dict[str, IndicatorInfo] = _load_from_registry()
 
 
-def list_all(cluster: str | None = None) -> list[str]:
+def list_all(has_lookback: bool | None = None) -> list[str]:
     """Return all known indicator names, sorted.
 
     Args:
-        cluster: Optional cluster filter. Valid values:
-            ``"indicators_with_lookback"``, ``"indicators_without_lookback"``,
-            ``"indicators_with_special_params"``, ``"intraday_context_indicators"``.
+        has_lookback: Optional filter.
+            ``True``  → only indicators with a period-like parameter
+                       (sweepable single-dim lookback).
+            ``False`` → only indicators without a period parameter (no-param,
+                       multi-param scalar, or special-config indicators).
+            ``None``  → return all (default).
+
+    Phase F-5: replaces the previous ``cluster=...`` keyword. The 4-way
+    cluster split collapsed to a binary ``has_lookback`` because two of the
+    three previous "non-lookback" categories were treated identically by
+    every consumer.
     """
-    if cluster is None:
+    if has_lookback is None:
         return sorted(_CATALOG.keys())
     return sorted(
-        name for name, i in _CATALOG.items() if i.cluster == cluster
+        name for name, i in _CATALOG.items() if i.has_lookback == has_lookback
     )
 
 
@@ -236,7 +250,13 @@ def validate(flat_dict: dict) -> list[dict]:
                         "suggestion": close,
                     })
 
-        if indicator.cluster == "indicators_with_lookback" and isinstance(params, dict):
+        # Phase F-5: range validation now applies to ANY indicator's params
+        # (was previously gated on cluster == "indicators_with_lookback",
+        # which meant multi-param sweeps like {"bbands_upper": {"timeperiod":
+        # [20, 10]}} silently skipped validation). The check is param-scoped
+        # — any [min, max] integer list with min > max is an error regardless
+        # of which indicator owns it.
+        if isinstance(params, dict):
             for param_key, param_val in params.items():
                 if (
                     isinstance(param_val, list)

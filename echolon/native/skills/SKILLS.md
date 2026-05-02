@@ -6,6 +6,16 @@ load them on demand via the `query_skill(name)` tool.
 
 ## echolon_api — how to use echolon's public API
 
+### Orientation (start here when onboarding)
+
+- [quick_start](echolon_api/quick_start/SKILL.md) — Five-step onboarding from pip install to first running backtest. Use when starting from zero and you need the canonical happy-path sequence (init → validate → customize → run). — scope: universal
+- [component_guide](echolon_api/component_guide/SKILL.md) — Per-component contract: entry_rule / exit_rule / risk_manager / position_sizer / strategy_main. Class names, method signatures, return types, when each is called. Use when authoring or debugging a strategy component. — scope: universal
+- [api_reference](echolon_api/api_reference/SKILL.md) — Public class signatures: configs, component output schemas, OrderIntent, EchelonError hierarchy. Use when you need a typed signature lookup. — scope: universal
+- [config_reference](echolon_api/config_reference/SKILL.md) — Pydantic config models: BacktestConfig, OptunaConfig, IndicatorConfig, TradingContext, PathsConfig — and the env vars that resolve them. Use when constructing configs at program entry. — scope: universal
+- [patterns](echolon_api/patterns/SKILL.md) — Five canonical strategy patterns (trend breakout, mean reversion, regime-switching, multi-timeframe, ML-signal). Use when proposing or comparing strategy shapes for a new idea. — scope: universal
+
+### Per-API skills
+
 - [market_factory](echolon_api/market_factory/SKILL.md) — Factory entry point that builds a fully-wired TradingContext from session state (state.json + trading_target_*.json) or explicit market/instrument/frequency/bar_size parameters. — scope: universal
 - [trading_context](echolon_api/trading_context/SKILL.md) — Immutable dataclass carrying market, instrument, frequency, bar_size, and TradingTarget — exposes properties (market_code, instrument_code, bars_per_day), bar_size-aware phase encode/decode callbacks, and frequency-scaled indicator defaults. — scope: universal
 - [engine_factory](echolon_api/engine_factory/SKILL.md) — Factory for trading engines — composes a market adapter, frequency context, and market-mode-appropriate hooks (ContractAwareHook / SessionAwareHook) into a ready-to-use backtest or deploy engine from a TradingContext. — scope: universal
@@ -18,7 +28,6 @@ load them on demand via the `query_skill(name)` tool.
 - [load_indicator_metadata](echolon_api/load_indicator_metadata/SKILL.md) — Reads strategy_indicator_metadata.json for a TradingContext from the configured indicators directory; returns a dict used by the backtrader bridge to register indicator lines on the data feed. — scope: universal
 - [run_data_pipeline](echolon_api/run_data_pipeline/SKILL.md) — End-to-end file-based market-data pipeline — extracts raw OHLCV, generates the trading calendar, standardizes + session-filters + resamples + splits by contract; writes outputs under PathsConfig.market_data_dir/{market}/{instrument}/. — scope: universal
 - [run_indicator_calculation](echolon_api/run_indicator_calculation/SKILL.md) — Calculates technical indicators for every contract in a TradingContext over a date range — wraps IndicatorProcessor, validates indicator_list via IndicatorList schema, and writes strategy_indicators.csv plus the metadata sidecar into output_dir. — scope: universal
-- [optimize_regime_params](echolon_api/optimize_regime_params/SKILL.md) — Convenience wrapper around InterdayRegimeOptimizer — runs an Optuna hyperparameter search for the interday market_regime classifier and returns the winning regime_params dict ready to pass into run_indicator_calculation. — scope: universal
 - [strategy_loader](echolon_api/strategy_loader/SKILL.md) — Unified on-disk strategy module loader — imports strategy.py / entry.py / exit.py / risk.py / sizer.py / strategy_params.py from any directory via importlib, resolving relative imports under a configurable package base and caching the loaded modules. — scope: universal
 - [generate_strategy_params](echolon_api/generate_strategy_params/SKILL.md) — Deterministic Python-code generator — parses params_to_optimize.json, derives parameter ownership across components, auto-clamps over-cap period values per frequency, and writes a complete strategy_params.py with ComponentParameterTemplate classes + optuna_search_space. Exposed as the echolon-mcp `generate_strategy_params` tool. — scope: universal
 - [parameter-patterns](echolon_api/parameter-patterns/SKILL.md) — Architecture doctrine for strategy parameters — ParameterSpec / ComponentParameterTemplate / StrategyParameterFramework shapes, ownership priority (Entry → Exit → Risk → Sizer), crossover constraint semantics, per-frequency indicator period caps. Companion to generate_strategy_params (the how): this is the what and why. — scope: universal

@@ -6,7 +6,7 @@ Each component type has a dedicated logging method that enforces proper output f
 
 | Component | Logging Method | Output Type | Required Fields |
 |-----------|----------------|-------------|-----------------|
-| Entry | `self.log_entry_output(output)` | `EntrySignalOutput` | signal, strength, type, entry_reason, intent, **regime** |
+| Entry | `self.log_entry_output(output)` | `EntrySignalOutput` | signal, strength, type, entry_reason, intent (regime optional — TRS-paradigm only) |
 | Exit | `self.log_exit_output(output)` | `ExitSignalOutput` | should_exit, exit_reason, **position_size, bars_since_entry**, intent |
 | Risk | `self.log_risk_output(output)` | `RiskOutput` | trading_allowed, risk_reason |
 | Sizer | `self.log_sizer_output(output)` | `SizerOutput` | calculated_size, signal_direction, sizing_reason, raw_size |
@@ -43,7 +43,8 @@ output = EntrySignalOutput(
     type='entry_long',             # Required: str
     entry_reason='TEMA crossover', # Required: str (non-empty)
     intent=OrderIntent.ENTRY_LONG, # Required when signal != 'HOLD'
-    regime='trending_up',          # Required: str (via self.get_market_regime())
+    regime='trending_up',          # Optional: TRS strategies populate via self.get_market_regime();
+                                   # TSMOM and other paradigms typically omit this field
     # Strategy-specific extras allowed
     rsi_value=45.2
 )

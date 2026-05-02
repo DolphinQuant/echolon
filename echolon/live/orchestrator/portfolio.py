@@ -563,7 +563,6 @@ class PortfolioTradingRunner:
         conflict that occurs when separate xtdc sessions are created
         per instrument.
         """
-        import json as _json
         from echolon.indicators.utils.merge_indicators import (
             load_indicator_list,
             merge_indicator_lists,
@@ -623,7 +622,10 @@ class PortfolioTradingRunner:
             group_id = f"{instrument_code}_{bar_size}"
             group_dir = os.path.join(str(indicators_backtest_dir), group_id)
 
-            # Collect each slot's flat-dict indicator_list + regime_params
+            # Collect each slot's flat-dict indicator_list + regime_params.
+            # Phase E: get_regime_params reads calculator_params.json (new
+            # format) or auto-migrates legacy regime_params.json.
+            from echolon._internal.strategy_files import get_regime_params
             slot_configs_with_ind = []
             for sc in slot_configs:
                 ind_path = os.path.join(sc.strategy_code_dir, "strategy_indicator_list.json")
@@ -631,12 +633,7 @@ class PortfolioTradingRunner:
                     self.log.warning(f"[{sc.slot_id}] skipped: no {ind_path}")
                     continue
                 ind = load_indicator_list(ind_path)
-                regime_path = os.path.join(sc.strategy_code_dir, "regime_params.json")
-                rp = None
-                if os.path.exists(regime_path):
-                    with open(regime_path, 'r') as f:
-                        rd = _json.load(f)
-                    rp = rd.get('params', rd)
+                rp = get_regime_params(sc.strategy_code_dir)
                 slot_configs_with_ind.append((sc, ind, rp))
 
             if not slot_configs_with_ind:

@@ -67,7 +67,7 @@ indicators_df, calendar_df = load_backtest_data(
 
 - **`FileNotFoundError: [Errno 2] ... strategy_indicators.csv`** — the indicator calculation step never ran, or `indicator_dir` points somewhere empty. Run `run_indicator_calculation(ctx, output_dir=...)` first, or correct the path. No Echolon code.
 - **`FileNotFoundError` on `trading_calendar.csv`** — the data pipeline never produced a calendar. Run `run_data_pipeline(ctx, ...)` first (it writes the calendar in Step 1.5 via `CalendarGenerator`). No Echolon code.
-- **`IND-003` warnings** (logger-level only, not raised) — an indicator column has high NaN ratio. Does not halt the backtest, but typically indicates a buggy indicator definition or a contract-gap issue. See `docs/errors/IND-003.md`.
+- **`IND-003` warnings** (logger-level only, not raised) — an indicator column has high NaN ratio. Does not halt the backtest, but typically indicates a buggy indicator definition or a contract-gap issue. See `echolon/native/errors/codes/IND-003.md`.
 - **`TypeError: unorderable types` from Backtrader** — the `contract` or `session_phase*` column was not numeric. Should never happen through this loader, but will surface if a custom `indicators_path` points to a CSV that did not come from the echolon pipeline.
 - **`KeyError: 'datetime'` or `'date'`** — the CSV has no datetime or date column. The loader checks `'datetime' in indicators_data.columns` first, then `'date'`; if neither exists it proceeds without setting an index. Downstream Backtrader will likely crash. Regenerate indicators.
 
