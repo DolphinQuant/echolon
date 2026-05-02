@@ -7,7 +7,7 @@ Session-aware methods are injected via hooks at runtime:
 - `SessionAwareStrategyHook` → BaseStrategy (DAY + SESSION helpers)
 - `SessionAwareComponentHook` → BaseComponent (SESSION helpers only)
 
-**When to use**: Any strategy where `TradingContext.frequency == "intraday"` (configured in `session/state.json`, accessed via `MarketFactory.from_session()`).
+**When to use**: Any strategy where `TradingContext.frequency == "intraday"` (set when the host calls `MarketFactory.create(..., frequency="intraday", ...)`).
 
 ---
 

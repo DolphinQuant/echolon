@@ -22,7 +22,7 @@ origin_module: echolon_audit_phase0
 from echolon.config.markets.factory import MarketFactory
 from echolon.engine.factory import EngineFactory
 
-ctx = MarketFactory.from_session()
+ctx = MarketFactory.create(market="SHFE", instrument="cu", frequency="interday", bar_size="1d")
 
 # 1. Backtest engine (BacktraderEngine) with hooks pre-installed.
 engine = EngineFactory.create_backtest_engine(

@@ -21,7 +21,7 @@ from echolon.config.markets.factory import MarketFactory
 from echolon.config.markets.core.context import TradingContext
 
 # 1. The canonical path: use MarketFactory to build a correctly-wired ctx.
-ctx = MarketFactory.from_session()
+ctx = MarketFactory.create(market="SHFE", instrument="cu", frequency="interday", bar_size="1d")
 
 # 2. Thin convenience constructor (delegates to MarketFactory.create).
 ctx = TradingContext.from_market(
@@ -79,7 +79,7 @@ macd_fast = ctx.minutes_to_bars(25)
 
 - **`bars_per_day` returning `None`** — `BARS_PER_DAY.get(self.bar_size)` on SHFE with an unmapped bar size (e.g. `"7m"`). No Echolon code — the caller typically trips a downstream TypeError. Restrict `bar_size` to the values in `EngineFactory.BAR_SIZE_MAP`.
 - **`encode_phase` / `decode_phase` returning `0` / `'unknown'`** — `MarketFactory` failed to wire the callbacks for this bar size, or the caller passed a phase name that doesn't exist in the phase table (e.g. `"morning"` on 1h bars, where only `"day_session"` exists). Inspect `ctx.phases.keys()`.
-- **`self.initial_capital == 200000.0` unexpectedly** — the ctx was constructed without a `TradingTarget`. Either pass `target=` explicitly or use `MarketFactory.from_session()` so it loads `trading_target_*.json`.
+- **`self.initial_capital == 200000.0` unexpectedly** — the ctx was constructed without a `TradingTarget`. Pass `initial_capital=` explicitly to `MarketFactory.create(...)`, or have your host application pre-load a `TradingTarget` and inject it (qorka does this in its `config/quant_engine.py:MarketFactory.from_session`).
 
 ## See also
 

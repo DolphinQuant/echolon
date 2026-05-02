@@ -26,7 +26,7 @@ from echolon.data.loaders.backtest_data_loader import (
     load_backtest_data, load_indicator_metadata,
 )
 
-ctx = MarketFactory.from_session()
+ctx = MarketFactory.create(market="SHFE", instrument="cu", frequency="interday", bar_size="1d")
 market_adapter = EngineFactory.create_market_adapter(ctx)
 strategy_class = get_strategy_class(ctx)
 indicators, calendar = load_backtest_data(ctx)

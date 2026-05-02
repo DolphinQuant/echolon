@@ -73,7 +73,7 @@ from echolon.config.markets.factory import MarketFactory
 from echolon.data import run_data_pipeline
 
 paths = PathsConfig.from_project_root(Path("/data/echolon-proj"))
-ctx = MarketFactory.build(market="SHFE", instrument="aluminum", frequency="day")
+ctx = MarketFactory.create(market="SHFE", instrument="al", frequency="interday", bar_size="1d")
 run_data_pipeline(ctx, paths=paths, skip_extraction=False)
 ```
 

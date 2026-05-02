@@ -51,7 +51,7 @@ def generate_signal(self) -> EntrySignalOutput:
 
 See `echolon/native/templates/momentum_breakout/` for the full working version (or `echolon examples copy momentum_breakout <dest>`).
 
-**Common errors:** IND-001 (uppercase `HIGHEST_HIGH`), IND-002 (forgot to declare `highest_high` in JSON).
+**Common errors:** IND-001 (uppercase `HIGHEST_HIGH` in code). If you forget to declare `highest_high` in JSON, the runtime call raises `KeyError` from `get_indicator`, which surfaces as BT-001 inside a backtest bar — not as IND-002. (IND-002 only fires when the JSON itself names an indicator the catalog doesn't know.)
 
 ## 2. Mean Reversion
 
@@ -126,7 +126,7 @@ def generate_signal(self) -> EntrySignalOutput:
                              regime=regime)
 ```
 
-**Common errors:** IND-002 (forgetting to declare `market_regime` in JSON), missing classifier registration (`get_regime_classifier('market_regime')` raises before the strategy ever runs).
+**Common errors:** missing classifier registration — `get_regime_classifier('market_regime')` raises before the strategy ever runs if no classifier was registered. Forgetting to declare `market_regime` in JSON surfaces at backtest time as a `KeyError` from `get_indicator('market_regime')` (wrapped as BT-001), not as IND-002.
 
 ## 4. Multi-Timeframe
 
@@ -156,7 +156,7 @@ def generate_signal(self) -> EntrySignalOutput:
                              entry_reason="No MTF alignment")
 ```
 
-**Common errors:** IND-002 (daily indicator not declared / not in catalog), DAT-001 (daily data file missing). Note: `ema_daily_50` is illustrative — echolon's catalog only contains single-timeframe `ema`. Multi-timeframe columns must come from your data pipeline as pre-emitted columns.
+**Common errors:** DAT-001 (daily data file missing), or a `KeyError` from `get_indicator("ema_daily_50")` if the column isn't pre-emitted by your pipeline (surfaces as BT-001 inside a backtest bar). IND-002 fires only if your `strategy_indicator_list.json` itself names an indicator echolon's catalog doesn't know. Note: `ema_daily_50` is illustrative — echolon's catalog only contains single-timeframe `ema`. Multi-timeframe columns must come from your data pipeline as pre-emitted columns.
 
 ## 5. ML Signal
 
@@ -198,4 +198,4 @@ class entry_rule(BaseComponent):
                                  entry_reason="Below threshold")
 ```
 
-**Common errors:** DAT-001 (model file missing), IND-002 (feature indicator not declared), PRM-002 (`model_path` missing from `entry_params`).
+**Common errors:** DAT-001 (model file missing), `KeyError` from `get_indicator(...)` if a feature column isn't declared in JSON (surfaces as BT-001 at backtest time), PRM-002 (`model_path` missing from `entry_params`).

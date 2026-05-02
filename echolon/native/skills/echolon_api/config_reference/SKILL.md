@@ -34,7 +34,7 @@ See the `optuna_optimizer` skill for invocation details.
 
 ## TradingContext
 
-`echolon.config.markets.core.context.TradingContext` — runtime context: market, instrument, frequency, bar size. Don't construct directly; use `MarketFactory.from_session()` or `MarketFactory.create(...)`. See the `market_factory` and `trading_context` skills.
+`echolon.config.markets.core.context.TradingContext` — runtime context: market, instrument, frequency, bar size. Don't construct directly; use `MarketFactory.create(market, instrument, frequency, bar_size)`. See the `market_factory` and `trading_context` skills.
 
 ## quick_start convenience
 
@@ -65,7 +65,7 @@ bt.max_drawdown_pct = 20.0
 | `ECHOLON_LOG_LEVEL` | `INFO` | Logging verbosity |
 | `ECHOLON_N_JOBS_DEFAULT` | `-1` | Default Optuna parallelism |
 | `ECHOLON_PROJECT_ROOT` | `<cwd>` | Resolved by `PathsConfig.from_env()` |
-| `ECHOLON_SESSION_DIR` | `<root>/session` | Override for `MarketFactory.from_session()` |
+| `ECHOLON_SESSION_DIR` | `<root>/session` | Session-state directory (consumed by host applications that load session JSON; not by `MarketFactory` itself) |
 
 Set via shell export, `.env` file, or Docker env config.
 
@@ -118,7 +118,7 @@ paths = PathsConfig.from_project_root(
 from echolon.config.markets.factory import MarketFactory
 from echolon.data import run_data_pipeline, run_live_data_update
 
-ctx = MarketFactory.build(market="SHFE", instrument="aluminum", frequency="day")
+ctx = MarketFactory.create(market="SHFE", instrument="al", frequency="interday", bar_size="1d")
 run_data_pipeline(ctx, paths=paths)
 run_live_data_update(ctx, client, paths=paths)
 ```

@@ -5,7 +5,7 @@
 This document covers patterns specific to **interday trading** (daily bars).
 For SHFE futures, this includes contract expiry awareness via `ForcedExitStrategyHook`.
 
-**When to use**: Any strategy where `TradingContext.frequency == "interday"` (configured in `session/state.json`, accessed via `MarketFactory.from_session()`).
+**When to use**: Any strategy where `TradingContext.frequency == "interday"` (set when the host calls `MarketFactory.create(..., frequency="interday", ...)`).
 
 ---
 

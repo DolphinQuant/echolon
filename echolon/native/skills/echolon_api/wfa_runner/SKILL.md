@@ -23,7 +23,7 @@ from echolon.config.backtest_config import BacktestConfig
 from echolon.backtest.wfa.runner import WFARunner
 from echolon.backtest.wfa.window import WFAConfig, WFAWindow
 
-ctx = MarketFactory.from_session()
+ctx = MarketFactory.create(market="SHFE", instrument="cu", frequency="interday", bar_size="1d")
 
 config = WFAConfig(
     windows=[

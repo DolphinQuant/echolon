@@ -21,7 +21,7 @@ from echolon.config.markets.factory import MarketFactory
 from echolon.backtest.engine.backtrader_strategy import get_strategy_class
 import backtrader as bt
 
-ctx = MarketFactory.from_session()
+ctx = MarketFactory.create(market="SHFE", instrument="cu", frequency="interday", bar_size="1d")
 
 # 1. Default: loads strategy from PathsConfig.from_env().strategy_code_dir
 StrategyClass = get_strategy_class(ctx)

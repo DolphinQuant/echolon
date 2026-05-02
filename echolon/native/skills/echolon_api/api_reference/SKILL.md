@@ -66,14 +66,15 @@ IndicatorConfig(
 ## TradingContext
 
 **Module**: `echolon.config.markets.core.context`
-**Purpose**: market + instrument + frequency + bar_size runtime context. Build via `MarketFactory.from_session()` (preferred) or `MarketFactory.create(...)` — don't construct directly. See the `market_factory` skill.
+**Purpose**: market + instrument + frequency + bar_size runtime context. Build via `MarketFactory.create(...)` (don't construct directly). See the `market_factory` skill.
 
 ```python
-TradingContext.from_market(
-    market: str,           # e.g., "shfe"
+MarketFactory.create(
+    market: str,           # e.g., "SHFE"
     instrument: str,       # e.g., "cu"
-    frequency: str = "interday",
-    bar_size: str = "1d",
+    frequency: str,        # "interday" | "intraday"
+    bar_size: str,         # e.g., "1d", "5m"
+    initial_capital: float = 200000.0,
 ) -> TradingContext
 ```
 
@@ -112,7 +113,7 @@ Returned by `entry_rule.generate_signal()`.
 Returned by `exit_rule.should_exit()`.
 
 - **Required**: `should_exit: bool`, `exit_reason: str`, `position_size: float (≥ 0)`, `bars_since_entry: int (≥ 0)`
-- **Optional**: `intent: Optional[OrderIntent]` (required when `should_exit=True`)
+- **Optional**: `intent: Optional[OrderIntent]` (required when `should_exit=True`), `signal: Optional[Literal['LONG', 'SHORT', 'HOLD']]` (echoes the originating entry signal when relevant; defaults to `None`)
 
 ### RiskOutput
 

@@ -62,16 +62,45 @@ rsi = self.get_indicator(f"rsi_{self.rsi_period}")
 
 ### Multi-param sweep (Cartesian)
 
-When more than one param is a list (`{"bbands_upper": {"timeperiod": [10, 20], "nbdevup": [1.5, 2.0]}}`),
-the runtime emits `bbands_upper_timeperiod10_nbdevup1p5`, etc.
-(Float fractional parts encode `.` → `p`.) Lookup mirrors the suffix:
+When more than one param is a list, the runtime emits a column per
+combination with a `keyN_value` suffix:
+
+```json
+{"bbands_upper": {"timeperiod": [10, 20], "nbdevup": [1.5, 2.0]}}
+```
+
+produces columns
+`bbands_upper_timeperiod10_nbdevup1p5`,
+`bbands_upper_timeperiod10_nbdevup2`,
+`bbands_upper_timeperiod20_nbdevup1p5`,
+`bbands_upper_timeperiod20_nbdevup2`.
+(Float fractional parts encode `.` → `p`; integer-valued floats drop the `.0`.)
+
+Lookup mirrors the suffix:
 
 ```python
-col = (
-    f"bbands_upper_timeperiod{self.bbands_timeperiod}"
-    f"_nbdevup{_format_indicator_param(self.bbands_nbdevup)}"
-)
-upper = self.get_indicator(col)
+col_suffix = f"timeperiod{self.bbands_timeperiod}_nbdevup{_format_indicator_param(self.bbands_nbdevup)}"
+upper  = self.get_indicator(f"bbands_upper_{col_suffix}")
+middle = self.get_indicator(f"bbands_middle_{col_suffix}")
+lower  = self.get_indicator(f"bbands_lower_{col_suffix}")
+```
+
+Indicators with multiple outputs (BBANDS → upper/middle/lower; MACD →
+line/signal/hist; STOCH → k/d) all share the same suffix per combo —
+declare the *family* once in JSON, then look each output line up
+separately in code.
+
+The float-encoding helper (`_format_indicator_param`) lives in qorka's
+strategy code generator and mirrors echolon's `processor._fmt`. If you're
+authoring strategies outside that codegen path, write the same logic
+inline:
+
+```python
+def _format_indicator_param(v):
+    if isinstance(v, float):
+        if v.is_integer(): return str(int(v))
+        return str(v).replace(".", "p")
+    return str(v)
 ```
 
 (See plan `docs/superpowers/plans/2026-05-01-multi-param-indicator-sweep-strategy-codegen.md`
@@ -116,7 +145,7 @@ All components MUST return Pydantic BaseModel instances:
 | Component | Return Type | Required Fields | Optional |
 |-----------|-------------|-----------------|----------|
 | Entry | `EntrySignalOutput` | signal, strength, type, entry_reason | intent (required for non-HOLD), regime (TRS-paradigm; defaults to None per Phase A relaxation) |
-| Exit | `ExitSignalOutput` | should_exit, exit_reason, position_size, bars_since_entry | intent (required when should_exit=True) |
+| Exit | `ExitSignalOutput` | should_exit, exit_reason, position_size, bars_since_entry | intent (required when should_exit=True), signal (optional `Literal['LONG','SHORT','HOLD']`; echoes the originating entry signal when relevant) |
 | Risk | `RiskOutput` | trading_allowed, risk_reason | — |
 | Sizer | `SizerOutput` | calculated_size, signal_direction, sizing_reason, raw_size | — |
 
@@ -194,7 +223,7 @@ For architecture overview, see [ARCHITECTURE.md](ARCHITECTURE.md).
 ## Frequency-Specific Patterns
 
 Strategies can be either **interday** (daily bars) or **intraday** (sub-daily bars).
-The frequency is defined in `TradingContext` (loaded via `MarketFactory.from_session()` from `session/state.json`) and determines which hooks are applied.
+The frequency is set on `TradingContext` at construction time (passed to `MarketFactory.create(...)`), and determines which hooks are applied.
 
 | Frequency | Documentation | Key Features |
 |-----------|--------------|--------------|

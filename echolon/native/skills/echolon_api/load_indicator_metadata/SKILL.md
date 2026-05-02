@@ -21,7 +21,7 @@ from echolon.config.markets.factory import MarketFactory
 from echolon.data.loaders.backtest_data_loader import load_indicator_metadata
 from echolon.config.paths_config import PathsConfig
 
-ctx = MarketFactory.from_session()
+ctx = MarketFactory.create(market="SHFE", instrument="cu", frequency="interday", bar_size="1d")
 
 # 1. Default: reads PathsConfig.from_env().indicators_backtest_dir /
 #    {instrument} / strategy_indicator_metadata.json.

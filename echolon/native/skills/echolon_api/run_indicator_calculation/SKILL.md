@@ -23,7 +23,7 @@ from echolon.indicators import get_regime_optimizer
 # (qorka registers the TRS optimizer at session start via
 # `modules.paradigms.trs.regime_machinery.setup_classifiers()`)
 
-ctx = MarketFactory.from_session()
+ctx = MarketFactory.create(market="SHFE", instrument="cu", frequency="interday", bar_size="1d")
 
 # 1. Minimal intraday call (no market_regime indicator → no regime_params needed).
 df = run_indicator_calculation(
@@ -88,7 +88,7 @@ The processor writes `strategy_indicators.csv` and `strategy_indicator_metadata.
 
 - **`pydantic.ValidationError` from `IndicatorList.model_validate`** — `indicator_list` is malformed. Inspect the error message for the offending key.
 - **`ValueError: start_date and end_date are required when trading_dates is None.`** — must pass either `trading_dates` or both ISO date strings.
-- **Downstream `IND-001` / `IND-002`** — raised inside `IndicatorProcessor` when an indicator name has a casing mismatch (`IND-001`) or a calculated column is not declared in the spec (`IND-002`). See `echolon/native/errors/codes/IND-001.md`, `echolon/native/errors/codes/IND-002.md`.
+- **Downstream `IND-002`** — raised inside `IndicatorProcessor._resolve_function` when an indicator name in the JSON has no calculation mapping (typo, unknown name, or removed catalog entry). `IND-001` (casing) is raised by the strategy-side preflight against `get_indicator(...)` literals, not by this function. See `echolon/native/errors/codes/IND-001.md`, `echolon/native/errors/codes/IND-002.md`.
 - **`IND-003`** — sidecar-only warning for high-NaN columns, surfaced later by `load_backtest_data`. See `echolon/native/errors/codes/IND-003.md`.
 - **Silent empty DataFrame** — `IndicatorProcessor.process_all_contracts` returned no data (bad date range, missing contract files). Logger warning only; downstream `load_backtest_data` will then fail on a missing or empty CSV.
 

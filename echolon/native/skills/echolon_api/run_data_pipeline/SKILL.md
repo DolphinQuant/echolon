@@ -21,7 +21,7 @@ from echolon.config.markets.factory import MarketFactory
 from echolon.config.paths_config import PathsConfig
 from echolon.data import run_data_pipeline     # or run_pipeline (alias)
 
-ctx = MarketFactory.from_session()
+ctx = MarketFactory.create(market="SHFE", instrument="cu", frequency="interday", bar_size="1d")
 
 # 1. Full pipeline from raw data. Writes to
 #    paths.market_data_dir / ctx.market_code / ctx.instrument_name / ...

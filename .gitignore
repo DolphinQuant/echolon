@@ -4,3 +4,6 @@ __pycache__/
 dist/
 *.egg-info/
 .venv/
+
+# Internal-only historical plans / analyses; not part of the public surface.
+docs/

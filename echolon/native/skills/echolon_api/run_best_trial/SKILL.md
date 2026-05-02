@@ -20,7 +20,7 @@ origin_module: echolon_audit_phase0
 from echolon.config.markets.factory import MarketFactory
 from echolon.backtest.runner import run_best_trial
 
-ctx = MarketFactory.from_session()
+ctx = MarketFactory.create(market="SHFE", instrument="cu", frequency="interday", bar_size="1d")
 
 # 1. Default: reads selected_robust_trial.json from the default location,
 #    runs over the default backtest period (BacktestConfig.start/end).
@@ -71,4 +71,4 @@ Returned dict includes at least (all values may be 0 if the backtest trades noth
 - `trial_selector` skill — writes the `selected_robust_trial.json` that this function reads.
 - `wfa_runner` skill — calls `run_best_trial` for each OOS window + the final full-period replay.
 - `engine_factory` skill — `BacktestRunner` internally calls `EngineFactory.create_backtest_engine(ctx, ...)`.
-- `market_factory` skill — `MarketFactory.from_session()` is the usual way to obtain the `ctx` argument.
+- `market_factory` skill — `MarketFactory.create(market, instrument, frequency, bar_size)` is the canonical way to obtain the `ctx` argument.

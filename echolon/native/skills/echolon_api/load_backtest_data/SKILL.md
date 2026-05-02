@@ -21,7 +21,7 @@ from echolon.config.markets.factory import MarketFactory
 from echolon.data.loaders.backtest_data_loader import load_backtest_data
 from echolon.config.paths_config import PathsConfig
 
-ctx = MarketFactory.from_session()
+ctx = MarketFactory.create(market="SHFE", instrument="cu", frequency="interday", bar_size="1d")
 
 # 1. Default: reads from PathsConfig.from_env() locations.
 indicators_df, calendar_df = load_backtest_data(ctx)
