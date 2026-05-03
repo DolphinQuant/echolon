@@ -11,14 +11,87 @@ If you've asked Claude Code or Cursor to write a backtest in `backtrader` or `ve
 
 ## Install and run a backtest
 
+## Quickstart
+
+Echolon ships three top-level commands matching the natural newcomer arc:
+
+| Command | Purpose | Time |
+|---|---|---|
+| `echolon hello` | First impression. Bundled SHFE aluminum data + bundled strategy + auto-backtest. Offline. | ~30s |
+| `echolon init <workspace> --market SHFE --instrument <i> --start <d> --end <d>` | Real project. Downloads market data via akshare (free, no registry), scaffolds a strategy from a bundled template, writes a workspace marker. | ~1–5 min |
+| `echolon backtest single <strategy_dir>` | Iterate. Walks up from `strategy_dir` to recover context from the workspace marker; recomputes indicators and runs backtest with zero flags. | ~5–10s |
+
+### See it work — `echolon hello`
+
 ```bash
 pip install echolon
-echolon init-strategy my_first --template minimal
-echolon validate my_first/
-echolon run my_first/ --instrument cu --start 2020-01-01 --end 2023-12-31
+mkdir -p ~/echolon-playground && cd ~/echolon-playground
+echolon hello
 ```
 
-The `minimal` template runs end-to-end with zero trades on purpose — it's there to confirm the data, validation, and engine wiring work before you put any logic in. After that completes, open `entry.py` and put a signal in.
+This creates `./echolon-hello/` with bundled SHFE aluminum data, the `momentum_breakout` strategy template, an `.echolon-workspace.json` marker, and runs a backtest immediately:
+
+```
+./echolon-hello/
+├── .echolon-workspace.json     ← marker — `echolon backtest` recovers ctx from here
+├── data/SHFE/al/main_contract.csv
+├── workspace/data/market_data/SHFE/aluminum/{sort_by_contract/,sort_by_date.csv,trading_calendar.csv}
+├── strategy/baseline/          ← editable template — fill in your logic here
+└── output/                     ← backtest artifacts
+```
+
+**Try this next:** open `./echolon-hello/strategy/baseline/entry.py`, change a parameter (e.g. the breakout lookback in `strategy_params.py`), and re-run:
+
+```bash
+echolon backtest single ./echolon-hello/strategy/baseline/
+```
+
+Watch the Sharpe shift.
+
+### Start a real project — `echolon init`
+
+```bash
+pip install echolon[shfe]      # adds akshare for the data downloader
+echolon init my-zinc-strategy --market SHFE --instrument zinc \
+                              --start 2022-01-01 --end 2024-12-31 \
+                              --template momentum_breakout
+```
+
+Downloads zinc OHLCV via akshare (Sina Finance's free mirror — no registry, no token), runs echolon's standardizer pipeline, derives `main_contract.csv` from akshare's continuous-main series, scaffolds a strategy under `my-zinc-strategy/strategy/baseline/`. Fill in business logic in the existing skeleton — echolon's framework structure (class names, method signatures, imports) is already correct.
+
+### Iterate — `echolon backtest single`
+
+```bash
+echolon backtest single my-zinc-strategy/strategy/baseline/
+```
+
+Walks up from `strategy/baseline/` to find `.echolon-workspace.json`, recovers `--market`, `--instrument`, `--start`, `--end` automatically, recomputes indicators, runs backtest, prints metrics. No flags required.
+
+For agent / CI consumption:
+
+```bash
+echolon backtest single my-zinc-strategy/strategy/baseline/ --json
+# {
+#   "ok": true,
+#   "sharpe": 1.04,
+#   "max_drawdown": -0.082,
+#   "annual_return": 0.18,
+#   "total_trades": 142,
+#   ...
+# }
+```
+
+### Discover what's available
+
+| Command | Shows |
+|---|---|
+| `echolon` (no args) | the three-command quickstart |
+| `echolon --version` | installed echolon version |
+| `echolon doctor` | dependency pre-flight (ta-lib, akshare) — run first if anything misbehaves |
+| `echolon examples --list` | bundled strategy templates with descriptions |
+| `echolon indicators list` | indicator catalog (use `--format json` for agents) |
+| `echolon schema BacktestConfig` | dump Pydantic JSON schema (for agents writing config from scratch) |
+| `echolon validate <strategy_dir>` | check a strategy directory against echolon's contracts (`--json` for agents) |
 
 ## Where echolon is today
 
@@ -85,6 +158,76 @@ Being specific so you don't get bitten:
 - Single machine. Optuna parallelism uses local cores; no distributed orchestration.
 - Python 3.11+ required.
 - Pre-1.0, so the public API can shift between minor versions. Breaking changes are documented in [CHANGELOG.md](./CHANGELOG.md).
+
+## Bring your own data
+
+If you already have raw SHFE XLS files (downloaded from shfe.com.cn) in a directory, run `SHFEFileDayExtractor` directly instead of using akshare. If you have data in another format (broker CSV, tushare pull, custom database), three files must end up under `{workspace}/workspace/data/market_data/SHFE/{instrument}/`:
+
+| File | Schema |
+|---|---|
+| `sort_by_contract/{contract}.csv` | `contract, date, prev_close, prev_settlement, open, high, low, close, settlement, price_change, settlement_change, volume, turnover, open_interest` |
+| `sort_by_date.csv` | Same columns, all rows concatenated and sorted by date. |
+| `trading_calendar.csv` | `date, is_trading_day` (boolean). |
+
+Plus under `{workspace}/data/SHFE/{instrument_code}/` (note the SHORT code, e.g. `al` not `aluminum`):
+
+| File | Schema |
+|---|---|
+| `main_contract.csv` | `date, main_contract` where `main_contract` is the contract code with `.SF` suffix (e.g. `al2401.SF`). One row per change-of-main-contract date. |
+
+Echolon does **not** auto-derive `main_contract.csv` from raw OHLCV — it's a USER input encoding your roll convention (volume / OI / DTE rules). For SHFE via akshare, `echolon init` derives it for you; otherwise produce it yourself and drop it in place.
+
+## Strategy ideas — no LLM required
+
+If you don't want to set up an LLM agent and want to learn by reading, echolon ships three template strategies under `echolon/native/templates/`. Each is a complete, working reference you can study or fork.
+
+- **`minimal`** — the smallest possible strategy. Empty stubs returning hold-forever outputs. Best for understanding the framework's class shape and method contracts before adding any logic.
+- **`momentum_breakout`** — 20-bar Donchian breakout entry, ATR-trailing exit. The "hello world" of trend-following. Good template for any strategy whose entry is a price-vs-rolling-window comparison.
+- **`rsi_mean_reversion`** — RSI(14) entry below 30 (LONG) / above 70 (SHORT) with time exit. Good template for any oscillator-based reversal strategy.
+
+To copy one into your workspace and iterate:
+
+```bash
+echolon examples copy momentum_breakout my-strategy/strategy/baseline/
+echolon backtest single my-strategy/strategy/baseline/
+```
+
+Or pass `--template <name>` to `echolon init` / `echolon hello` to start from a richer baseline than `minimal`.
+
+## Installation troubleshooting
+
+`pip install echolon` works out of the box on:
+- Linux x86_64 (manylinux2014)
+- macOS x86_64 + arm64 (M1/M2/M3)
+- Windows x86_64
+- Python 3.11–3.12
+
+For these, all dependencies (including ta-lib) ship as prebuilt wheels — no compiler needed.
+
+For other platforms (Linux ARM64, Alpine/musl, FreeBSD, Python 3.13+), the only dep that may need source-building is **ta-lib's C library**. Install per platform:
+
+```bash
+# Debian / Ubuntu (incl. Raspberry Pi):
+sudo apt install ta-lib0 ta-lib-dev
+pip install --force-reinstall TA-Lib
+
+# macOS (Homebrew):
+brew install ta-lib
+pip install --force-reinstall TA-Lib
+
+# From source (any platform):
+# https://ta-lib.org/install.html
+```
+
+After installing, run `echolon doctor` to confirm everything is wired:
+
+```
+$ echolon doctor
+  ✓ ta-lib              talib import works (version 0.6.7)
+  ✓ akshare             not installed (optional — only needed for `echolon init` data download)
+  ✓ backtrader          available
+  ✓ optuna              available
+```
 
 ## License
 
