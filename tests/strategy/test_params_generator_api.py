@@ -277,3 +277,40 @@ def test_package_exports_public_symbols():
     assert callable(generate_strategy_params)
     assert callable(StrategyParamsGenerator)
     assert GenerationResult is not None
+
+
+def test_generate_creates_missing_output_parent_dir(tmp_path):
+    """write_to_file must create the output's parent directory when missing.
+
+    Pre-fix, qorka workspace cleaners that remove `workspace/current/code/`
+    between iterations caused the next `generate_strategy_params` call to
+    fail with a misleading "Input file not found: <output_path>" message.
+    """
+    from echolon.strategy.generators import generate_strategy_params
+
+    params_file = _write_fixture(tmp_path)
+    nested_output_dir = tmp_path / "deep" / "nested" / "code"
+    output = nested_output_dir / "strategy_params.py"
+    assert not nested_output_dir.exists()
+
+    result = generate_strategy_params(
+        params_file_path=str(params_file),
+        output_path=str(output),
+        frequency="interday",
+    )
+    assert result.success, f"expected success, got: {result.message}"
+    assert output.exists()
+
+
+def test_missing_input_message_labels_input(tmp_path):
+    """A missing input file must say 'Input file not found', not output."""
+    from echolon.strategy.generators import generate_strategy_params
+
+    missing = tmp_path / "does_not_exist.json"
+    output = tmp_path / "strategy_params.py"
+    result = generate_strategy_params(
+        params_file_path=str(missing),
+        output_path=str(output),
+    )
+    assert result.success is False
+    assert "Input file not found" in result.message

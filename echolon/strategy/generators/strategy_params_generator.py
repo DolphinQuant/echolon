@@ -1077,6 +1077,14 @@ def apply_shared_params(params: Dict[str, Any]) -> Dict[str, Any]:
         """Generate and write strategy_params.py to file"""
         content = self.generate_complete_file()
 
+        # Ensure parent directory exists. Without this, callers whose
+        # workspace cleaners wipe the output dir between runs hit a
+        # FileNotFoundError on `open(..., 'w')` that the upstream wrapper
+        # mislabels as "Input file not found".
+        parent = Path(output_path).parent
+        if str(parent):
+            parent.mkdir(parents=True, exist_ok=True)
+
         with open(output_path, 'w') as f:
             f.write(content)
 
@@ -1187,10 +1195,19 @@ def generate_strategy_params(
             message=f"Successfully generated {output_path}",
         )
     except FileNotFoundError as e:
+        # Distinguish input-read vs output-write failures: pre-fix, both
+        # surfaced as "Input file not found" with the wrong path attached.
+        bad_path = e.filename or ""
+        if bad_path and Path(bad_path).resolve() == Path(output_path).resolve():
+            label = f"Failed to write output {output_path}"
+        elif bad_path and Path(bad_path).resolve() == Path(params_file_path).resolve():
+            label = f"Input file not found: {params_file_path}"
+        else:
+            label = "File not found"
         return GenerationResult(
             success=False,
             output_path=output_path,
-            message=f"Input file not found: {e}",
+            message=f"{label}: {e}",
         )
     except json.JSONDecodeError as e:
         return GenerationResult(
