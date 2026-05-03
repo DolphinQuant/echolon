@@ -1,5 +1,26 @@
 # Trading API Interfaces Reference
 
+## Common pitfalls — read this BEFORE writing any component code
+
+These are real mistakes seen in agent-generated components. Every one of
+them looks like a confident match against common Python patterns from
+training data, but each one crashes at runtime. Verify against the
+signatures below; if uncertain, call the `describe_component_api` MCP
+tool for the live signature.
+
+| ❌ Wrong | ✅ Right | Why |
+|---|---|---|
+| `self.current_bar` | `self.get_current_bar()` | `current_bar` is **not an attribute**. The interface exposes a method. |
+| `bar.close`, `bar.high` | `bar['close']`, `bar['high']` | `get_current_bar()` returns a `Dict[str, float]`, not an object. Keys: `'open'`, `'high'`, `'low'`, `'close'`, `'volume'`. |
+| `self.bar_index` | Track manually with a per-trade counter you maintain | **No `bar_index` attribute exists.** If you need bars-held, increment a counter inside your component and reset it on flat. |
+| `self.indicators['rsi_14']` | `self.get_indicator('rsi_14')` | Indicators are accessed via a method, never via a dict on `self`. |
+| `self.params.get('foo', 0)` | `self.get_param('foo')` or read `self.params['foo']` directly | Defensive `.get()` with defaults is a framework violation (PRM-004). Params are guaranteed present per the contract. |
+| `try/except` around any framework call | Let it raise | The "no error handling" policy is enforced by validators. |
+
+The `describe_component_api` MCP tool returns the live `BaseComponent` /
+`IMarketData` API via Python `inspect`, so it cannot drift from the
+codebase — useful when this table doesn't cover your specific question.
+
 ## Complete Interface Specifications
 
 ### ITradingEngine

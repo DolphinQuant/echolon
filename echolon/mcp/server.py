@@ -343,6 +343,104 @@ def build_server() -> FastMCP:
         return _impl(strategy_dir=strategy_dir).to_dict()
 
     @server.tool()
+    def describe_component_api() -> dict:
+        """Return the live ``BaseComponent`` + ``IMarketData`` API surface.
+
+        Use this BEFORE writing any component code. The return value is
+        produced via ``inspect.signature()`` on the actual classes, so it
+        always reflects the current echolon version — there is no skill /
+        doc drift. If a method appears here, it exists; if it doesn't, it
+        doesn't. Pip-install or editable-install, same answer.
+
+        Returns a dict with shape::
+
+            {
+              "BaseComponent": {
+                "override_methods": [{"name": ..., "signature": ..., "doc": ...}, ...],
+                "helper_methods":   [{...}, ...],
+                "properties":       [{"name": ..., "doc": ...}, ...],
+              },
+              "IMarketData": {
+                "methods": [{"name": ..., "signature": ..., "doc": ...}, ...],
+              },
+            }
+
+        ``override_methods`` are the four BaseComponent stubs each component
+        file must override (``generate_signal`` / ``should_exit`` /
+        ``can_trade`` / ``calculate_size``). ``helper_methods`` are concrete
+        helpers strategies may call (``get_current_bar``, ``get_indicator``,
+        ``log_*_output``, etc.). ``properties`` are read-only attribute
+        accessors (``self.market_data``, ``self.portfolio``, ``self.params``).
+
+        ``signature`` is the formatted ``inspect.Signature`` (e.g.
+        ``"(self, name: str, index: int = 0) -> float"``). ``doc`` is the
+        first line of the docstring; full docstrings live on the source.
+        """
+        import inspect
+        from echolon.strategy.component import BaseComponent
+        from echolon.strategy.interfaces import IMarketData
+
+        # Names every concrete component file must override. Hardcoded
+        # because BaseComponent's stubs raise STR-003 instead of using
+        # @abstractmethod, so __abstractmethods__ doesn't capture them.
+        OVERRIDE_NAMES = frozenset({
+            "generate_signal", "should_exit", "can_trade", "calculate_size",
+        })
+
+        def _summarize(member) -> str:
+            doc = inspect.getdoc(member) or ""
+            return doc.split("\n", 1)[0] if doc else ""
+
+        def _entry(name: str, member) -> dict:
+            return {
+                "name": name,
+                "signature": str(inspect.signature(member)),
+                "doc": _summarize(member),
+            }
+
+        def _public_methods(cls):
+            return [
+                (name, member)
+                for name, member in inspect.getmembers(cls, predicate=inspect.isfunction)
+                if not name.startswith("_")
+            ]
+
+        bc_methods = _public_methods(BaseComponent)
+        bc_overrides = sorted(
+            (_entry(n, m) for n, m in bc_methods if n in OVERRIDE_NAMES),
+            key=lambda e: e["name"],
+        )
+        bc_helpers = sorted(
+            (_entry(n, m) for n, m in bc_methods if n not in OVERRIDE_NAMES),
+            key=lambda e: e["name"],
+        )
+
+        bc_properties = sorted(
+            (
+                {"name": name, "doc": _summarize(member.fget)}
+                for name, member in inspect.getmembers(BaseComponent)
+                if not name.startswith("_") and isinstance(member, property)
+            ),
+            key=lambda e: e["name"],
+        )
+
+        imd_methods = sorted(
+            (_entry(n, m) for n, m in _public_methods(IMarketData)),
+            key=lambda e: e["name"],
+        )
+
+        return {
+            "BaseComponent": {
+                "override_methods": bc_overrides,
+                "helper_methods": bc_helpers,
+                "properties": bc_properties,
+            },
+            "IMarketData": {
+                "methods": imd_methods,
+            },
+        }
+
+    @server.tool()
     def validate_parameter_access(strategy_dir: str) -> dict:
         """AST-check for hardcoded threshold literals (PRM-003) and defensive
         ``self.params.get()`` calls (PRM-004) across the 4 component files.
