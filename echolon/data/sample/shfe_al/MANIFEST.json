@@ -1,0 +1,17 @@
+{
+  "instrument": "aluminum",
+  "instrument_code": "al",
+  "market": "SHFE",
+  "frequency": "interday",
+  "bar_size": "1d",
+  "contracts": [
+    "al2401",
+    "al2407",
+    "al2501"
+  ],
+  "date_range": [
+    "2023-01-01",
+    "2024-12-31"
+  ],
+  "data_source": "bundled"
+}
