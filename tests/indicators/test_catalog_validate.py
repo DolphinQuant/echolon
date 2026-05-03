@@ -85,3 +85,43 @@ def test_suggest_similar_unknown_gibberish_returns_empty_or_short():
 
 def test_suggest_similar_empty_name_returns_empty_list():
     assert catalog.suggest_similar("") == []
+
+
+# ---------------------------------------------------------------------------
+# Phase G follow-up: registered classifier names are valid in indicator_list
+# (the processor dispatches them via is_registered_classifier; the validator
+# must agree so they can reach the processor).
+# ---------------------------------------------------------------------------
+
+
+def test_validate_accepts_registered_classifier_name():
+    """Names registered in the regime classifier registry must pass
+    catalog.validate(), even though they aren't in the static catalog."""
+    import numpy as np
+    import pandas as pd
+    from echolon.indicators.registry import register_regime_classifier
+    from echolon.indicators.registry.regime_classifiers import _CLASSIFIERS
+
+    class _StubClassifier:
+        name = "test_catalog_validate_stub"
+        label_map = {0: "x"}
+
+        def fit_classify(self, df, params):
+            return pd.Series(np.zeros(len(df), dtype=int), index=df.index)
+
+    register_regime_classifier(_StubClassifier())
+    try:
+        errors = catalog.validate({"test_catalog_validate_stub": {}})
+        assert errors == [], f"Expected registered classifier to validate, got: {errors}"
+
+        mixed = catalog.validate({"rsi": {}, "test_catalog_validate_stub": {"foo": 1}})
+        assert mixed == [], f"Mixed catalog+classifier dict should validate, got: {mixed}"
+    finally:
+        _CLASSIFIERS.pop("test_catalog_validate_stub", None)
+
+
+def test_validate_unknown_name_still_fails_when_no_classifier_registered():
+    """Unknown names that are NOT registered classifiers still raise IND-004."""
+    errors = catalog.validate({"definitely_not_a_real_classifier_xyz": {}})
+    assert len(errors) == 1
+    assert errors[0]["code"] == "IND-004"

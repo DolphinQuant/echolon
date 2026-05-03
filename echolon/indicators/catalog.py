@@ -211,6 +211,13 @@ def validate(flat_dict: dict) -> list[dict]:
     Returns:
         List of error dicts with keys: ``code``, ``field``, ``message``, ``suggestion``.
     """
+    # Phase G follow-up: Names registered as regime classifiers are valid
+    # entries in indicator_list even though they aren't in the static
+    # catalog. The processor (engine/processor.py) dispatches them via
+    # `is_registered_classifier`; the validator must agree. Lazy-import to
+    # match the `_load_from_registry` boundary already established here.
+    from echolon.indicators.registry import is_registered_classifier
+
     errors: list[dict] = []
 
     for ind_name, params in flat_dict.items():
@@ -218,6 +225,8 @@ def validate(flat_dict: dict) -> list[dict]:
         indicator = _CATALOG.get(ind_name_lower)
 
         if indicator is None:
+            if isinstance(ind_name_lower, str) and is_registered_classifier(ind_name_lower):
+                continue
             suggestions = suggest_similar(str(ind_name_lower))
             msg = f"Unknown indicator '{ind_name}'. Run list_all() to see valid names."
             if suggestions:
