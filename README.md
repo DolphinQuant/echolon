@@ -136,14 +136,18 @@ When you ask a Claude Code session with `echolon-mcp` connected to "build a tren
 
 ## Wire it into your agent runtime
 
+After `pip install echolon`, the `echolon-mcp` console script is on your `PATH`. Register it once with your agent runtime:
+
 | Runtime | Setup |
 |---|---|
-| Claude Code | `claude mcp add echolon echolon-mcp` |
+| **Claude Code** | `claude mcp add echolon -- echolon-mcp` |
 | Cursor | Settings → MCP Servers → add `{"echolon": {"command": "echolon-mcp"}}` |
 | OpenAI Codex CLI | Add `echolon` server to `~/.codex/config.toml` |
 | OpenAI Agents SDK (Python) | `MCPServerStdio(command="echolon-mcp")` |
 | LangChain / LangGraph | via [`langchain-mcp-adapters`](https://pypi.org/project/langchain-mcp-adapters/) |
 | CrewAI / AutoGen / others | Any [MCP-compatible](https://modelcontextprotocol.io/) client adapter |
+
+For **Claude Code** specifically: the `--` separates the registration name (`echolon`) from the launch command (`echolon-mcp`). After running once, `claude mcp list` should show `echolon` as a connected stdio server. Restart the Claude Code session to pick up the new tools (prefix `mcp__echolon__*`).
 
 The agent's orientation manual is [`llms.txt`](./llms.txt) — point your agent at it once and it'll know where to find everything else.
 
