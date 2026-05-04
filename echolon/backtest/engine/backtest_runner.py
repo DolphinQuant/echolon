@@ -262,16 +262,18 @@ class BacktestRunner:
         if self._indicators.empty:
             raise ValueError(f"No data for period {start_date} to {end_date}")
 
-        # Load metadata — per-slot dir if strategy_code_dir set, else default
+        # Load metadata — per-slot dir if strategy_code_dir set, else default.
+        # Forward indicator_dir explicitly so the loader doesn't fall back to
+        # PathsConfig.from_env() (which is now forbidden in library code).
         if self.strategy_code_dir:
             slot_name = Path(self.strategy_code_dir).name
-            slot_meta = Path(self.config.indicator_dir) / slot_name / "strategy_indicator_metadata.json"
+            slot_meta = indicator_dir / slot_name / "strategy_indicator_metadata.json"
             if slot_meta.exists():
                 self._metadata = load_indicator_metadata(ctx=self.ctx, metadata_path=str(slot_meta))
             else:
-                self._metadata = load_indicator_metadata(ctx=self.ctx)
+                self._metadata = load_indicator_metadata(ctx=self.ctx, indicator_dir=indicator_dir)
         else:
-            self._metadata = load_indicator_metadata(ctx=self.ctx)
+            self._metadata = load_indicator_metadata(ctx=self.ctx, indicator_dir=indicator_dir)
 
         self._data_loaded = True
 
