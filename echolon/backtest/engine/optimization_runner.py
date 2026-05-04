@@ -256,7 +256,7 @@ class OptimizationRunner:
 
         logger.info(
             f"[OPTIMIZATION_RUNNER] Shared data setup | "
-            f"rows={len(indicators)}, strategy={strategy_class.__name__}, "
+            f"rows={len(indicators)}, "
             f"market={ctx.market_code}, instrument={ctx.instrument_name}"
         )
 

@@ -129,9 +129,18 @@ class WFARunner:
                 _p.unlink()
                 logger.info(f"[WFA] cleaned stale artefact: {_name}")
 
-        # Load full indicators ONCE (covers entire date range)
-        full_indicators, trading_calendar_df = load_backtest_data(ctx=self.ctx)
-        indicator_metadata = load_indicator_metadata(ctx=self.ctx)
+        # Load full indicators ONCE (covers entire date range). Inject the
+        # configured paths so the loader resolves market_data_dir +
+        # indicators_backtest_dir without falling back to from_env().
+        full_indicators, trading_calendar_df = load_backtest_data(
+            ctx=self.ctx,
+            indicator_dir=self._paths.indicators_backtest_dir,
+            market_data_dir=self._paths.market_data_dir,
+        )
+        indicator_metadata = load_indicator_metadata(
+            ctx=self.ctx,
+            indicator_dir=self._paths.indicators_backtest_dir,
+        )
         if not isinstance(full_indicators.index, pd.DatetimeIndex):
             full_indicators.index = pd.to_datetime(full_indicators.index)
         full_indicators = full_indicators.sort_index()
