@@ -80,3 +80,6 @@ echolon-mcp = "echolon.mcp.server:main"
 [project.urls]
 Homepage = "https://github.com/dolphinquant/echolon"
 Repository = "https://github.com/dolphinquant/echolon"
+Issues = "https://github.com/dolphinquant/echolon/issues"
+Changelog = "https://github.com/dolphinquant/echolon/blob/main/CHANGELOG.md"
+Documentation = "https://github.com/dolphinquant/echolon#readme"
