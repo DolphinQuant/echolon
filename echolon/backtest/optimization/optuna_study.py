@@ -210,10 +210,23 @@ class OptunaOptimizer:
 
         # Extract from TradingContext
         self.instrument = ctx.instrument_name
+        # Resolve `indicator_dir` (the indicators-backtest ROOT) with this
+        # priority: explicit kwarg > paths.indicators_backtest_dir >
+        # PathsConfig.from_env() (legacy fallback). Store the root and the
+        # per-instrument subdir separately so the worker can thread the
+        # root into the bridge's strategy params.
+        if indicator_dir is None and paths is not None:
+            indicator_dir = paths.indicators_backtest_dir
         if indicator_dir is None:
             from echolon.config.paths_config import PathsConfig
             indicator_dir = PathsConfig.from_env().indicators_backtest_dir
+        self._indicators_root = str(indicator_dir)
         self.indicators_dir = str(Path(indicator_dir) / ctx.instrument_name)
+        # Strategy code dir for the bridge (forwarded to workers via
+        # setup_shared_data so the bridge doesn't fall back to from_env()).
+        self._strategy_code_dir = (
+            str(paths.strategy_code_dir) if paths is not None else None
+        )
         # Note: commission and multiplier are retrieved from market_adapter.get_contract_spec()
 
         # Controller-side aggregation of per-trial failures. Keyed by
@@ -287,6 +300,8 @@ class OptunaOptimizer:
             indicators=indicators,
             market_adapter=self.market_adapter,
             indicators_dir=self.indicators_dir,
+            indicators_backtest_dir=self._indicators_root,
+            strategy_code_dir=self._strategy_code_dir,
             segmentation_data=segmentation_data,
             optimization_config=opt_config,
             indicator_metadata=indicator_metadata,

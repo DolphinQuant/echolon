@@ -200,7 +200,9 @@ class OptimizationRunner:
         'market_adapter': None,
         'ctx': None,  # TradingContext (single source of truth)
         'segmentation_data': None,
-        'indicators_dir': None,
+        'indicators_dir': None,  # Per-instrument indicators dir (e.g. indicators_backtest_dir/{instrument}/)
+        'indicators_backtest_dir': None,  # Indicators ROOT dir — threaded to bridge for slot lookup
+        'strategy_code_dir': None,  # Strategy code dir — threaded to bridge to avoid env fallback
         'optimization_config': None,
     }
 
@@ -211,6 +213,8 @@ class OptimizationRunner:
         indicators: pd.DataFrame,
         market_adapter: 'IMarketAdapter',
         indicators_dir: Optional[str] = None,
+        indicators_backtest_dir: Optional[str] = None,
+        strategy_code_dir: Optional[str] = None,
         segmentation_data: Optional[pd.DataFrame] = None,
         optimization_config: Optional[OptimizationConfig] = None,
         indicator_metadata: Optional[Dict[str, Any]] = None,
@@ -247,9 +251,14 @@ class OptimizationRunner:
         cls._shared_data['ctx'] = ctx
         cls._shared_data['indicators'] = indicators
         # Note: strategy_class intentionally NOT stored to avoid pickle issues
-        # It will be recreated via get_strategy_class(ctx) in each worker
+        # It will be recreated via get_strategy_class(...) in each worker;
+        # the worker reads `indicators_backtest_dir` + `strategy_code_dir`
+        # from shared data so the bridge's _register_indicators +
+        # _initialize_strategy don't need a from_env() fallback.
         cls._shared_data['market_adapter'] = market_adapter
         cls._shared_data['indicators_dir'] = indicators_dir
+        cls._shared_data['indicators_backtest_dir'] = indicators_backtest_dir
+        cls._shared_data['strategy_code_dir'] = strategy_code_dir
         cls._shared_data['segmentation_data'] = segmentation_data
         cls._shared_data['optimization_config'] = optimization_config or OptimizationConfig()
         cls._shared_data['indicator_metadata'] = indicator_metadata
@@ -315,6 +324,8 @@ class OptimizationRunner:
         ctx = cls._shared_data['ctx']
         segmentation_data = cls._shared_data['segmentation_data']
         indicators_dir = cls._shared_data['indicators_dir']
+        indicators_backtest_dir = cls._shared_data['indicators_backtest_dir']
+        strategy_code_dir = cls._shared_data['strategy_code_dir']
         indicator_metadata = cls._shared_data['indicator_metadata']
 
         if indicators is None or ctx is None:
@@ -323,8 +334,16 @@ class OptimizationRunner:
         if indicator_metadata is None:
             return OptimizationMetrics.failed("indicator_metadata not set in shared data")
 
-        # Recreate strategy class in this process (avoids pickle issues)
-        strategy_class = get_strategy_class(ctx)
+        # Recreate strategy class in this process (avoids pickle issues).
+        # Thread the indicators-root + strategy-code dirs into the bridge so
+        # _register_indicators reads `indicators_backtest_dir` from its
+        # strategy params (rather than raising CFG-003) and
+        # _initialize_strategy doesn't fall back to PathsConfig.from_env().
+        strategy_class = get_strategy_class(
+            ctx,
+            strategy_code_dir=strategy_code_dir,
+            indicators_backtest_dir=indicators_backtest_dir,
+        )
 
         try:
             # Create engine (lightweight - no logging)

@@ -146,9 +146,16 @@ class WFARunner:
             full_indicators.index = pd.to_datetime(full_indicators.index)
         full_indicators = full_indicators.sort_index()
 
-        # Create market adapter and strategy class ONCE
+        # Create market adapter and strategy class ONCE. Thread the paths
+        # roots into the bridge's strategy params so _register_indicators
+        # finds the indicators dir without raising CFG-003 and
+        # _initialize_strategy doesn't fall back to from_env().
         market_adapter = EngineFactory.create_market_adapter(ctx=self.ctx, mode="backtest")
-        strategy_class = get_strategy_class(ctx=self.ctx)
+        strategy_class = get_strategy_class(
+            ctx=self.ctx,
+            strategy_code_dir=str(self._paths.strategy_code_dir),
+            indicators_backtest_dir=str(self._paths.indicators_backtest_dir),
+        )
 
         # Create per-window storage
         self.wfa_dir.mkdir(parents=True, exist_ok=True)
@@ -200,6 +207,7 @@ class WFARunner:
                 optimization_target=self.config.optimization_target,
                 run_context="optimization",
                 optuna_config=self._optuna_config,
+                paths=self._paths,
             )
 
             study, _best_params = optimizer.run(
