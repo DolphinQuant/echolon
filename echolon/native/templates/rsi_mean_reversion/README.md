@@ -21,7 +21,11 @@ Mean-reversion systems typically have:
 ## Suggested Backtest
 
 ```
-echolon run . --instrument rb --start 2018-01-01 --end 2022-12-31
+# Inside a workspace produced by `echolon init` (instrument/start/end recovered from marker):
+echolon backtest single .
+
+# Or pass the ctx explicitly if no marker is present:
+echolon backtest single . --instrument rb --start 2018-01-01 --end 2022-12-31
 ```
 
 RB (rebar) in this window has oscillated within a broad range, which is

@@ -49,10 +49,14 @@ Edit `entry.py`, `exit.py`, `sizer.py`. Use `self.get_indicator(f"name_{self.per
 ## 5. Run a backtest
 
 ```bash
-echolon run my_first/ --instrument cu --start 2020-01-01 --end 2023-12-31
+# Inside a workspace produced by `echolon init` (instrument/start/end recovered from .echolon-workspace.json):
+echolon backtest single my_first/
+
+# If no marker is present, pass the ctx explicitly:
+echolon backtest single my_first/ --instrument cu --start 2020-01-01 --end 2023-12-31
 ```
 
-`run` re-validates first; pass `--unsafe` to skip (not recommended; the validators are the agent's safety net).
+`backtest single` re-validates first; pass `--unsafe` to skip (not recommended; the validators are the agent's safety net). Add `--json` for machine-readable metrics.
 
 ## On error
 

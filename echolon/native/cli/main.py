@@ -10,7 +10,6 @@ from echolon.native.cli import examples as examples_cmd
 from echolon.native.cli import hello as hello_cmd
 from echolon.native.cli import init as init_cmd
 from echolon.native.cli import migrate as migrate_cmd
-from echolon.native.cli import run as run_cmd
 from echolon.native.cli import schema as schema_cmd
 from echolon.native.cli import validate as validate_cmd
 
@@ -55,7 +54,6 @@ app.command(name="doctor")(doctor_cmd.doctor_command)
 app.command(name="validate")(validate_cmd.validate_command)
 app.command(name="init")(init_cmd.init_command)
 app.command(name="schema")(schema_cmd.schema_command)
-app.command(name="run")(run_cmd.run_command)
 app.command(name="migrate")(migrate_cmd.migrate_command)
 app.add_typer(examples_cmd.examples_app, name="examples")
 app.add_typer(deploy_app, name="deploy")

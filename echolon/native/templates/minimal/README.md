@@ -7,7 +7,7 @@ A minimal working Echolon strategy. TODO comments mark customization points.
 1. Edit entry.py to define your entry signal
 2. Edit exit.py to define exits
 3. Run: `echolon validate .`
-4. Run: `echolon run . --instrument cu --start 2020-01-01 --end 2023-12-31`
+4. Run: `echolon backtest single .` (ctx recovered from workspace marker, or pass `--instrument cu --start ... --end ...` explicitly)
 
 See the patterns skill for more complex patterns.
 

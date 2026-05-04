@@ -21,7 +21,11 @@ Trend-following systems typically have:
 ## Suggested Backtest
 
 ```
-echolon run . --instrument cu --start 2015-01-01 --end 2023-12-31
+# Inside a workspace produced by `echolon init` (instrument/start/end recovered from marker):
+echolon backtest single .
+
+# Or pass the ctx explicitly if no marker is present:
+echolon backtest single . --instrument cu --start 2015-01-01 --end 2023-12-31
 ```
 
 CU (Shanghai copper) has multiple multi-year trends in this window, giving
