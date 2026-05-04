@@ -207,6 +207,12 @@ def _init_impl(
     # READMEs documenting the two trees.
     _write_data_readmes(target)
 
+    # Drop a local copy of llms.txt at the workspace root. An LLM agent that
+    # walks into this directory finds it without needing the MCP server up,
+    # which short-circuits the "which CLI verb do I use?" wandering and makes
+    # the operating loop self-evident from cwd alone.
+    _copy_llms_txt(target)
+
     typer.echo("")
     typer.echo("[ECHOLON] Next:")
     typer.echo(f"[ECHOLON]   1. Open {target.name}/ in your MCP-aware editor.")
@@ -265,6 +271,16 @@ def _derive_main_contract_from_volume(raw_df, out_path: Path) -> None:
         lambda c: c if str(c).lower().endswith(".sf") else f"{c}.SF"
     )
     out.sort_values("date").to_csv(out_path, index=False)
+
+
+def _copy_llms_txt(target: Path) -> None:
+    """Copy the package-shipped llms.txt to the workspace root so an LLM
+    agent walking into the project finds the operating loop without needing
+    the MCP server up.
+    """
+    from importlib.resources import files
+    src_text = files("echolon").joinpath("llms.txt").read_text(encoding="utf-8")
+    (target / "llms.txt").write_text(src_text, encoding="utf-8")
 
 
 def _write_data_readmes(target: Path) -> None:

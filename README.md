@@ -149,7 +149,7 @@ After `pip install echolon`, the `echolon-mcp` console script is on your `PATH`.
 
 For **Claude Code** specifically: `-s user` (short for `--scope user`) makes the registration apply across **all** your projects — drop it and Claude Code defaults to `local` scope, which only registers the server for the current project directory. The `--` separates the registration name (`echolon`) from the launch command (`echolon-mcp`). After running once, `claude mcp list` should show `echolon` as a connected stdio server. Restart the Claude Code session to pick up the new tools (prefix `mcp__echolon__*`).
 
-The agent's orientation manual is [`llms.txt`](./llms.txt) — point your agent at it once and it'll know where to find everything else.
+The agent's orientation manual is [`llms.txt`](./echolon/llms.txt) — point your agent at it once and it'll know where to find everything else. (After `echolon init` or `echolon hello`, a copy is also dropped at the workspace root so an agent walking into the project finds it without needing the package.)
 
 ## Where to find things
 
@@ -164,7 +164,7 @@ Everything that matters to an agent ships inside the wheel. `pip install` and th
 | Patterns (5) | call MCP `list_patterns` / `get_pattern(name)` |
 | CLI reference | `echolon --help` (every subcommand has `--help` too) |
 | Pydantic schemas | `echolon schema BacktestConfig` (or any other config) |
-| LLM orientation | [`llms.txt`](./llms.txt) |
+| LLM orientation | [`llms.txt`](./echolon/llms.txt) (also dropped into every `echolon init`/`hello` workspace) |
 | Release history | [CHANGELOG.md](./CHANGELOG.md) |
 
 The Python public surface re-exports the common stuff at the top level — `echolon.quick_start`, `echolon.BacktestConfig`, `echolon.OptunaConfig`, `echolon.TradingContext`, `echolon.EchelonError`. The `api_reference` and `config_reference` skills have the typed signatures.

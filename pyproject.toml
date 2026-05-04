@@ -70,6 +70,7 @@ artifacts = [
     "echolon/native/templates/**/*.json",
     "echolon/native/templates/**/*.md",
     "echolon/native/errors/codes/*.md",
+    "echolon/llms.txt",
 ]
 
 [project.scripts]
