@@ -548,5 +548,5 @@ def raise_error(code: str, **context_vars: Any) -> None:
         why=entry["why"],
         fix=fix,
         context=dict(context_vars),
-        docs_url=f"https://github.com/dolphinquant/echolon/blob/main/echolon/native/errors/codes/{code}.md",
+        docs_url=f"https://github.com/dolphinquant/echolon/blob/master/echolon/native/errors/codes/{code}.md",
     )

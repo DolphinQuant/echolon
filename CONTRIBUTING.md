@@ -14,7 +14,7 @@ For LLM-driven workflows: paste the agent's transcript when possible — it's of
 
 ## Pull requests
 
-1. Fork the repo and create a topic branch off `main`.
+1. Fork the repo and create a topic branch off `master`.
 2. Run the test suite locally before opening the PR:
    ```bash
    pip install -e ".[dev]"
