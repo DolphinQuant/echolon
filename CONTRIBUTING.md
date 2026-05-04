@@ -36,4 +36,6 @@ Currently end-to-end production scope is **SHFE daily futures** only. Crypto / C
 
 ## License
 
-By contributing you agree your contribution is licensed under Apache 2.0 (the project's license).
+By contributing you agree your contribution is licensed under Apache 2.0 (the project's [LICENSE](LICENSE)).
+
+The "Echolon" name and logo are trademarks of DolphinQuant — see [TRADEMARKS.md](TRADEMARKS.md). The trademark policy is independent of the code license: anyone can use the code, but the name is reserved for the official project.
