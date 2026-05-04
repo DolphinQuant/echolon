@@ -10,17 +10,15 @@
 
 > A Python toolkit for futures trading research, built so an LLM agent can drive it directly. Scaffold a strategy, validate it, backtest it, read structured errors when something breaks. Currently focused on SHFE daily futures.
 
-## Install and run a backtest
-
 ## Quickstart
 
-Echolon ships three top-level commands matching the natural newcomer arc:
+Echolon ships three top-level commands that match the natural path a newcomer takes:
 
 | Command | Purpose | Time |
 |---|---|---|
-| `echolon hello` | First impression. Downloads SHFE aluminum (last 2y) via akshare + scaffolds strategy + auto-backtest. Network required. | ~30s |
-| `echolon init <workspace> --market SHFE --instrument <i> --start <d> --end <d>` | Real project. Downloads market data via akshare (free, no registry), scaffolds a strategy from a bundled template, writes a workspace marker. | ~1–5 min |
-| `echolon backtest single <strategy_dir>` | Iterate. Walks up from `strategy_dir` to recover context from the workspace marker; recomputes indicators and runs backtest with zero flags. | ~5–10s |
+| `echolon hello` | Quick demo. Downloads SHFE aluminum (last 2y) via akshare, scaffolds a strategy, runs a backtest. Network required. | ~30s |
+| `echolon init <workspace> --market SHFE --instrument <i> --start <d> --end <d>` | Start a real project. Downloads market data via akshare (free, no signup or token), scaffolds a strategy from a bundled template, writes a workspace marker. | ~1–5 min |
+| `echolon backtest single <strategy_dir>` | Iterate after editing. Walks up from `strategy_dir` to recover context from the workspace marker, recomputes indicators, and runs the backtest — no flags needed. | ~5–10s |
 
 ### See it work — `echolon hello`
 
@@ -35,16 +33,16 @@ This downloads ~2 years of SHFE aluminum via akshare, scaffolds the `momentum_br
 ```
 ./echolon-hello/
 ├── .echolon-workspace.json     ← marker — `echolon backtest` recovers ctx from here
-├── data/                       ← YOUR inputs (curation) — see data/README.md
+├── data/                       ← YOUR inputs (data you maintain) — see data/README.md
 │   └── SHFE/al/main_contract.csv  ← roll convention; edit to change rules
 ├── workspace/
-│   ├── data/                   ← pipeline output (regenerable) — see workspace/data/README.md
+│   ├── data/                   ← pipeline output (rebuildable) — see workspace/data/README.md
 │   │   └── market_data/SHFE/aluminum/{sort_by_contract/,sort_by_date.csv,trading_calendar.csv}
 │   └── current/backtest/       ← backtest artifacts land here (logs + metrics)
 └── strategy/baseline/          ← editable template — fill in your logic here
 ```
 
-Two trees for two lifecycles: `data/` is **yours** (persists across reruns); `workspace/` is **derived** (the pipeline rebuilds it). Each tree has a `README.md` explaining the split.
+The two directory trees serve two lifecycles: `data/` is **yours** (persists across reruns); `workspace/` is **derived** (the pipeline rebuilds it). Each tree has a `README.md` explaining the split.
 
 **Try this next:** open `./echolon-hello/strategy/baseline/entry.py`, change a parameter (e.g. the breakout lookback in `strategy_params.py`), and re-run:
 
@@ -52,7 +50,7 @@ Two trees for two lifecycles: `data/` is **yours** (persists across reruns); `wo
 echolon backtest single ./echolon-hello/strategy/baseline/
 ```
 
-Watch the Sharpe shift.
+Watch how the Sharpe ratio changes.
 
 ### Start a real project — `echolon init`
 
@@ -63,7 +61,7 @@ echolon init my-zinc-strategy --market SHFE --instrument zinc \
                               --template momentum_breakout
 ```
 
-Downloads zinc OHLCV via akshare (Sina Finance's free mirror — no registry, no token), runs echolon's standardizer pipeline, derives `main_contract.csv` from akshare's continuous-main series, scaffolds a strategy under `my-zinc-strategy/strategy/baseline/`. Fill in business logic in the existing skeleton — echolon's framework structure (class names, method signatures, imports) is already correct.
+Downloads zinc OHLCV via akshare (Sina Finance's free mirror — no signup, no token), runs echolon's standardizer pipeline, derives `main_contract.csv` from akshare's continuous-main series, scaffolds a strategy under `my-zinc-strategy/strategy/baseline/`. Fill in business logic in the existing skeleton — echolon's framework structure (class names, method signatures, imports) is already in place.
 
 ### Iterate — `echolon backtest single`
 
@@ -99,38 +97,33 @@ echolon backtest single my-zinc-strategy/strategy/baseline/ --json
 | `echolon schema BacktestConfig` | dump Pydantic JSON schema (for agents writing config from scratch) |
 | `echolon validate <strategy_dir>` | check a strategy directory against echolon's contracts (`--json` for agents) |
 
-## Where echolon is today
+## What echolon does today
 
 v0.1.1 is deliberately narrow. What works end-to-end right now is **SHFE daily futures research**: data ingestion, indicator computation against the 217-indicator catalog, backtesting through Backtrader, Optuna TPE optimization (single + multi-objective), walk-forward analysis with deployment-readiness scoring, KMeans-based robust trial selection, and the agent surface described below.
 
-What's in flight, roughly in order:
+On the roadmap, roughly in priority order:
 
-- SHFE intraday backtesting (data pipeline supports it; the engine pathway is being stabilized)
+- SHFE intraday backtesting (data pipeline supports it; the engine plumbing is being firmed up)
 - Live deployment to SHFE through MiniQMT — the `deploy` CLI exists from earlier internal builds; a clean public release is being written
 - Crypto perpetuals (the CCXT adapter is scaffolded but neither backtest nor live is on the near-term roadmap)
 - CME futures and equities (architectural slot exists; no implementation yet)
 
 If your work is SHFE futures research with an LLM in the loop, you can use this today. If you need crypto, US markets, or live trading, you're early — open an issue if you want to drive a particular slice and we'll talk about timing.
 
-## What runs on echolon
+## What's built on echolon
 
 Echolon is the research engine inside [Qorka](https://dolphinquant.com), [DolphinQuant](https://dolphinquant.com)'s AI-native strategy generation product. Qorka drives the iterative loop on top of echolon — design → code → backtest → analyze → evaluate → refine — and the strategies that survive that loop are deployed live on SHFE. You can see them running in real time on the [DolphinQuant portfolio dashboard](https://dolphinquant.com); Qorka itself is in private beta with a public waitlist on the same site.
 
-Two implications for you:
+## How echolon is AI-native
 
-- **Echolon is exercised by real money on real markets daily.** The error codes, the validators, the contract conventions — they're the way they are because something in production failed in that exact way once. We don't get to ship sloppy.
-- **Echolon is fully usable on its own.** If you're here to do your own research, the open-source engine is the whole product, not a stripped demo. The Qorka-side work (paradigm orchestration, mode-decision policy, strategy registry) lives in our private monorepo on top — replaceable by anyone with the engine in hand.
-
-## What's actually AI-native about it
-
-The package ships four things an agent can reach without reading prose:
+The package ships four things an agent can reach without reading documentation prose:
 
 - **An MCP server** — `echolon-mcp` exposes 22 tools over stdio. Strategy validation, the full indicator catalog, scaffold generation, error lookup, parameter codegen. Any MCP-compatible runtime can wire it in.
-- **23 skill packets inside the wheel** — quick-start, component contract, indicator-naming rules, parameter architecture, the five canonical strategy shapes, plus per-API doctrine. Indexed at `echolon/native/skills/SKILLS.md`. Loaded on demand by the agent's skill runtime.
-- **31 catalogued error codes** — every `EchelonError` carries a code, a parameterized fix string, and a docs URL. The traceback is structured for the agent to act on directly.
+- **23 skill bundles inside the wheel** — quick-start, component contract, indicator-naming rules, parameter architecture, the five canonical strategy shapes, plus per-API usage rules. Indexed at `echolon/native/skills/SKILLS.md`. Loaded on demand by the agent's skill runtime.
+- **31 catalogued error codes** — every `EchelonError` carries a code, a parameterized fix string, and a docs URL. The traceback is structured so the agent can act on it directly.
 - **Three working strategy templates** — `minimal`, `momentum_breakout`, `rsi_mean_reversion`. The agent copies one and edits it, instead of writing files from scratch.
 
-When you ask a Claude Code session with `echolon-mcp` connected to "build a trend-following strategy on copper", here's what happens: the agent calls `list_skills`, picks `patterns` and `quick_start`, calls `load_template("momentum_breakout")`, calls `list_indicators(has_lookback=True)` to confirm what's available, edits `entry.py` and `exit.py`, calls `validate_strategy_full(strategy_dir)` until everything passes, then runs the backtest. If anything breaks, it parses `[CODE-NNN]` from the traceback and calls `get_error_doc(code)`. There's no point in the loop where it has to guess.
+When a Claude Code session that has `echolon-mcp` connected gets a prompt like "build a trend-following strategy on copper", here's what happens: the agent calls `list_skills`, picks `patterns` and `quick_start`, calls `load_template("momentum_breakout")`, calls `list_indicators(has_lookback=True)` to confirm what's available, edits `entry.py` and `exit.py`, calls `validate_strategy_full(strategy_dir)` until everything passes, then runs the backtest. If anything breaks, it parses `[CODE-NNN]` from the traceback and calls `get_error_doc(code)`. There's no point in the loop where it has to guess.
 
 ## Wire it into your agent runtime
 
@@ -147,11 +140,11 @@ After `pip install echolon`, the `echolon-mcp` console script is on your `PATH`.
 
 For **Claude Code** specifically: `-s user` (short for `--scope user`) makes the registration apply across **all** your projects — drop it and Claude Code defaults to `local` scope, which only registers the server for the current project directory. The `--` separates the registration name (`echolon`) from the launch command (`echolon-mcp`). After running once, `claude mcp list` should show `echolon` as a connected stdio server. Restart the Claude Code session to pick up the new tools (prefix `mcp__echolon__*`).
 
-The agent's orientation manual is [`llms.txt`](./echolon/llms.txt) — point your agent at it once and it'll know where to find everything else. (After `echolon init` or `echolon hello`, a copy is also dropped at the workspace root so an agent walking into the project finds it without needing the package.)
+The agent's orientation guide is [`llms.txt`](./echolon/llms.txt) — point your agent at it once and it'll know where to find everything else. (After `echolon init` or `echolon hello`, a copy is also dropped at the workspace root so an agent walking into the project finds it without needing the package.)
 
 ## Where to find things
 
-Everything that matters to an agent ships inside the wheel. `pip install` and the agent has parity access — no separate docs site to fetch.
+Everything that matters to an agent ships inside the wheel. After `pip install`, the agent has the same access locally — no separate docs site to fetch.
 
 | Surface | Lives at |
 |---|---|
@@ -165,18 +158,18 @@ Everything that matters to an agent ships inside the wheel. `pip install` and th
 | LLM orientation | [`llms.txt`](./echolon/llms.txt) (also dropped into every `echolon init`/`hello` workspace) |
 | Release history | [CHANGELOG.md](./CHANGELOG.md) |
 
-The Python public surface re-exports the common stuff at the top level — `echolon.quick_start`, `echolon.BacktestConfig`, `echolon.OptunaConfig`, `echolon.TradingContext`, `echolon.EchelonError`. The `api_reference` and `config_reference` skills have the typed signatures.
+The Python public surface re-exports the common types at the top level — `echolon.quick_start`, `echolon.BacktestConfig`, `echolon.OptunaConfig`, `echolon.TradingContext`, `echolon.EchelonError`. The `api_reference` and `config_reference` skills have the typed signatures.
 
 ## What you can't do yet
 
-Being specific so you don't get bitten:
+Just to be specific about what's missing:
 
 - Only SHFE daily backtesting is production. Crypto, intraday, CME, and equities are not.
 - No live trading shipped publicly yet. The next live target is SHFE through MiniQMT (Windows-only broker integration); crypto and US-market live trading aren't on the short-term roadmap.
-- Optuna TPE only. No grid, no random, no Bayesian budgeting.
+- Optuna TPE only. No grid search, no random search, no Bayesian search with budget control.
 - Single machine. Optuna parallelism uses local cores; no distributed orchestration.
 - Python 3.11+ required.
-- Pre-1.0, so the public API can shift between minor versions. Breaking changes are documented in [CHANGELOG.md](./CHANGELOG.md).
+- Pre-1.0, so the public API may change between minor versions. Breaking changes are documented in [CHANGELOG.md](./CHANGELOG.md).
 
 ## Bring your own data
 
@@ -194,14 +187,14 @@ Plus under `{workspace}/data/SHFE/{instrument_code}/` (note the SHORT code, e.g.
 |---|---|
 | `main_contract.csv` | `date, main_contract` where `main_contract` is the contract code with `.SF` suffix (e.g. `al2401.SF`). One row per change-of-main-contract date. |
 
-Echolon does **not** auto-derive `main_contract.csv` from raw OHLCV — it's a USER input encoding your roll convention (volume / OI / DTE rules). For SHFE via akshare, `echolon init` derives it for you; otherwise produce it yourself and drop it in place.
+Echolon does **not** auto-derive `main_contract.csv` from raw OHLCV — it's a USER input that encodes your roll convention (rules based on volume, open interest, or days to expiry). For SHFE via akshare, `echolon init` derives it for you; otherwise produce it yourself and drop it in place.
 
-## Strategy ideas — no LLM required
+## Working templates — no LLM required
 
 If you don't want to set up an LLM agent and want to learn by reading, echolon ships three template strategies under `echolon/native/templates/`. Each is a complete, working reference you can study or fork.
 
 - **`minimal`** — the smallest possible strategy. Empty stubs returning hold-forever outputs. Best for understanding the framework's class shape and method contracts before adding any logic.
-- **`momentum_breakout`** — 20-bar Donchian breakout entry, ATR-trailing exit. The "hello world" of trend-following. Good template for any strategy whose entry is a price-vs-rolling-window comparison.
+- **`momentum_breakout`** — 20-bar Donchian breakout entry, ATR-trailing exit. The "hello world" of trend-following. Good template for any strategy whose entry compares price to a rolling window.
 - **`rsi_mean_reversion`** — RSI(14) entry below 30 (LONG) / above 70 (SHORT) with time exit. Good template for any oscillator-based reversal strategy.
 
 To copy one into your workspace and iterate:
