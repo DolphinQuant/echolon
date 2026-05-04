@@ -78,10 +78,19 @@ class SHFEFileDayExtractor(BaseExtractor):
         the lazy fallback derived from ``PathsConfig.from_env()``); output_dir must be
         supplied explicitly to extract_raw — echolon no longer writes to the
         package install directory by default.
+
+        The day-data subdir is named ``day_data`` (parallel to the
+        per-instrument ``minute_data/`` directory used by
+        SHFEApiMinuteExtractor). i.e. the canonical raw-data tree is::
+
+            {raw_data_dir}/SHFE/
+              day_data/         # multi-instrument multi-year xls (this extractor's input)
+              {al,cu,zn,...}/
+                minute_data/    # per-instrument minute OHLCV (the api_minute_extractor's per-contract output)
         """
         market_dir = os.path.join(str(self._raw_data_dir), self.market)
         return {
-            "raw_data": os.path.join(market_dir, "raw_data"),
+            "raw_data": os.path.join(market_dir, "day_data"),
         }
 
     def extract_raw(
@@ -97,7 +106,7 @@ class SHFEFileDayExtractor(BaseExtractor):
 
         Args:
             input_dir: Directory containing raw Excel files.
-                       Defaults to RAW_DATA_DIR/{market}/raw_data when not provided.
+                       Defaults to {raw_data_dir}/{market}/day_data when not provided.
             output_dir: Directory to save extracted CSV. Required when save=True.
             start_date: Optional start date filter
             end_date: Optional end date filter
