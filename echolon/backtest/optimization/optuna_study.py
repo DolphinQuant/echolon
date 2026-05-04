@@ -222,10 +222,14 @@ class OptunaOptimizer:
             indicator_dir = PathsConfig.from_env().indicators_backtest_dir
         self._indicators_root = str(indicator_dir)
         self.indicators_dir = str(Path(indicator_dir) / ctx.instrument_name)
-        # Strategy code dir for the bridge (forwarded to workers via
-        # setup_shared_data so the bridge doesn't fall back to from_env()).
+        # Strategy code dir for the bridge + market_data dir for the SHFE
+        # adapter's main_contract.csv resolution. Both forwarded to workers
+        # via setup_shared_data so neither needs a from_env() fallback.
         self._strategy_code_dir = (
             str(paths.strategy_code_dir) if paths is not None else None
+        )
+        self._market_data_dir = (
+            str(paths.market_data_dir) if paths is not None else None
         )
         # Note: commission and multiplier are retrieved from market_adapter.get_contract_spec()
 
@@ -302,6 +306,7 @@ class OptunaOptimizer:
             indicators_dir=self.indicators_dir,
             indicators_backtest_dir=self._indicators_root,
             strategy_code_dir=self._strategy_code_dir,
+            market_data_dir=self._market_data_dir,
             segmentation_data=segmentation_data,
             optimization_config=opt_config,
             indicator_metadata=indicator_metadata,

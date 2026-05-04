@@ -37,6 +37,7 @@ Usage:
 
 import logging
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Dict, Any, Optional, TYPE_CHECKING
 
 import pandas as pd
@@ -203,6 +204,7 @@ class OptimizationRunner:
         'indicators_dir': None,  # Per-instrument indicators dir (e.g. indicators_backtest_dir/{instrument}/)
         'indicators_backtest_dir': None,  # Indicators ROOT dir — threaded to bridge for slot lookup
         'strategy_code_dir': None,  # Strategy code dir — threaded to bridge to avoid env fallback
+        'market_data_dir': None,  # Market-data ROOT dir — threaded to SHFE adapter for main_contract.csv
         'optimization_config': None,
     }
 
@@ -215,6 +217,7 @@ class OptimizationRunner:
         indicators_dir: Optional[str] = None,
         indicators_backtest_dir: Optional[str] = None,
         strategy_code_dir: Optional[str] = None,
+        market_data_dir: Optional[str] = None,
         segmentation_data: Optional[pd.DataFrame] = None,
         optimization_config: Optional[OptimizationConfig] = None,
         indicator_metadata: Optional[Dict[str, Any]] = None,
@@ -259,6 +262,7 @@ class OptimizationRunner:
         cls._shared_data['indicators_dir'] = indicators_dir
         cls._shared_data['indicators_backtest_dir'] = indicators_backtest_dir
         cls._shared_data['strategy_code_dir'] = strategy_code_dir
+        cls._shared_data['market_data_dir'] = market_data_dir
         cls._shared_data['segmentation_data'] = segmentation_data
         cls._shared_data['optimization_config'] = optimization_config or OptimizationConfig()
         cls._shared_data['indicator_metadata'] = indicator_metadata
@@ -326,6 +330,7 @@ class OptimizationRunner:
         indicators_dir = cls._shared_data['indicators_dir']
         indicators_backtest_dir = cls._shared_data['indicators_backtest_dir']
         strategy_code_dir = cls._shared_data['strategy_code_dir']
+        market_data_dir = cls._shared_data['market_data_dir']
         indicator_metadata = cls._shared_data['indicator_metadata']
 
         if indicators is None or ctx is None:
@@ -353,6 +358,7 @@ class OptimizationRunner:
                 ctx=ctx,
                 indicators_dir=indicators_dir,
                 strategy_logger_enabled=False,  # No logging during optimization
+                market_data_dir=Path(market_data_dir) if market_data_dir else None,
             )
 
             # Create data feed with cached class using metadata

@@ -147,10 +147,15 @@ class WFARunner:
         full_indicators = full_indicators.sort_index()
 
         # Create market adapter and strategy class ONCE. Thread the paths
-        # roots into the bridge's strategy params so _register_indicators
-        # finds the indicators dir without raising CFG-003 and
-        # _initialize_strategy doesn't fall back to from_env().
-        market_adapter = EngineFactory.create_market_adapter(ctx=self.ctx, mode="backtest")
+        # roots into the adapter (so SHFE adapter resolves main_contract.csv
+        # without raising CFG-003) and the bridge strategy params (so
+        # _register_indicators finds its indicators dir and
+        # _initialize_strategy doesn't fall back to from_env()).
+        market_adapter = EngineFactory.create_market_adapter(
+            ctx=self.ctx,
+            mode="backtest",
+            market_data_dir=self._paths.market_data_dir,
+        )
         strategy_class = get_strategy_class(
             ctx=self.ctx,
             strategy_code_dir=str(self._paths.strategy_code_dir),
