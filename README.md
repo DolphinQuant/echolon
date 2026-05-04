@@ -10,8 +10,6 @@
 
 > A Python toolkit for futures trading research, built so an LLM agent can drive it directly. Scaffold a strategy, validate it, backtest it, read structured errors when something breaks. Currently focused on SHFE daily futures.
 
-If you've asked Claude Code or Cursor to write a backtest in `backtrader` or `vectorbt`, you know how it goes: the agent invents indicator names, guesses at callback signatures, swallows errors silently. We built echolon around that failure mode. Errors carry stable codes, configs are typed Pydantic models, and the package ships an MCP server so an agent has structured tools to call instead of prose to hallucinate against.
-
 ## Install and run a backtest
 
 ## Quickstart

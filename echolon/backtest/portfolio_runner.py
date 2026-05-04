@@ -49,6 +49,8 @@ class PortfolioBacktestRunner:
         output_dir: str = "workspace/portfolio_backtest",
         backtest_config: Optional[BacktestConfig] = None,
         optuna_config: Optional[OptunaConfig] = None,
+        *,
+        paths: "PathsConfig",  # type: ignore[name-defined]
     ):
         if backtest_config is None:
             raise ValueError(
@@ -65,6 +67,7 @@ class PortfolioBacktestRunner:
         self._optuna_config = optuna_config
 
         self.config = config
+        self._paths = paths
         self.output_dir = output_dir
         os.makedirs(output_dir, exist_ok=True)
 
@@ -181,6 +184,7 @@ class PortfolioBacktestRunner:
             start_date=start_date,
             end_date=end_date,
             backtest_config=self._backtest_config,
+            paths=self._paths,
         )
 
         # Extract equity curve from result (list of {'date': str, 'equity': float})
@@ -292,6 +296,7 @@ class PortfolioBacktestRunner:
             start_date=start_date,
             end_date=end_date,
             backtest_config=self._backtest_config,
+            paths=self._paths,
         )
 
         if isinstance(result, dict) and 'equity_curve' in result:
