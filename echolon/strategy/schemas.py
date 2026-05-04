@@ -301,8 +301,7 @@ class SizerOutput(BaseModel):
         description="Raw calculated position size before floor/validation (for analysis and debugging)"
     )
 
-    class Config:
-        extra = 'allow'  # Allow strategy-specific diagnostic fields
+    model_config = ConfigDict(extra="allow")  # Allow strategy-specific diagnostic fields
 
 
 class RiskOutput(BaseModel):
@@ -335,8 +334,7 @@ class RiskOutput(BaseModel):
         description="Human-readable reason for risk decision"
     )
 
-    class Config:
-        extra = 'allow'  # Allow strategy-specific diagnostic fields
+    model_config = ConfigDict(extra="allow")  # Allow strategy-specific diagnostic fields
 
 
 # ============================================================================
