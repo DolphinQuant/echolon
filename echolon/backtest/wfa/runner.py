@@ -101,7 +101,8 @@ class WFARunner:
             load_backtest_data, load_indicator_metadata
         )
         # Load strategy_params dynamically from the configured strategy code
-        # directory (workspace/current/code/strategy_params.py). StrategyLoader
+        # directory (paths.strategy_code_dir / "strategy_params.py" — exact
+        # path is host-app-configurable via PathsConfig). StrategyLoader
         # handles the file-path → module resolution; a static import would
         # hardcode a pre-v0.3 path that no longer exists.
         from echolon.strategy.loader import StrategyLoader as _StrategyLoader
@@ -361,8 +362,9 @@ class WFARunner:
 
     def _archive_window_artifacts(self, window: WFAWindow, window_dir: Path):
         """
-        Copy OOS backtest artifacts from workspace/current/backtest/ to
-        per-window directory for record-keeping.
+        Copy OOS backtest artifacts from ``self.output_dir`` (typically
+        ``paths.backtest_results_dir``) to the per-window directory for
+        record-keeping.
         """
         src_dir = self.output_dir
         for filename in ["backtest_results.json", "backtest_trades.csv", "equity_curve.csv"]:

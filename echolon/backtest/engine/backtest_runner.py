@@ -97,7 +97,7 @@ class _RunnerConfig:
     # then fills any unset fields from its required ``paths=`` kwarg.
     indicator_dir: Optional[str] = None  # workspace/data/indicators/backtest/
     market_data_dir: Optional[str] = None  # workspace/data/market_data/
-    backtest_results_dir: Optional[str] = None  # workspace/current/backtest
+    backtest_results_dir: Optional[str] = None  # workspace/backtest/  (host apps may override)
 
     # Features
     enable_strategy_logging: bool = True

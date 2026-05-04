@@ -113,12 +113,15 @@ class StateManager:
     Saves and loads state to/from JSON files for session continuity.
     """
 
-    def __init__(self, state_path: str = "workspace/current/strategy/strategy_state.json"):
+    def __init__(self, state_path: str):
         """
         Initialize state manager.
 
         Args:
-            state_path: Path to state file
+            state_path: Path to state file. Required — caller chooses the
+                location. Both echolon callers (BaseStrategy in
+                ``strategy/base.py`` and the live ``TradingSlot``) pass it
+                explicitly.
         """
         self._state_path = Path(state_path)
         self._state: Optional[StrategyState] = None

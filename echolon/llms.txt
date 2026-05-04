@@ -25,7 +25,7 @@ Run the steps in order. Skipping ahead (e.g. backtesting before validation, or s
 
    This downloads OHLCV via akshare (free Sina mirror, no token), runs the standardizer pipeline, derives `main_contract.csv` from the continuous-main series, scaffolds a strategy under `<workspace>/strategy/baseline/`, and writes the marker every later command depends on. For an offline first-impression smoke test (bundled SHFE aluminum), use `echolon hello` instead.
 
-   Variant — strategy-only (no data download): `echolon init <strategy_dir> --template <name>` (omit market/instrument/start/end). Same as `echolon init-strategy` (back-compat alias). Use only when the workspace already exists.
+   Variant — strategy-only (no data download): `echolon init <strategy_dir> --template <name>` (omit market/instrument/start/end). Use only when the workspace already exists.
 
 2. **Discover doctrine (MCP).** Call `list_skills`. Load `quick_start` and any per-API skills relevant to the task (e.g. `optuna_optimizer`, `wfa_runner`, `market_factory`, `engine_factory`). Skills are concise; load on demand, not all up front.
 

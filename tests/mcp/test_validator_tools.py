@@ -2,7 +2,7 @@
 
 Tests:
 1. All 5 new tool names appear in _registered().
-2. Happy-path for all 4 strategy-dir validators against al_v6_1_migrated fixture.
+2. Happy-path for all 4 strategy-dir validators against aluminum_baseline fixture.
 3. Happy-path for validate_debug_completion with a valid artifact + log in tmp_path.
 4. Negative-path for validate_debug_completion when the artifact file is missing.
 5. Return-shape invariant (any_errors: bool, findings: list, each finding has
@@ -42,7 +42,7 @@ def _registered() -> set[str]:
 # Fixture path
 # ---------------------------------------------------------------------------
 
-_FIXTURE_DIR = Path(__file__).parent.parent / "fixtures" / "baselines" / "al_v6_1_migrated"
+_FIXTURE_DIR = Path(__file__).parent.parent / "fixtures" / "baselines" / "aluminum_baseline"
 
 
 # ---------------------------------------------------------------------------
@@ -65,7 +65,7 @@ def test_validator_tools_all_registered():
 
 
 # ---------------------------------------------------------------------------
-# 2. Happy-path tests — 4 strategy-dir validators on al_v6_1_migrated fixture
+# 2. Happy-path tests — 4 strategy-dir validators on aluminum_baseline fixture
 # ---------------------------------------------------------------------------
 
 @pytest.mark.parametrize("tool_name", [
@@ -79,7 +79,7 @@ def test_strategy_dir_validator_happy_path(tool_name):
     result = fn(strategy_dir=str(_FIXTURE_DIR))
     assert isinstance(result, dict), f"{tool_name} should return a dict"
     assert result["any_errors"] is False, (
-        f"{tool_name} reported errors on al_v6_1_migrated fixture:\n"
+        f"{tool_name} reported errors on aluminum_baseline fixture:\n"
         f"{json.dumps(result, indent=2)}"
     )
 

@@ -73,8 +73,8 @@ def test_full_init_creates_workspace_with_data_and_strategy(tmp_path):
     assert strategy_dir.is_dir()
     assert (strategy_dir / "entry.py").is_file() or (strategy_dir / "strategy.py").is_file()
 
-    # Backtest artifacts land under workspace/current/backtest/ when the user
-    # runs `echolon backtest single`. No output/ dir is created.
+    # Backtest artifacts land under workspace/backtest/ when the user runs
+    # `echolon backtest single`. No output/ dir is created.
     assert not (workspace / "output").exists()
 
     # Marker carries `paths` overrides so the chosen layout is workspace-local.

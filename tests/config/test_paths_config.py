@@ -17,7 +17,7 @@ def test_from_project_root_conventional_layout(tmp_path: Path):
     assert paths.market_data_dir == tmp_path / "workspace" / "data" / "market_data"
     assert paths.indicators_research_dir == tmp_path / "workspace" / "data" / "indicators" / "research"
     assert paths.indicators_backtest_dir == tmp_path / "workspace" / "data" / "indicators" / "backtest"
-    # Flat OSS layout (host apps like qorka override these for an iteration-loop layout).
+    # Flat OSS layout (host apps with iteration-loop layouts override these).
     assert paths.strategy_code_dir == tmp_path / "workspace" / "strategy" / "baseline"
     assert paths.backtest_results_dir == tmp_path / "workspace" / "backtest"
     assert paths.best_params_file == tmp_path / "workspace" / "strategy" / "baseline" / "selected_robust_trial.json"

@@ -638,7 +638,7 @@ also update params_to_optimize.json (or the IndicatorConfig caps that
 feed the generator).
 
 To regenerate:
-1. Edit workspace/current/strategy/params_to_optimize.json
+1. Edit your params_to_optimize.json source file.
 2. Call echolon.strategy.generators.generate_strategy_params(
        params_file_path=..., output_path=..., frequency=...,
    )

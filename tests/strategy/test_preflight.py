@@ -153,10 +153,10 @@ def test_load_strategy_from_dir_calls_preflight(tmp_path):
 
 
 def test_canary_baseline_passes_preflight():
-    """Migrated baseline strategy must satisfy preflight without a phantom component.py."""
+    """Canary baseline strategy must satisfy preflight without a phantom component.py."""
     from echolon.strategy.preflight import preflight
 
-    baseline = Path(__file__).parents[1] / "fixtures" / "baselines" / "al_v6_1_migrated"
+    baseline = Path(__file__).parents[1] / "fixtures" / "baselines" / "aluminum_baseline"
     assert baseline.exists(), f"canary baseline missing at {baseline}"
     assert not (baseline / "component.py").exists(), (
         "baseline must NOT contain a strategy-local component.py — that file "

@@ -66,7 +66,7 @@ optimizer = OptunaOptimizer(..., use_sequential=True, optuna_config=OptunaConfig
 
 ## When to use
 
-- Inside any optimization pass (`ExplorationOrchestrator`, `ExploitationOrchestrator`, `WFARunner.run`). `WFARunner` re-instantiates `OptunaOptimizer` once per WFA window, sharing the same `market_adapter` and `strategy_class` across windows.
+- Inside any optimization pass — `WFARunner.run` is the canonical echolon caller (re-instantiates `OptunaOptimizer` once per WFA window, sharing the same `market_adapter` and `strategy_class` across windows). Host applications running their own iterative-refinement orchestrators wrap `OptunaOptimizer` directly.
 - When you need process-parallel trial execution and want Optuna's TPE with `multivariate=True, seed=42, n_startup_trials=20, n_ei_candidates=48` (those values are hard-coded here — do not expect to override them via config).
 - In debug workflows: pass `use_sequential=True` so every trial runs in-process with a TQDM progress bar and standard Python traceback on failure.
 - Do *not* construct `OptimizationRunner.setup_shared_data(...)` yourself — `OptunaOptimizer.run()` handles shared-data setup and teardown around the study. The Note at line ~517 of `optuna_study.py` calls out that `self._run_trial_in_process` was removed specifically to avoid pickling `self` (which holds an unpicklable `ctx` with lambda phase-encode functions).

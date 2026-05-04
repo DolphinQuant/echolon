@@ -2,7 +2,7 @@
 
 For each of VAL-003, VAL-005, VAL-006, PRM-003, PRM-004, BT-010:
 
-1. Start from the known-clean al_v6_1_migrated canary fixture.
+1. Start from the known-clean aluminum_baseline canary fixture.
 2. Inject a minimal, realistic bug that should trigger exactly this code.
 3. Run the matching validator.
 4. Assert the finding surfaces with the expected code.
@@ -22,12 +22,12 @@ from pathlib import Path
 import pytest
 
 
-_FIXTURE_SRC = Path(__file__).parent.parent.parent / "fixtures" / "baselines" / "al_v6_1_migrated"
+_FIXTURE_SRC = Path(__file__).parent.parent.parent / "fixtures" / "baselines" / "aluminum_baseline"
 
 
 @pytest.fixture
 def clean_strategy_dir(tmp_path: Path) -> Path:
-    """Fresh copy of the known-clean migrated baseline in ``tmp_path``.
+    """Fresh copy of the known-clean canary baseline in ``tmp_path``.
     Each test mutates this independently; pytest's tmp_path per-test
     isolation means no cross-contamination."""
     if not _FIXTURE_SRC.exists():

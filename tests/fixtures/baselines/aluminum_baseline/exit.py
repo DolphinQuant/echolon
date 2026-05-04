@@ -1,8 +1,6 @@
 """
 Exit Component - Three-Layer Exit: MFE Profit Target + ATR Trailing Stop + Time Backstop
 
-Business Logic Source: workspace/current/strategy/exit_prompt.md
-
 Layer 1 - ATR Trailing Stop (safety net, PRESERVED):
     6-pathway regime multipliers: trending_up=2.357383, volatile=3.215562,
     ranging_long=2.172573, ranging_short=2.3255, trending_down=2.610751,

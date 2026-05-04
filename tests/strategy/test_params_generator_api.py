@@ -282,8 +282,8 @@ def test_package_exports_public_symbols():
 def test_generate_creates_missing_output_parent_dir(tmp_path):
     """write_to_file must create the output's parent directory when missing.
 
-    Workspace cleaners that remove ``workspace/current/code/`` between
-    iterations would otherwise cause the next ``generate_strategy_params``
+    Iteration-loop workflows that wipe the strategy code directory between
+    refinements would otherwise cause the next ``generate_strategy_params``
     call to fail with a misleading "Input file not found" message.
     """
     from echolon.strategy.generators import generate_strategy_params

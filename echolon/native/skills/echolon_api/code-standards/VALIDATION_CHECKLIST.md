@@ -171,7 +171,7 @@ Run these before committing. Set `STRATEGY_DIR` to your strategy-code directory 
 ```bash
 # Example strategy_dir values:
 #   echolon scaffold:     export STRATEGY_DIR=workspace/strategy/baseline
-#   echolon test fixture: export STRATEGY_DIR=echolon/tests/fixtures/baselines/al_v6_1_migrated
+#   echolon test fixture: export STRATEGY_DIR=echolon/tests/fixtures/baselines/aluminum_baseline
 #   live deploy slot:     export STRATEGY_DIR=~/.dolphin/slots/<slot_id>/code
 #   host iteration loop:  export STRATEGY_DIR=<whatever path your host app writes to>
 

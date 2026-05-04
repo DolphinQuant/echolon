@@ -96,9 +96,10 @@ class PathsConfig(BaseSettings):
               output/                         # output_dir
               session/                        # session_dir
 
-        Host apps that want an iteration-loop layout (e.g. qorka's
-        ``workspace/current/{code,backtest,analysis}/``) override the relevant
-        fields when constructing PathsConfig.
+        Host apps that want an iteration-loop layout (e.g. one where each
+        refinement cycle works under ``workspace/current/{code,backtest,
+        analysis}/`` and is then archived) override the relevant fields when
+        constructing PathsConfig.
         """
         root = Path(self.project_root).absolute()
         workspace = self.workspace_dir or (root / "workspace")

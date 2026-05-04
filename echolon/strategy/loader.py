@@ -9,7 +9,7 @@ This replaces multiple loading patterns (static imports, importlib.import_module
 spec_from_file_location with manual __package__) with one consistent approach.
 
 Usage:
-    loader = StrategyLoader(Path("workspace/current/code"))
+    loader = StrategyLoader(Path("workspace/strategy/baseline"))
     strategy_main = loader.load_function("strategy", "strategy_main")
     search_space = loader.load_attr("strategy_params", "optuna_search_space")
     EntryRule = loader.load_class("entry", "entry_rule")

@@ -175,7 +175,7 @@ ERROR_CATALOG: dict[str, dict] = {
         "fix_template": (
             "Add the missing file to {strategy_dir}:\n"
             "  missing: {missing_files}\n"
-            "See `echolon init-strategy --template minimal` for a working example."
+            "See `echolon init <dir> --template minimal` for a working example."
         ),
     },
     "STR-002": {
@@ -314,12 +314,12 @@ ERROR_CATALOG: dict[str, dict] = {
         "what": "Main contract data file not found for instrument",
         "why": (
             "Echolon resolves the main contract per trading date from "
-            "raw_data_dir/{exchange}/{symbol}/main_contract.csv. Without "
+            "market_data_dir/{exchange}/{symbol}/main_contract.csv. Without "
             "this file, contract rollover and live trading cannot proceed."
         ),
         "fix_template": (
             "Run the data pipeline once to populate main_contract.csv, "
-            "or pass an explicit raw_data_dir pointing at a populated tree.\n"
+            "or pass an explicit market_data_dir pointing at a populated tree.\n"
             "  expected:  {path}\n"
             "  symbol:    {symbol}"
         ),

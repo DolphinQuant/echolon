@@ -154,7 +154,7 @@ Callers (or the calling LLM) should surface these corrections — the generated 
 
 | Symptom (`result.message`) | Cause | Fix |
 |---|---|---|
-| `Input file not found: ...` | `params_file_path` doesn't exist | Confirm strategy_explore has written the file; check absolute path |
+| `Input file not found: ...` | `params_file_path` doesn't exist | Confirm whatever upstream tool / agent should have written the file actually did; check absolute path |
 | `Failed to parse JSON in ...` | Malformed JSON | Run `python -m json.tool <file>` to find the syntax error |
 | `KeyError: 'entry_parameters'` | Missing top-level component section | Empty sections are OK (`{"calculation": {}, ...}`); but the section key must be present |
 | `KeyError: 'description'` or `'type'` | Param spec missing a required field | Every param needs `type` + `description`; calculation/usage need `range` + `default`; fixed needs `value` |

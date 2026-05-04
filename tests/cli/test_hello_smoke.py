@@ -35,7 +35,7 @@ def test_hello_creates_demo_and_runs_backtest(tmp_path):
     # READMEs for both trees.
     assert (demo / "data" / "README.md").is_file()
     assert (demo / "workspace" / "README.md").is_file()
-    # Backtest artifacts land under workspace/current/backtest/, not output/.
+    # Backtest artifacts land under workspace/backtest/, not output/.
     assert not (demo / "output").exists()
     # Legacy workspace/data/ subtree should not exist — consolidation moved
     # all source data into data/.

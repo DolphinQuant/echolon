@@ -10,7 +10,7 @@ origin_module: echolon_audit_phase0
 
 # echolon.engine.factory.EngineFactory
 
-> Source-vs-audit drift: the Task 6 audit lists this as `echolon.backtest.engine_factory.EngineFactory`. That module no longer exists — `echolon/native/cli/migrate.py` explicitly rewrites `echolon.quant_engine.engine_factory` → `echolon.engine.factory`, and every live caller (`wfa/runner.py`, `engine/backtest_runner.py`, `engine/optimization_runner.py`, `live/slot/trading_slot.py`, `live/orchestrator/single.py`) imports from `echolon.engine.factory`. Use `from echolon.engine.factory import EngineFactory`.
+> Note on import path: pre-v0.3 docs listed this as `echolon.backtest.engine_factory.EngineFactory` or `echolon.quant_engine.engine_factory.EngineFactory`. Both module paths are gone — `echolon/native/cli/migrate.py` rewrites the old paths to `echolon.engine.factory`, and every live caller (`wfa/runner.py`, `engine/backtest_runner.py`, `engine/optimization_runner.py`, `live/slot/trading_slot.py`, `live/orchestrator/single.py`) imports from `echolon.engine.factory`. Use `from echolon.engine.factory import EngineFactory`.
 
 ## Purpose
 
