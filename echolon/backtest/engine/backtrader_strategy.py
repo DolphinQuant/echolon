@@ -192,24 +192,28 @@ class BacktraderStrategyBridge(bt.Strategy):
         - ForcedExitStrategyHook: For interday futures (contract expiry)
         - SessionAwareStrategyHook: For intraday trading (session context)
 
-        If strategy_code_dir param is set, loads strategy from that directory
-        via StrategyLoader instead of the default strategy code directory
-        (PathsConfig.strategy_code_dir).
+        Loads the strategy from `strategy_code_dir` (a required strategy
+        param). The runner / EngineFactory caller is responsible for
+        injecting it — typically defaulted from `paths.strategy_code_dir`
+        via `BacktestRunner.__init__`. No env fallback: if the param
+        wasn't injected, raise CFG-003 fail-loud rather than silently
+        resolving against cwd / `ECHOLON_PROJECT_ROOT`.
         """
         from pathlib import Path
         from echolon.strategy.loader import StrategyLoader
 
         code_dir = self.p.strategy_code_dir
-        if code_dir is not None:
-            loader = StrategyLoader(Path(code_dir))
-            strategy_main = loader.load_function("strategy", "strategy_main")
-            strategy_dir_path = str(code_dir)
-        else:
-            from echolon.config.paths_config import PathsConfig
-            default_strategy_code_dir = PathsConfig.from_env().strategy_code_dir
-            loader = StrategyLoader(default_strategy_code_dir)
-            strategy_main = loader.load_function("strategy", "strategy_main")
-            strategy_dir_path = str(default_strategy_code_dir)
+        if code_dir is None:
+            from echolon.errors import raise_error
+            raise_error(
+                "CFG-003",
+                function="BacktraderStrategyBridge._initialize_strategy",
+                param="strategy_code_dir strategy param",
+                paths_field="strategy_code_dir",
+            )
+        loader = StrategyLoader(Path(code_dir))
+        strategy_main = loader.load_function("strategy", "strategy_main")
+        strategy_dir_path = str(code_dir)
 
         # Pass strategy_dir so BaseStrategy resolves components via StrategyLoader.
         extra_kwargs = {'strategy_dir': strategy_dir_path}
