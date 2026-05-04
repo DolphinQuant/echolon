@@ -170,9 +170,10 @@ Run these before committing. Set `STRATEGY_DIR` to your strategy-code directory 
 
 ```bash
 # Example strategy_dir values:
-#   qorka:                export STRATEGY_DIR=workspace/current/code
+#   echolon scaffold:     export STRATEGY_DIR=workspace/strategy/baseline
 #   echolon test fixture: export STRATEGY_DIR=echolon/tests/fixtures/baselines/al_v6_1_migrated
 #   live deploy slot:     export STRATEGY_DIR=~/.dolphin/slots/<slot_id>/code
+#   host iteration loop:  export STRATEGY_DIR=<whatever path your host app writes to>
 
 # 1. No error handling patterns
 ! grep -rn "try:" "$STRATEGY_DIR/"

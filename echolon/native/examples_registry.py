@@ -17,7 +17,7 @@ from echolon.native.templates import AVAILABLE_TEMPLATES, template_path
 
 # Re-export the templates' names verbatim — examples and templates are now
 # the same set, served via two CLI surfaces (``examples copy`` and
-# ``init-strategy``).
+# ``init --template``).
 AVAILABLE_EXAMPLES = AVAILABLE_TEMPLATES
 
 

@@ -61,7 +61,7 @@ all_codes = MarketFactory.list_instruments("SHFE")
 | `list_instruments(market)` | market code | `list[str]` | All supported instrument codes for the market. |
 | `clear_cache()` | — | `None` | Clears the internal `_market_configs` cache. For tests only. |
 
-Note: there is no `from_session()`, `load_target()`, or `build()` method. Prior versions of this skill referenced those — they never existed in the public API. If you need session-state loading, that's a host-application concern (e.g., qorka has its own `MarketFactory.from_session` in its `config/quant_engine.py`).
+Note: there is no `from_session()`, `load_target()`, or `build()` method. Prior versions of this skill referenced those — they never existed in the public API. If you need session-state loading (mapping a session config file to a `TradingTarget` + `TradingContext`), that's a host-application concern; build it on top of `MarketFactory.create(...)` in your own factory layer.
 
 ## Common errors
 

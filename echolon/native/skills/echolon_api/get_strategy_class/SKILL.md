@@ -12,7 +12,9 @@ origin_module: echolon_audit_phase0
 
 ## Purpose
 
-`get_strategy_class(ctx, strategy_code_dir=None)` produces a Backtrader `bt.Strategy` subclass (`Bridge_default`) whose `params` are pre-wired with the market / instrument / instrument_code taken from the given `TradingContext`. The returned class bridges Backtrader's `next()`/`notify_order()`/`notify_trade()` callbacks into a platform-agnostic strategy (loaded from `strategy_code_dir` via `StrategyLoader`, or from `PathsConfig.from_env().strategy_code_dir` by default). Strategy classes are cached (keyed on strategy_name + market + instrument + instrument_code + strategy_code_dir) and registered in the module namespace so they survive pickling under Optuna's `ProcessPoolExecutor`.
+`get_strategy_class(ctx, strategy_code_dir=None, indicators_backtest_dir=None)` produces a Backtrader `bt.Strategy` subclass (`Bridge_default`) whose `params` are pre-wired with the market / instrument / instrument_code taken from the given `TradingContext`. The returned class bridges Backtrader's `next()`/`notify_order()`/`notify_trade()` callbacks into a platform-agnostic strategy (loaded from `strategy_code_dir` via `StrategyLoader`). Strategy classes are cached (keyed on strategy_name + market + instrument + instrument_code + strategy_code_dir + indicators_backtest_dir) and registered in the module namespace so they survive pickling under Optuna's `ProcessPoolExecutor`.
+
+**Pass `strategy_code_dir` explicitly**: when omitted, the bridge falls back to reading it from the process environment (`PathsConfig.from_env().strategy_code_dir`), which is brittle inside library code paths — different invocations of the same process see whatever cwd / `ECHOLON_PROJECT_ROOT` happens to be set. Callers driving WFA, optimization, or anything multi-strategy should always pass an explicit `strategy_code_dir`.
 
 ## Interface
 
@@ -23,11 +25,17 @@ import backtrader as bt
 
 ctx = MarketFactory.create(market="SHFE", instrument="cu", frequency="interday", bar_size="1d")
 
-# 1. Default: loads strategy from PathsConfig.from_env().strategy_code_dir
-StrategyClass = get_strategy_class(ctx)
+# 1. Recommended: explicit strategy_code_dir from your PathsConfig.
+StrategyClass = get_strategy_class(ctx, strategy_code_dir="/path/to/workspace/strategy/baseline")
 
-# 2. Load from an explicit directory (per-slot code, workspace dir, etc.).
+# 2. Per-slot loading (e.g. portfolio backtests with one bridge per slot).
 StrategyClass = get_strategy_class(ctx, strategy_code_dir="/tmp/my_strategy")
+
+# 3. Implicit (uses PathsConfig.from_env() internally) — works for the simple
+#    single-process case where cwd / ECHOLON_PROJECT_ROOT happens to point
+#    at the right workspace, but discouraged in library / WFA / multi-slot
+#    contexts. Pass strategy_code_dir explicitly there.
+StrategyClass = get_strategy_class(ctx)
 
 # 3. Feed into Cerebro. The engine is injected separately via
 #    strategy_params when EngineFactory / BacktestRunner call setup().

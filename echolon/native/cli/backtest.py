@@ -67,9 +67,11 @@ def _run_backtest(
 
     market = market or marker.get("market")
     # Prefer the FULL instrument name ('aluminum') over the short code ('al') —
-    # the indicator processor + data loader use the full name in path layout
-    # under {indicators_backtest_dir}/{instrument}/. The short code is only
-    # used for raw_data_dir/{market}/{instrument_code}/main_contract.csv.
+    # the indicator processor + data loader + market_data layout all use the
+    # full name (e.g. {indicators_backtest_dir}/{instrument}/, and
+    # {market_data_dir}/{MARKET}/{instrument}/main_contract.csv). The short
+    # code is only used for the raw extractor source tree at
+    # {raw_data_dir}/{market}/{instrument_code}/{minute_data,sort_by_date.csv}.
     instrument = instrument or marker.get("instrument") or marker.get("instrument_code")
     start = start or (marker.get("date_range") or [None, None])[0]
     end = end or (marker.get("date_range") or [None, None])[1]

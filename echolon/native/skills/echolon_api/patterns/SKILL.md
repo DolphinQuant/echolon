@@ -18,7 +18,7 @@ Canonical strategy patterns in Echolon. Each pattern includes when to use it, th
 2. **Use `self.get_indicator('lowercase_name')`.** Uppercase raises `KeyError` from `market_data.get_indicator` (echolon/backtest/engine/backtrader_engine.py:196). Don't suppress it — let the error surface.
 3. **Declare every indicator in `strategy_indicator_list.json`.** Undeclared indicators aren't pre-computed and the lookup will fail.
 4. **Use the canonical catalog name.** Run `echolon indicators list` (or call `echolon.indicators.catalog.list_all()`) to see what's available. Common pitfalls: the rolling-extreme indicators are named `highest_high` / `lowest_low` (not `rolling_high` / `rolling_low` and not bare `high` / `low`).
-5. **System / regime indicators are paradigm-specific.** `market_regime` is NOT a built-in indicator in echolon — it's emitted by a registered classifier. Strategies that need regime conditioning must register a classifier (e.g., qorka registers a TRS regime classifier). Plain technical strategies don't need it.
+5. **System / regime indicators are paradigm-specific.** `market_regime` is NOT a built-in indicator in echolon — it's emitted by a registered classifier. Strategies that need regime conditioning must have the host application register a classifier (typical pattern: a TRS-style regime classifier produces a numeric `market_regime` column with a `label_map`). Plain technical strategies don't need it.
 
 See [IND-001](../../errors/codes/IND-001.md) for the casing-mismatch error (or call MCP `get_error_doc("IND-001")`).
 
@@ -87,15 +87,15 @@ See `echolon/native/templates/rsi_mean_reversion/` for the full working version 
 
 **When to use:** Strategies that must behave differently based on market condition — e.g., momentum in trending regimes, mean reversion in ranging.
 
-**Prerequisite:** A regime classifier registered with echolon. Echolon ships with no built-in classifier — you (or a paradigm host like qorka) must register one via `echolon.indicators.registry`. The classifier provides a `label_map: dict[int, str]` that converts the numeric `market_regime` indicator into string labels, plus the actual computation that emits the column.
+**Prerequisite:** A regime classifier registered with echolon. Echolon ships with no built-in classifier — your application must register one via `echolon.indicators.registry`. The classifier provides a `label_map: dict[int, str]` that converts the numeric `market_regime` indicator into string labels, plus the actual computation that emits the column.
 
-**Key idea:** Branch the entry/exit logic on `self.get_market_regime()`. The labels returned depend on the registered classifier. The qorka TRS classifier, for example, emits `trending_up`, `trending_down`, `ranging`, `volatile`.
+**Key idea:** Branch the entry/exit logic on `self.get_market_regime()`. The labels returned depend on the registered classifier. A typical TRS-style classifier might emit `trending_up`, `trending_down`, `ranging`, `volatile`.
 
 **Files to customize:**
 - `entry.py` — outer `if regime == "trending_up"` branches
 - `strategy_indicator_list.json` — add `"market_regime": {}` to the flat-dict
 - `strategy_params.py` — define per-regime thresholds (e.g., `trend_threshold`, `range_threshold`)
-- Application bootstrap — register your classifier (see qorka's `setup_classifiers` for an example)
+- Application bootstrap — register your classifier at startup before any strategy code runs
 
 **Sketch:**
 

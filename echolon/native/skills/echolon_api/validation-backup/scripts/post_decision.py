@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Post-decision script for KEEP/REVERT workflow.
 
-Executed by the validator/exploitate agent AFTER making a KEEP/REVERT decision.
+Executed by whatever drives the workflow (an LLM agent, a CI gate, a human)
+AFTER deciding to KEEP or REVERT a candidate change.
 
 Paths default to ``PathsConfig.from_env()`` (i.e. ``$ECHOLON_PROJECT_ROOT``). Pass
 ``--strategy-dir`` / ``--backtest-dir`` to override.

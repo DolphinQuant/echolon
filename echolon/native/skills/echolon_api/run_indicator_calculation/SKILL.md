@@ -20,8 +20,9 @@ origin_module: echolon_audit_phase0
 from echolon.config.markets.factory import MarketFactory
 from echolon.indicators.run import run_indicator_calculation
 from echolon.indicators import get_regime_optimizer
-# (qorka registers the TRS optimizer at session start via
-# `modules.paradigms.trs.regime_machinery.setup_classifiers()`)
+# (Echolon ships zero regime classifiers / optimizers. Your host application
+# must call `register_regime_classifier(...)` and `register_regime_optimizer(...)`
+# at session start before this code runs.)
 
 ctx = MarketFactory.create(market="SHFE", instrument="cu", frequency="interday", bar_size="1d")
 
@@ -68,7 +69,7 @@ df = run_indicator_calculation(
 
 - Any time you need to (re)generate the `strategy_indicators.csv` that the backtest engine and `load_backtest_data` consume. Typical pipeline: `run_data_pipeline(ctx)` → `run_indicator_calculation(ctx, ...)` → backtest.
 - When defining a new indicator — provide a flat `{name: {param: values}}` dict. Lists enable Cartesian sweeps (e.g. `{"timeperiod": [5, 14, 30]}` produces `rsi_5`, `rsi_14`, `rsi_30`). Empty dict `{name: {}}` uses the indicator's built-in defaults.
-- When using `market_regime` on interday (daily-bar) data: pass a `regime_params` dict produced by `get_regime_optimizer("market_regime").optimize(df=None, n_trials=400, ctx=ctx)` after qorka has registered the TRS optimizer (`modules.paradigms.trs.regime_machinery.setup_classifiers()`). Intraday regime handling uses `session_phase` + `volatility_state` instead and does not require this argument.
+- When using `market_regime` on interday (daily-bar) data: pass a `regime_params` dict produced by `get_regime_optimizer("market_regime").optimize(df=None, n_trials=400, ctx=ctx)`. The host application is responsible for registering the matching classifier + optimizer beforehand (`register_regime_classifier(...)` + `register_regime_optimizer(...)`). Intraday regime handling uses `session_phase` + `volatility_state` instead and does not require this argument.
 - Do *not* pass raw, unvalidated `indicator_list` dicts that don't match `IndicatorList`. The function calls `IndicatorList.model_validate(indicator_list)` for fail-fast validation; malformed specs raise a `pydantic.ValidationError` before any calculation runs.
 - Do *not* omit both `trading_dates` and (`start_date`, `end_date`). The function raises `ValueError` when it has no way to derive the date list.
 
@@ -92,12 +93,14 @@ The processor writes `strategy_indicators.csv` and `strategy_indicator_metadata.
 - **`IND-003`** — sidecar-only warning for high-NaN columns, surfaced later by `load_backtest_data`. See `echolon/native/errors/codes/IND-003.md`.
 - **Silent empty DataFrame** — `IndicatorProcessor.process_all_contracts` returned no data (bad date range, missing contract files). Logger warning only; downstream `load_backtest_data` will then fail on a missing or empty CSV.
 
-## Custom regime classifiers (Phase C extension point)
+## Custom regime classifiers (extension point)
 
-Echolon ships a built-in TRS-paradigm rule-based regime classifier
-(``market_regime``) auto-registered at module-load time. To use a
-custom classifier — HMM, GMM, Carry term-structure, custom domain —
-register it via the classifier registry before calling this function:
+Echolon ships **no built-in regime classifiers**. The infrastructure
+(`market_regime` indicator name, `get_market_regime()` accessor, classifier
+registry, optimizer registry) is in place, but every classifier — TRS-style
+rule-based, HMM, GMM, Carry term-structure, custom domain — must be
+registered by your host application before any strategy code that calls
+`self.get_market_regime()` runs:
 
 ```python
 from echolon.indicators.protocols import RegimeClassifier
@@ -125,7 +128,7 @@ registration / lookup APIs (``register_regime_classifier``,
 ## See also
 
 - `run_data_pipeline` skill — must run first to produce the contract CSVs this step reads.
-- TRS regime optimizer (qorka-hosted) — produces the `regime_params` argument needed when `indicator_list` contains `market_regime` on an interday ctx. Install qorka and call `modules.paradigms.trs.regime_machinery.setup_classifiers()` at session start; the optimizer is then accessible via `echolon.indicators.get_regime_optimizer("market_regime")`.
+- Regime optimizer (host-application-supplied) — produces the `regime_params` argument needed when `indicator_list` contains `market_regime` on an interday ctx. Register your optimizer via `register_regime_optimizer(...)` at session start; it is then accessible via `echolon.indicators.get_regime_optimizer("market_regime")`.
 - `load_backtest_data`, `load_indicator_metadata` skills — downstream readers of this step's output.
 - `trading_context` skill — supplies `ctx.market_code`, `ctx.instrument_name`, `ctx.is_intraday`.
 - echolon docs: `echolon/indicators/schema.py` (`IndicatorList`), `echolon/indicators/engine/processor.py` (`IndicatorProcessor`), `echolon/indicators/protocols.py` (`RegimeClassifier`).

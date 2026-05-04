@@ -5,7 +5,6 @@ type: skill
 category: echolon_api
 primary_scope: universal
 echolon_version: unpinned
-origin_module: task15_migration_from_qorka
 ---
 
 # Code Standards Policy

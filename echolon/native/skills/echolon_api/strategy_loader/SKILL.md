@@ -21,7 +21,7 @@ from pathlib import Path
 from echolon.strategy.loader import StrategyLoader, load_strategy_from_dir
 
 # 1. Basic: load an individual function / class / attribute from a strategy dir.
-loader = StrategyLoader(Path("/workspace/current/code"))
+loader = StrategyLoader(Path("/workspace/strategy/baseline"))
 strategy_main = loader.load_function("strategy", "strategy_main")
 EntryRule     = loader.load_class("entry", "entry_rule")
 search_space  = loader.load_attr("strategy_params", "optuna_search_space")
@@ -39,7 +39,7 @@ strategy_main = loader.load_function("strategy", "strategy_main")
 loader.clear_cache()
 
 # 4. Catalog-aware entry point: validates structure first, returns components.
-components = load_strategy_from_dir("/workspace/current/code")
+components = load_strategy_from_dir("/workspace/strategy/baseline")
 # -> {"entry_rule": EntryRule, "exit_rule": ExitRule,
 #     "risk_manager": RiskManager, "position_sizer": PositionSizer}
 ```

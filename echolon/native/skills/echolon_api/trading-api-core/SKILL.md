@@ -5,7 +5,6 @@ type: skill
 category: echolon_api
 primary_scope: universal
 echolon_version: unpinned
-origin_module: task15_migration_from_qorka
 ---
 
 # Trading API Core Patterns
@@ -90,10 +89,10 @@ line/signal/hist; STOCH → k/d) all share the same suffix per combo —
 declare the *family* once in JSON, then look each output line up
 separately in code.
 
-The float-encoding helper (`_format_indicator_param`) lives in qorka's
-strategy code generator and mirrors echolon's `processor._fmt`. If you're
-authoring strategies outside that codegen path, write the same logic
-inline:
+The float-encoding rule lives in echolon's `processor._fmt`
+(`echolon/indicators/engine/processor.py`). When you're authoring strategies
+by hand or generating them upstream, mirror the same logic inline so the
+lookup string matches what the runtime emitted:
 
 ```python
 def _format_indicator_param(v):
@@ -102,9 +101,6 @@ def _format_indicator_param(v):
         return str(v).replace(".", "p")
     return str(v)
 ```
-
-(See plan `docs/superpowers/plans/2026-05-01-multi-param-indicator-sweep-strategy-codegen.md`
-for the qorka-side codegen workstream.)
 
 ### Scalar params or no params (no sweep)
 
@@ -131,7 +127,8 @@ frequency-specific string-returning accessors:
   classifier's `label_map`. Echolon ships zero classifiers — the host
   application registers one via
   `echolon.indicators.registry.register_regime_classifier(...)`. Without a
-  registered classifier, this method raises. The qorka TRS classifier emits
+  registered classifier, this method raises. A typical TRS-style classifier
+  might emit labels like
   `'trending_up'` / `'trending_down'` / `'ranging'` / `'volatile'`.
 - INTRADAY: `self.get_session_phase()` → phase name (bar-size-dependent; see
   INTRADAY.md).

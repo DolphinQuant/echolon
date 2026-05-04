@@ -5,7 +5,6 @@ type: skill
 category: echolon_api
 primary_scope: universal
 echolon_version: unpinned
-origin_module: migrated_from_qorka_claude_skills_v2
 ---
 
 # Parameter Architecture Patterns
@@ -19,7 +18,7 @@ origin_module: migrated_from_qorka_claude_skills_v2
 
 ```
 1. Strategy design documents → params_to_optimize.json
-2. parameter_agent (qorka) calls echolon-mcp generate_strategy_params
+2. Upstream tool / agent calls the echolon-mcp `generate_strategy_params` tool
 3. Echolon generator parses the JSON → emits strategy_params.py
 4. Backtest / WFA / deploy load DEFAULT_PARAMS or Optuna-suggested params
 5. Parameters passed to components via **params
@@ -122,6 +121,5 @@ with `_period` — non-period params aren't cap-checked.
 - **`optuna_optimizer`** — runs the emitted `optuna_search_space` function.
 
 For the complete working file template, see `TEMPLATE.py`.
-For the manual-composition fallback workflow (qorka-side, when the generator
-fails catastrophically and cannot be patched), see the qorka-side
-`parameter-fallback` skill.
+
+If the deterministic generator fails on a malformed `params_to_optimize.json` you cannot fix, the manual-composition fallback is to hand-write `strategy_params.py` against the structures in this skill — `ParameterSpec`, `ComponentParameterTemplate`, `StrategyParameterFramework`, `optuna_search_space` — using `TEMPLATE.py` as the starting point.

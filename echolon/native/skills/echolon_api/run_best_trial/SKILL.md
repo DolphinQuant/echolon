@@ -12,34 +12,37 @@ origin_module: echolon_audit_phase0
 
 ## Purpose
 
-`run_best_trial(ctx, best_params_path=None, start_date=None, end_date=None, backtest_config=None)` is the thin functional wrapper around `BacktestRunner.best_trial(...)` that runs a backtest with the parameters picked by `TrialSelector` (written to `selected_robust_trial.json` under `PathsConfig.from_env().strategy_code_dir` by default). It is the standard way to replay the winning Optuna trial on either the full period or an out-of-sample window, and it logs a one-line `[BEST_TRIAL] Backtest::SUCCESS` summary with Sharpe, return, drawdown, trades, and win rate.
+`run_best_trial(ctx, best_params_path=None, start_date=None, end_date=None, backtest_config=None, *, paths)` is the thin functional wrapper around `BacktestRunner.best_trial(...)` that runs a backtest with the parameters picked by `TrialSelector` (written to `selected_robust_trial.json`). When `best_params_path` is `None`, the runner reads from `paths.best_params_file` (which defaults to `{paths.strategy_code_dir}/selected_robust_trial.json`). `paths: PathsConfig` is a required kwarg — pass the same `PathsConfig` you used everywhere else in the pipeline; there is no implicit env fallback. This is the standard way to replay the winning Optuna trial on either the full period or an out-of-sample window, and it logs a one-line `[BEST_TRIAL] Backtest::SUCCESS` summary with Sharpe, return, drawdown, trades, and win rate.
 
 ## Interface
 
 ```python
 from echolon.config.markets.factory import MarketFactory
+from echolon.config.paths_config import PathsConfig
 from echolon.backtest.runner import run_best_trial
 
 ctx = MarketFactory.create(market="SHFE", instrument="cu", frequency="interday", bar_size="1d")
+paths = PathsConfig.from_project_root("/path/to/your/workspace")
 
-# 1. Default: reads selected_robust_trial.json from the default location,
+# 1. Default: reads selected_robust_trial.json from paths.best_params_file,
 #    runs over the default backtest period (BacktestConfig.start/end).
-results = run_best_trial(ctx)
+results = run_best_trial(ctx, paths=paths)
 
 # 2. OOS slice (used by WFARunner for per-window OOS backtests).
 oos = run_best_trial(
     ctx,
     start_date="2023-01-01",
     end_date="2023-06-30",
+    paths=paths,
 )
 
 # 3. Custom params file (e.g. a cached or hand-edited trial).
-results = run_best_trial(ctx, best_params_path="/tmp/my_trial.json")
+results = run_best_trial(ctx, best_params_path="/tmp/my_trial.json", paths=paths)
 
-# 4. Other entry points in the same module.
+# 4. Other entry points in the same module — all require paths= too.
 from echolon.backtest.runner import run_debug_backtest, run_backtest
-debug_results  = run_debug_backtest(ctx)                  # uses DEFAULT_PARAMS
-custom_results = run_backtest(ctx, strategy_params={...}, run_context="custom")
+debug_results  = run_debug_backtest(ctx, paths=paths)                            # uses DEFAULT_PARAMS
+custom_results = run_backtest(ctx, strategy_params={...}, run_context="custom", paths=paths)
 ```
 
 ## When to use
@@ -61,7 +64,7 @@ Returned dict includes at least (all values may be 0 if the backtest trades noth
 
 ## Common errors
 
-- **`FileNotFoundError` on `selected_robust_trial.json`** — `best_params_path` is `None` and `PathsConfig.from_env().strategy_code_dir / "selected_robust_trial.json"` does not exist. Run `TrialSelector.select()` first, or pass an explicit `best_params_path`. No Echolon code issued.
+- **`FileNotFoundError` on `selected_robust_trial.json`** — `best_params_path` is `None` and `paths.best_params_file` (= `{paths.strategy_code_dir}/selected_robust_trial.json` by convention) does not exist. Run `TrialSelector.select()` first, or pass an explicit `best_params_path`. No Echolon code issued.
 - **`pydantic.ValidationError` from `SelectedTrialSchema`** — the JSON on disk has the wrong shape (e.g. from hand-edits or a stale format). Re-run `TrialSelector.select()` to rewrite the file via `SelectedTrialSchema.model_validate(...).model_dump()`.
 - **`BT-001`** — any exception inside the platform-agnostic strategy's `_execute_bar()` (or any callback it invokes — entry, exit, risk, sizer component methods) during the replay. `on_bar()` is the Template Method that calls `_execute_bar()`; strategies override `_execute_bar()` only. See `echolon/native/errors/codes/BT-001.md` and the `get_strategy_class` skill.
 - **`CFG-001`** — if the caller-supplied `start_date`/`end_date` or underlying `BacktestConfig` has `end_date < start_date`. See `echolon/native/errors/codes/CFG-001.md`.

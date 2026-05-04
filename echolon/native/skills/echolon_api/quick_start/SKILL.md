@@ -21,7 +21,7 @@ pip install echolon
 ## 2. Scaffold a strategy
 
 ```bash
-echolon init-strategy my_first --template minimal
+echolon init my_first --template minimal
 ```
 
 This copies one of the bundled scaffolds from `echolon/native/templates/` into `./my_first/`. Available templates: `minimal`, `momentum_breakout`, `rsi_mean_reversion`. Every template ships 8 files:
@@ -85,7 +85,7 @@ For pip-installed end-users without a project layout, use `PathsConfig.from_plat
 
 ## Common errors at this stage
 
-- **STR-001** (missing required file) — your scaffold drift; copy from a fresh `init-strategy`.
+- **STR-001** (missing required file) — your scaffold drift; copy from a fresh `echolon init`.
 - **PRM-002** (params shape) — `DEFAULT_PARAMS` is missing one of `entry_params` / `exit_params` / `risk_params` / `sizer_params`.
 - **CFG-001** (`end_date < start_date`) — flip the dates.
 - **DAT-001** (OHLCV file missing) — the data pipeline didn't write to `paths.market_data_dir/{market}/{instrument}/`. Run `run_data_pipeline` first.

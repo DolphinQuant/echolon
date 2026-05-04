@@ -51,7 +51,7 @@ macd_fast = ctx.minutes_to_bars(25)
 
 ## When to use
 
-- As the primary argument to every echolon backtest/deploy/data entry point. `EngineFactory.create_*`, `run_backtest`, `OptunaOptimizer`, `WFARunner`, `run_data_pipeline`, `run_indicator_calculation`, `load_backtest_data`, `load_indicator_metadata`, `get_strategy_class` — every one takes `ctx`. (TRS regime optimization is qorka-hosted — see `modules.paradigms.trs.regime_machinery`.)
+- As the primary argument to every echolon backtest/deploy/data entry point. `EngineFactory.create_*`, `run_backtest`, `OptunaOptimizer`, `WFARunner`, `run_data_pipeline`, `run_indicator_calculation`, `load_backtest_data`, `load_indicator_metadata`, `get_strategy_class` — every one takes `ctx`. (Paradigm-specific machinery, e.g. TRS regime optimization, lives in the host application that registers a regime classifier; echolon ships none by default.)
 - To compute frequency-appropriate indicator lookbacks in platform-agnostic strategy code: call `ctx.get_indicator_params()` or the `hours_to_bars` / `minutes_to_bars` helpers rather than hardcoding periods.
 - To encode/decode SHFE session phases for a Backtrader data feed: always go through `ctx.encode_phase` / `ctx.decode_phase` — the factory picks the right granular (`night/morning/afternoon`) vs aggregated (`night_session/day_session`) lookup table based on `ctx.bar_size` at ctx construction time.
 - Do *not* instantiate `TradingContext(...)` by hand outside of `MarketFactory`. The `_encode_phase`/`_decode_phase` callables default to trivial lambdas (`x → 0` / `x → 'unknown'`) and must be overridden per market × bar-size. `TradingContext.from_market` is the only sanctioned bypass.
@@ -79,7 +79,7 @@ macd_fast = ctx.minutes_to_bars(25)
 
 - **`bars_per_day` returning `None`** — `BARS_PER_DAY.get(self.bar_size)` on SHFE with an unmapped bar size (e.g. `"7m"`). No Echolon code — the caller typically trips a downstream TypeError. Restrict `bar_size` to the values in `EngineFactory.BAR_SIZE_MAP`.
 - **`encode_phase` / `decode_phase` returning `0` / `'unknown'`** — `MarketFactory` failed to wire the callbacks for this bar size, or the caller passed a phase name that doesn't exist in the phase table (e.g. `"morning"` on 1h bars, where only `"day_session"` exists). Inspect `ctx.phases.keys()`.
-- **`self.initial_capital == 200000.0` unexpectedly** — the ctx was constructed without a `TradingTarget`. Pass `initial_capital=` explicitly to `MarketFactory.create(...)`, or have your host application pre-load a `TradingTarget` and inject it (qorka does this in its `config/quant_engine.py:MarketFactory.from_session`).
+- **`self.initial_capital == 200000.0` unexpectedly** — the ctx was constructed without a `TradingTarget`. Pass `initial_capital=` explicitly to `MarketFactory.create(...)`, or have your host application pre-load a `TradingTarget` from your session config and inject it via the factory.
 
 ## See also
 

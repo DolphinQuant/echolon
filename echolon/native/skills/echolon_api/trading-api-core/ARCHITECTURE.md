@@ -41,10 +41,10 @@ Strategy files live in any directory on disk and are loaded by echolon via
 `StrategyLoader(strategy_dir).load_module("<name>")`. Host apps choose the
 directory location; no fixed filesystem path.
 
-**Qorka convention** (where the coding agent writes):
+**Conventional layout** (`echolon init` / `echolon hello` scaffold here; host apps may override via the workspace marker's `paths` field):
 
 ```
-workspace/current/code/
+workspace/strategy/baseline/
 ├── entry.py              # Entry signal generation
 ├── exit.py               # Exit decision logic
 ├── risk.py               # Risk management
@@ -126,9 +126,4 @@ local copy.
 
 ## Documentation Hierarchy
 
-| Source | Purpose |
-|--------|---------|
-| **Skills** (`/.claude/skills/`) | Patterns, interfaces, examples |
-| **Business Logic** (`/workspace/current/strategy/`) | Trading logic, parameters - AUTHORITATIVE |
-
-**Business logic examples in Skills are for ILLUSTRATION only. Agents must source actual logic from `/workspace/current/strategy/`.**
+Skills (shipped under `echolon/native/skills/echolon_api/` and reachable via the MCP `get_skill(name)` tool) illustrate patterns, interfaces, and examples. Authoritative trading logic and parameter values live in your strategy directory on disk (whatever path you point `StrategyLoader` at — `workspace/strategy/baseline/` is the conventional scaffold). When skill examples and on-disk code disagree, the on-disk code is the source of truth.

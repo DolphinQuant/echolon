@@ -31,8 +31,8 @@ origin_module: params_generator_mcp_tool
 from echolon.strategy.generators import generate_strategy_params, GenerationResult
 
 result: GenerationResult = generate_strategy_params(
-    params_file_path="/abs/path/to/workspace/current/strategy/params_to_optimize.json",
-    output_path="/abs/path/to/workspace/current/code/strategy_params.py",
+    params_file_path="/abs/path/to/params_to_optimize.json",
+    output_path="/abs/path/to/workspace/strategy/baseline/strategy_params.py",
     frequency="interday",
 )
 
@@ -70,7 +70,7 @@ Parse failures / missing input files / runtime errors surface as `success=false`
 
 ## When to use
 
-- The strategy_explore pipeline has just written `params_to_optimize.json` to `workspace/current/strategy/` and the coding_agent needs to compile it into a runnable `strategy_params.py`.
+- An upstream pipeline (host-app codegen, hand-edit, or strategy-design agent) has produced `params_to_optimize.json` and the next step is to compile it into a runnable `strategy_params.py` next to the strategy components.
 - A parameter refinement pass edited `params_to_optimize.json` and needs to regenerate the downstream Python.
 - CI / deterministic reproduction — given the same params JSON, regenerate the Python file byte-for-byte (for diff-based change review).
 
@@ -161,7 +161,7 @@ Callers (or the calling LLM) should surface these corrections — the generated 
 
 ## Related skills
 
-- **`parameter-patterns`** (qorka-side in `.claude/skills/parameter-patterns/`) — the architecture + ownership rules that this generator enforces. Read for the *why*; use this skill for the *how-to-call*.
+- **`parameter-patterns`** — architecture + ownership rules that this generator enforces. Read for the *why*; use this skill for the *how-to-call*. (Same skill tree, fetch via MCP `get_skill("parameter-patterns")` or read at `echolon/native/skills/echolon_api/parameter-patterns/`.)
 - **`trading-api-core`** — describes how the generated `strategy_params.py` fits into runtime strategy execution.
 - **`optuna_optimizer`** — consumes the generated `optuna_search_space` function to run the Optuna study.
 - **`run_best_trial`** — consumes `DEFAULT_PARAMS` + `selected_robust_trial.json` to run a single backtest.

@@ -1,11 +1,10 @@
 ---
 name: validation-backup
-description: Backup and restore operations for strategy validation workflow. Sub-agent creates backup before changes. Validator/Exploitate agent executes post-decision (KEEP/REVERT).
+description: Back-up-then-restore primitive for risky strategy edits. Snapshot the strategy directory + backtest results before a change, run the change, then KEEP (delete the snapshot) or REVERT (restore the snapshot).
 type: skill
 category: echolon_api
 primary_scope: universal
 echolon_version: unpinned
-origin_module: task15_migration_from_qorka
 ---
 
 # Validation Backup Skill
@@ -13,41 +12,36 @@ origin_module: task15_migration_from_qorka
 ## Workflow Overview
 
 ```
-Sub-Agent                          Validator/Exploitate Agent
-    │                                        │
-    ├─ 1. Create backup ──────────────────► │
-    │    (before making changes)             │
-    │                                        │
-    ├─ 2. Make code changes                  │
-    │                                        │
-    ├─ 3. Run backtest                       │
-    │                                        │
-    ├─ 4. Return results ─────────────────► │
-    │                                        │
-    │                              5. Review metrics
-    │                                        │
-    │                              6. Decide KEEP/REVERT
-    │                                        │
-    │                              7. Execute post_decision.py
-    │                                        │
+1. Create backup     ──► snapshot strategy_code_dir/* + backtest_results_dir/
+2. Make code changes ──► (your edit; coding agent, manual, or otherwise)
+3. Run backtest      ──► `echolon backtest single <strategy_dir>`
+4. Review metrics    ──► decide KEEP or REVERT
+5. Post-decision     ──► KEEP (delete snapshots) | REVERT (restore from snapshots)
 ```
 
-## 1. Backup (Sub-Agent)
+This is a generic "snapshot before risky edit" primitive — useful for any
+iterative workflow that needs to A/B compare a code change against its
+pre-change baseline. The scripts make no assumptions about *who* is making
+the decision (a human, an LLM agent, a CI gate); they just provide the
+mechanics.
 
-Before making any code changes, sub-agent creates backup. The scripts ship
-inside the echolon package under `echolon/native/skills/echolon_api/validation-backup/scripts/`
-(moved from the qorka-local `.claude/skills/` path during Task 15 migration).
-Resolve the absolute path at call time so the command is install-location-agnostic.
+## 1. Backup
 
-**Default (recommended):** paths come from `PathsConfig.from_env()` —
-`$ECHOLON_PROJECT_ROOT/workspace/current/code/` and
-`$ECHOLON_PROJECT_ROOT/workspace/current/backtest/`:
+Before making any code changes, run the backup script. It ships inside the
+echolon package under
+`echolon/native/skills/echolon_api/validation-backup/scripts/`. Resolve the
+absolute path at call time so the command is install-location-agnostic.
+
+**Default:** paths come from `PathsConfig.from_env()`, which resolves
+`strategy_code_dir` and `backtest_results_dir` from the OSS-layout defaults
+(`workspace/strategy/baseline/` and `workspace/backtest/`) or from
+`ECHOLON_*` env-var overrides:
 
 ```bash
 python3 "$(python3 -c 'import echolon, os; print(os.path.join(os.path.dirname(echolon.__file__), "native/skills/echolon_api/validation-backup/scripts/backup.py"))')"
 ```
 
-**Override paths** (tests, non-default workspace layouts):
+**Override paths** (tests, non-default workspace layouts, host-app iteration loops with custom layouts):
 
 ```bash
 python3 "$(python3 -c 'import echolon, os; print(os.path.join(os.path.dirname(echolon.__file__), "native/skills/echolon_api/validation-backup/scripts/backup.py"))')" \
@@ -67,12 +61,11 @@ python3 "$(python3 -c 'import echolon, os; print(os.path.join(os.path.dirname(ec
 
 **Note**: Only ONE backup exists at a time. Running backup overwrites previous backup.
 
-## 2. Post-Decision (Validator/Exploitate Agent)
+## 2. Post-Decision
 
-After KEEP/REVERT decision, execute:
-
-Both commands accept the same optional `--strategy-dir` / `--backtest-dir`
-overrides as `backup.py`; omit them to use `PathsConfig.from_env()`.
+After deciding KEEP or REVERT, execute the corresponding command. Both accept
+the same optional `--strategy-dir` / `--backtest-dir` overrides as
+`backup.py`; omit them to use `PathsConfig.from_env()`.
 
 ### KEEP Decision
 
@@ -122,8 +115,7 @@ Exit codes:
 
 ## Key Principles
 
-1. **Single backup**: Only one backup exists (`.backup` suffix)
-2. **Sub-agent backs up**: Before any code changes
-3. **Orchestrator decides**: KEEP or REVERT based on metrics
-4. **Orchestrator executes**: post_decision.py after decision
-5. **run_context validation**: KEEP blocked if backtest was debug mode
+1. **Single backup**: only one backup exists at any time (`.backup` suffix). Re-running backup.py overwrites.
+2. **Backup before any code change** — that's the entire safety contract.
+3. **Decision is external**: the script doesn't decide KEEP vs REVERT; whoever drives the workflow does (a human, an LLM agent, a CI gate).
+4. **`run_context` gate on KEEP**: post_decision.py refuses `--keep` if the latest backtest was run with `run_context: "debug"`. The intent is that you only KEEP results from a real Optuna best-trial run, not from a one-off debug invocation.
