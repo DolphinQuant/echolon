@@ -10,6 +10,7 @@ isn't installed into the test env).
 """
 import asyncio
 import json
+import os
 import shutil
 
 import pytest
@@ -26,7 +27,12 @@ def test_stdio_validate_indicator_list_returns_structured_error():
     from mcp.client.stdio import stdio_client
 
     async def run():
-        params = StdioServerParameters(command="echolon-mcp", args=[])
+        # Pass env=os.environ.copy() so PYTHONUTF8 (and anything else the
+        # parent process needs) propagates to the spawned echolon-mcp.
+        # Without this, MCP's stdio client uses a clean env on Windows and
+        # the server process falls back to cp1252 stdio — which crashes
+        # on the first Unicode glyph (`→`, `✓`) in tool output.
+        params = StdioServerParameters(command="echolon-mcp", args=[], env=os.environ.copy())
         async with stdio_client(params) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
@@ -72,7 +78,12 @@ def test_stdio_list_indicators_returns_many_names():
     from mcp.client.stdio import stdio_client
 
     async def run():
-        params = StdioServerParameters(command="echolon-mcp", args=[])
+        # Pass env=os.environ.copy() so PYTHONUTF8 (and anything else the
+        # parent process needs) propagates to the spawned echolon-mcp.
+        # Without this, MCP's stdio client uses a clean env on Windows and
+        # the server process falls back to cp1252 stdio — which crashes
+        # on the first Unicode glyph (`→`, `✓`) in tool output.
+        params = StdioServerParameters(command="echolon-mcp", args=[], env=os.environ.copy())
         async with stdio_client(params) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
@@ -117,7 +128,12 @@ def test_stdio_generate_strategy_params_writes_file(tmp_path):
     output = tmp_path / "strategy_params.py"
 
     async def run():
-        params = StdioServerParameters(command="echolon-mcp", args=[])
+        # Pass env=os.environ.copy() so PYTHONUTF8 (and anything else the
+        # parent process needs) propagates to the spawned echolon-mcp.
+        # Without this, MCP's stdio client uses a clean env on Windows and
+        # the server process falls back to cp1252 stdio — which crashes
+        # on the first Unicode glyph (`→`, `✓`) in tool output.
+        params = StdioServerParameters(command="echolon-mcp", args=[], env=os.environ.copy())
         async with stdio_client(params) as (read, write):
             async with ClientSession(read, write) as session:
                 await session.initialize()
