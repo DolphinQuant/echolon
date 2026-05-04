@@ -336,14 +336,21 @@ class BacktestRunner:
 
         # Setup paths
         output_dir = Path(self.config.backtest_results_dir)
-        # Indicator directory for contract-aware broker
-        # Default: {indicator_dir}/{instrument}/by_contract/
-        # Per-slot: {indicator_dir}/{slot_id}/by_contract/ (when strategy_code_dir set)
-        if self.strategy_code_dir:
-            slot_name = Path(self.strategy_code_dir).name
-            indicator_dir = str(Path(self.config.indicator_dir) / slot_name)
+        # Indicator directory for contract-aware broker. Two valid layouts:
+        #   slot-style:       {indicator_dir}/{slot_name}/by_contract/
+        #   instrument-style: {indicator_dir}/{instrument}/by_contract/
+        # `slot_name` is the basename of strategy_code_dir (always set —
+        # defaults to paths.strategy_code_dir at __init__). Probe the
+        # slot-style layout first; fall back to instrument-style if that
+        # subdir doesn't exist. Mirrors the same existence-check fallback
+        # that load_data() applies for strategy_indicators.csv.
+        root = Path(self.config.indicator_dir)
+        slot_name = Path(self.strategy_code_dir).name
+        slot_dir = root / slot_name
+        if (slot_dir / "by_contract").is_dir():
+            indicator_dir = str(slot_dir)
         else:
-            indicator_dir = str(Path(self.config.indicator_dir) / self.instrument)
+            indicator_dir = str(root / self.instrument)
 
         # Strategy logging directory
         strategy_log_dir = None
