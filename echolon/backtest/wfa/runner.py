@@ -275,6 +275,7 @@ class WFARunner:
                 start_date=window.oos_start,
                 end_date=window.oos_end,
                 backtest_config=self._backtest_config,
+                paths=self._paths,
             )
 
             window.oos_results = oos_results
@@ -340,7 +341,7 @@ class WFARunner:
             "FINAL FULL-PERIOD BACKTEST (with last window's robust parameters)\n"
             + "="*80
         )
-        run_best_trial(ctx=self.ctx, backtest_config=self._backtest_config)
+        run_best_trial(ctx=self.ctx, backtest_config=self._backtest_config, paths=self._paths)
 
         # --- Step 8: Augment backtest_results.json with WFA fields ---
         last_window = completed_windows[-1]
