@@ -53,7 +53,7 @@ claude mcp add -s user echolon -- echolon-mcp      # 2. 注册 MCP 服务器(用
 | **Claude Code** | `claude mcp add -s user echolon -- echolon-mcp` |
 | Cursor | 设置 → MCP Servers → 添加 `{"echolon": {"command": "echolon-mcp"}}` |
 | OpenAI Codex CLI | 在 `~/.codex/config.toml` 里加一个 `echolon` 服务器 |
-| OpenAI Agents SDK (Python) | `MCPServerStdio(command="echolon-mcp")` |
+| OpenAI Agents SDK (Python) | `MCPServerStdio(name="echolon", params={"command": "echolon-mcp", "args": []})` |
 | LangChain / LangGraph | 通过 [`langchain-mcp-adapters`](https://pypi.org/project/langchain-mcp-adapters/) |
 | CrewAI / AutoGen / 其他 | 任何[兼容 MCP 的](https://modelcontextprotocol.io/) 客户端适配器 |
 

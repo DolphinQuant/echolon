@@ -53,7 +53,7 @@ Behind the scenes the agent calls `list_skills` → picks `patterns` and `quick_
 | **Claude Code** | `claude mcp add -s user echolon -- echolon-mcp` |
 | Cursor | Settings → MCP Servers → add `{"echolon": {"command": "echolon-mcp"}}` |
 | OpenAI Codex CLI | Add `echolon` server to `~/.codex/config.toml` |
-| OpenAI Agents SDK (Python) | `MCPServerStdio(command="echolon-mcp")` |
+| OpenAI Agents SDK (Python) | `MCPServerStdio(name="echolon", params={"command": "echolon-mcp", "args": []})` |
 | LangChain / LangGraph | via [`langchain-mcp-adapters`](https://pypi.org/project/langchain-mcp-adapters/) |
 | CrewAI / AutoGen / others | Any [MCP-compatible](https://modelcontextprotocol.io/) client adapter |
 
