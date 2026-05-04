@@ -52,8 +52,13 @@ def get_contract_data_dir(
         Path to the sort_by_contract directory
     """
     if market_data_dir is None:
-        from echolon.config.paths_config import PathsConfig
-        market_data_dir = PathsConfig.from_env().market_data_dir
+        from echolon.errors import raise_error
+        raise_error(
+            "CFG-003",
+            function="get_contract_data_dir",
+            param="market_data_dir=",
+            paths_field="market_data_dir",
+        )
     return os.path.join(str(market_data_dir), market.upper(), instrument, "sort_by_contract")
 
 
@@ -77,8 +82,13 @@ def get_intraday_data_path(
         Path to strategy_indicators.csv
     """
     if indicator_dir is None:
-        from echolon.config.paths_config import PathsConfig
-        indicator_dir = PathsConfig.from_env().indicators_backtest_dir
+        from echolon.errors import raise_error
+        raise_error(
+            "CFG-003",
+            function="get_intraday_data_path",
+            param="indicator_dir=",
+            paths_field="indicators_backtest_dir",
+        )
     return os.path.join(str(indicator_dir), instrument, "strategy_indicators.csv")
 
 
@@ -307,7 +317,9 @@ def calculate_mfe_mae_intraday(
 
 def enrich_trades_with_mfe_mae(
     trades_list: List[Dict],
-    ctx: TradingContext
+    ctx: TradingContext,
+    *,
+    paths: "PathsConfig",  # type: ignore[name-defined]
 ) -> List[Dict]:
     """
     Enrich trades list with MFE/MAE metrics by calculating from contract price data.
@@ -340,7 +352,9 @@ def enrich_trades_with_mfe_mae(
 
     if is_intraday:
         # Intraday: use continuous main contract data from strategy_indicators.csv
-        intraday_data_path = get_intraday_data_path(instrument)
+        intraday_data_path = get_intraday_data_path(
+            instrument, indicator_dir=paths.indicators_backtest_dir,
+        )
         if not os.path.exists(intraday_data_path):
             logger.warning(f"Intraday data file not found: {intraday_data_path}. "
                           "MFE/MAE enrichment skipped.")
@@ -349,7 +363,9 @@ def enrich_trades_with_mfe_mae(
                     f"market={market}, instrument={instrument}")
     else:
         # Interday: use contract-specific data from sort_by_contract/
-        contract_data_dir = get_contract_data_dir(market, instrument)
+        contract_data_dir = get_contract_data_dir(
+            market, instrument, market_data_dir=paths.market_data_dir,
+        )
         if not os.path.exists(contract_data_dir):
             logger.warning(f"Contract data directory not found: {contract_data_dir}. "
                           "MFE/MAE enrichment skipped.")

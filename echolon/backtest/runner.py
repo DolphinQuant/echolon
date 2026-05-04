@@ -71,7 +71,8 @@ def run_backtest(
     output_dir: Optional[str] = None,
     save_results: bool = True,
     backtest_config: Optional[BacktestConfig] = None,
-    paths: Optional[PathsConfig] = None,
+    *,
+    paths: PathsConfig,
 ) -> Dict[str, Any]:
     """
     Run a single backtest with provided parameters.
@@ -115,7 +116,9 @@ def run_backtest(
         config.backtest_results_dir = output_dir
 
     # Create runner with ctx and execute
-    runner = BacktestRunner(ctx=ctx, config=config, backtest_config=backtest_config)
+    runner = BacktestRunner(
+        ctx=ctx, paths=paths, config=config, backtest_config=backtest_config,
+    )
     runner.load_data()
 
     # Get default params if not provided
@@ -133,7 +136,8 @@ def run_backtest(
 def run_debug_backtest(
     ctx: TradingContext,
     backtest_config: Optional[BacktestConfig] = None,
-    paths: Optional[PathsConfig] = None,
+    *,
+    paths: PathsConfig,
 ) -> Dict[str, Any]:
     """
     Run debug backtest with default parameters and detailed logging.
@@ -156,7 +160,7 @@ def run_debug_backtest(
         f"market={ctx.market_code}, instrument={ctx.instrument_name}"
     )
 
-    results = BacktestRunner.debug(ctx, backtest_config=backtest_config)
+    results = BacktestRunner.debug(ctx, backtest_config=backtest_config, paths=paths)
 
     # Log result summary
     logger.info(
@@ -177,7 +181,8 @@ def run_best_trial(
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
     backtest_config: Optional[BacktestConfig] = None,
-    paths: Optional[PathsConfig] = None,
+    *,
+    paths: PathsConfig,
 ) -> Dict[str, Any]:
     """
     Run backtest with best parameters from Optuna optimization.
@@ -210,6 +215,7 @@ def run_best_trial(
         ctx=ctx, params_path=best_params_path,
         start_date=start_date, end_date=end_date,
         backtest_config=backtest_config,
+        paths=paths,
     )
 
     # Log result summary
@@ -275,10 +281,11 @@ Examples:
         bar_size=args.bar_size,
     )
 
+    paths = PathsConfig.from_env()
     if args.mode == 'debug':
-        results = run_debug_backtest(ctx)
+        results = run_debug_backtest(ctx, paths=paths)
     else:
-        results = run_best_trial(ctx, best_params_path=args.params_path)
+        results = run_best_trial(ctx, best_params_path=args.params_path, paths=paths)
 
     # Print summary
     print("\n" + "=" * 60)

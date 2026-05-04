@@ -24,6 +24,7 @@ This consolidates logic previously in:
 """
 
 from datetime import date, datetime
+from pathlib import Path
 from typing import Optional, List, TYPE_CHECKING
 import math
 
@@ -98,7 +99,8 @@ class SHFEAdapter(BaseMarketAdapter):
         self,
         symbol: str = "al",
         trading_calendar_path: Optional[str] = None,
-        days_before_rollover: int = 2
+        days_before_rollover: int = 2,
+        market_data_dir: Optional[Path] = None,
     ):
         """
         Initialize SHFE adapter.
@@ -127,6 +129,10 @@ class SHFEAdapter(BaseMarketAdapter):
 
         self._symbol = symbol.lower()
         self._days_before_rollover = days_before_rollover
+        # main_contract.csv lives in market_data_dir (alongside trading_calendar.csv
+        # and OHLCV). When None, callers surface CFG-003 from the loader on
+        # first get_main_contract / get_rollover_target call — fail-loud.
+        self._market_data_dir = market_data_dir
 
         # Load trading calendar
         self._calendar = TradingCalendar(trading_calendar_path)
@@ -239,7 +245,7 @@ class SHFEAdapter(BaseMarketAdapter):
             Main contract code (e.g., 'al2403')
         """
         sym = instrument.lower() if instrument else self._symbol
-        return get_main_contract(trading_date, sym)
+        return get_main_contract(trading_date, sym, market_data_dir=self._market_data_dir)
 
     def should_rollover(
         self,
@@ -290,7 +296,8 @@ class SHFEAdapter(BaseMarketAdapter):
             current_contract,
             trading_date,
             1,  # position_size > 0 to allow rollover
-            self._calendar
+            self._calendar,
+            market_data_dir=self._market_data_dir,
         )
 
     def get_expiry_date(self, contract: str) -> date:

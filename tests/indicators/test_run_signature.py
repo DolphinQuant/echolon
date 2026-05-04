@@ -5,6 +5,8 @@ from echolon.indicators.run import run_indicator_calculation
 
 
 def test_required_params_are_ctx_output_dir_indicator_list():
+    """`paths` joined the required set in v0.3 (no more from_env() fallback —
+    every caller threads a PathsConfig built once at program startup)."""
     sig = inspect.signature(run_indicator_calculation)
     required = [
         name for name, p in sig.parameters.items()
@@ -12,7 +14,7 @@ def test_required_params_are_ctx_output_dir_indicator_list():
             inspect.Parameter.POSITIONAL_OR_KEYWORD, inspect.Parameter.KEYWORD_ONLY,
         )
     ]
-    assert set(required) == {"ctx", "output_dir", "indicator_list"}
+    assert set(required) == {"ctx", "output_dir", "indicator_list", "paths"}
 
 
 def test_removed_params_are_gone():

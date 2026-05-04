@@ -53,12 +53,9 @@ from echolon.backtest.metrics.reporting import convert_to_serializable, save_tra
 from echolon.data.loaders.backtest_data_loader import load_backtest_data, load_indicator_metadata, load_best_params
 
 
-def _get_default_params(strategy_code_dir: Optional[Path] = None):
-    """Lazy load DEFAULT_PARAMS from the strategy code dir (single-instrument mode)."""
+def _get_default_params(strategy_code_dir: Path):
+    """Lazy load DEFAULT_PARAMS from the strategy code dir."""
     from echolon.strategy.loader import StrategyLoader
-    if strategy_code_dir is None:
-        from echolon.config.paths_config import PathsConfig
-        strategy_code_dir = PathsConfig.from_env().strategy_code_dir
     loader = StrategyLoader(Path(strategy_code_dir))
     return loader.load_attr("strategy_params", "DEFAULT_PARAMS")
 
@@ -92,10 +89,12 @@ class _RunnerConfig:
     Not part of the public API — use the Pydantic ``BacktestConfig`` from
     ``echolon.config.backtest_config`` for external configuration.
 
-    Path fields default to ``None`` and are lazily filled from
-    ``PathsConfig.from_env()`` in ``BacktestRunner.__init__``.
+    Path fields default to ``None``; ``BacktestRunner.__init__`` populates
+    any unset ones from its required ``paths=`` kwarg. No env / cwd fallback.
     """
-    # Paths — None means "resolve from PathsConfig lazily"
+    # Paths — None at construction is allowed (so callers can build
+    # _RunnerConfig() then mutate selected fields); BacktestRunner.__init__
+    # then fills any unset fields from its required ``paths=`` kwarg.
     indicator_dir: Optional[str] = None  # workspace/data/indicators/backtest/
     market_data_dir: Optional[str] = None  # workspace/data/market_data/
     backtest_results_dir: Optional[str] = None  # workspace/current/backtest
@@ -126,7 +125,10 @@ class BacktestRunner:
         Internal runner options (paths + feature flags). Uses defaults if None.
     """
 
-    def __init__(self, ctx: TradingContext, config: Optional[_RunnerConfig] = None,
+    def __init__(self, ctx: TradingContext,
+                 *,
+                 paths: "PathsConfig",  # type: ignore[name-defined]
+                 config: Optional[_RunnerConfig] = None,
                  strategy_code_dir: Optional[str] = None,
                  backtest_config: Optional[BacktestConfig] = None):
         """
@@ -134,11 +136,15 @@ class BacktestRunner:
 
         Args:
             ctx: TradingContext containing market, instrument, frequency info
-            config: Optional _RunnerConfig for internal paths and feature flags.
+            paths: Required PathsConfig. Used to fill any _RunnerConfig path
+                fields the caller didn't pre-populate. No from_env() fallback.
+            config: Optional _RunnerConfig. Path fields default to the
+                corresponding paths.* values; caller can override per-field
+                before constructing the runner.
             strategy_code_dir: Optional path to strategy code directory.
                 If provided, strategy is loaded from this directory via importlib
-                instead of from the default ``PathsConfig.strategy_code_dir``.
-                Used by portfolio backtest to run per-slot strategies.
+                instead of from ``paths.strategy_code_dir``. Used by portfolio
+                backtest to run per-slot strategies.
             backtest_config: Pydantic ``BacktestConfig`` providing date
                 ranges, data paths, and drawdown thresholds.  Required.
         """
@@ -150,19 +156,16 @@ class BacktestRunner:
         self._backtest_config = backtest_config
 
         self.ctx = ctx
+        self._paths = paths
         self.config = config or _RunnerConfig()
-        # Lazy-fill path fields from PathsConfig if caller left them as None
-        if (self.config.indicator_dir is None
-                or self.config.market_data_dir is None
-                or self.config.backtest_results_dir is None):
-            from echolon.config.paths_config import PathsConfig
-            paths = PathsConfig.from_env()
-            if self.config.indicator_dir is None:
-                self.config.indicator_dir = str(paths.indicators_backtest_dir)
-            if self.config.market_data_dir is None:
-                self.config.market_data_dir = str(paths.market_data_dir)
-            if self.config.backtest_results_dir is None:
-                self.config.backtest_results_dir = str(paths.backtest_results_dir)
+        # Fill path fields from paths= for any field the caller left unset.
+        # No from_env() fallback — paths is required and authoritative.
+        if self.config.indicator_dir is None:
+            self.config.indicator_dir = str(paths.indicators_backtest_dir)
+        if self.config.market_data_dir is None:
+            self.config.market_data_dir = str(paths.market_data_dir)
+        if self.config.backtest_results_dir is None:
+            self.config.backtest_results_dir = str(paths.backtest_results_dir)
         self.strategy_code_dir = strategy_code_dir
 
         # State
@@ -217,20 +220,34 @@ class BacktestRunner:
         start_date = start_date or self._backtest_config.start_date
         end_date = end_date or self._backtest_config.end_date
 
-        # Load data — per-slot dir if strategy_code_dir set, else default
+        # Load data — per-slot dir if strategy_code_dir set, else default.
+        # Forward self.config.market_data_dir + indicator_dir explicitly so
+        # the loader honors workspace-local overrides.
+        market_data_dir = Path(self.config.market_data_dir)
+        indicator_dir = Path(self.config.indicator_dir)
         if self.strategy_code_dir:
             slot_name = Path(self.strategy_code_dir).name
-            slot_ind_dir = Path(self.config.indicator_dir) / slot_name
+            slot_ind_dir = indicator_dir / slot_name
             slot_csv = slot_ind_dir / "strategy_indicators.csv"
             if slot_csv.exists():
                 self._indicators, self._trading_calendar = load_backtest_data(
-                    ctx=self.ctx, indicators_path=str(slot_csv)
+                    ctx=self.ctx,
+                    indicators_path=str(slot_csv),
+                    market_data_dir=market_data_dir,
                 )
             else:
-                # Fallback to default path
-                self._indicators, self._trading_calendar = load_backtest_data(ctx=self.ctx)
+                # Fallback to {indicator_dir}/{instrument}/strategy_indicators.csv
+                self._indicators, self._trading_calendar = load_backtest_data(
+                    ctx=self.ctx,
+                    indicator_dir=indicator_dir,
+                    market_data_dir=market_data_dir,
+                )
         else:
-            self._indicators, self._trading_calendar = load_backtest_data(ctx=self.ctx)
+            self._indicators, self._trading_calendar = load_backtest_data(
+                ctx=self.ctx,
+                indicator_dir=indicator_dir,
+                market_data_dir=market_data_dir,
+            )
 
         # Sort index for proper slicing (intraday data has non-unique dates)
         self._indicators = self._indicators.sort_index()
@@ -325,21 +342,28 @@ class BacktestRunner:
             strategy_log_dir = str(output_dir / f"strategy_logs_{context}")
             os.makedirs(strategy_log_dir, exist_ok=True)
 
-        # Create engine using factory with TradingContext
+        # Create engine using factory with TradingContext.
+        # market_data_dir is forwarded to the market adapter so
+        # adapter.get_main_contract resolves main_contract.csv at the
+        # conventional {market_data_dir}/SHFE/{instrument_name}/ path.
         engine = EngineFactory.create_backtest_engine(
             ctx=self.ctx,
             indicators_dir=indicator_dir,
             strategy_logger_enabled=self.config.enable_strategy_logging,
             strategy_logger_dir=strategy_log_dir,
+            market_data_dir=Path(self.config.market_data_dir),
         )
 
         # Create data feed class from metadata, then instantiate
         DataFeedClass = EnrichedPandasData.from_metadata(self._metadata)
         data_feed = DataFeedClass(dataname=self._indicators)
 
-        # Get strategy class using ctx (with optional custom code dir)
+        # Get strategy class using ctx; pass indicators_backtest_dir so the
+        # bridge resolves per-slot metadata under the workspace-local override.
         strategy_class = get_strategy_class(
-            ctx=self.ctx, strategy_code_dir=self.strategy_code_dir
+            ctx=self.ctx,
+            strategy_code_dir=self.strategy_code_dir,
+            indicators_backtest_dir=self.config.indicator_dir,
         )
 
         # Extract segmentation data for trade analyzers (BUG_001 attribution fix).
@@ -405,14 +429,16 @@ class BacktestRunner:
                 # Handle wrapped format: {'trades': [...]}
                 enriched = enrich_trades_with_mfe_mae(
                     trades_list=trades_list['trades'],
-                    ctx=self.ctx
+                    ctx=self.ctx,
+                    paths=self._paths,
                 )
                 detailed['trades'] = {'trades': enriched}
             elif isinstance(trades_list, list):
                 # Handle direct list format
                 enriched = enrich_trades_with_mfe_mae(
                     trades_list=trades_list,
-                    ctx=self.ctx
+                    ctx=self.ctx,
+                    paths=self._paths,
                 )
                 detailed['trades'] = enriched
 
@@ -525,6 +551,8 @@ class BacktestRunner:
         cls,
         ctx: TradingContext,
         backtest_config: Optional[BacktestConfig] = None,
+        *,
+        paths: "PathsConfig",  # type: ignore[name-defined]
     ) -> Dict[str, Any]:
         """
         Run debug backtest with DEFAULT_PARAMS.
@@ -534,18 +562,15 @@ class BacktestRunner:
         Parameters
         ----------
         ctx : TradingContext
-            Trading context (single source of truth)
-        backtest_config : BacktestConfig, optional
-            Pydantic config with date ranges, paths, and thresholds.  Required.
-
-        Returns
-        -------
-        Dict[str, Any]
-            Detailed results
+        backtest_config : BacktestConfig
+        paths : PathsConfig (required, keyword-only)
         """
-        runner = cls(ctx, backtest_config=backtest_config)
+        runner = cls(ctx, paths=paths, backtest_config=backtest_config)
         runner.load_data()
-        return runner.run(_get_default_params(), context='debug')
+        return runner.run(
+            _get_default_params(paths.strategy_code_dir),
+            context='debug',
+        )
 
     @classmethod
     def best_trial(
@@ -556,6 +581,8 @@ class BacktestRunner:
         end_date: Optional[str] = None,
         strategy_code_dir: Optional[str] = None,
         backtest_config: Optional[BacktestConfig] = None,
+        *,
+        paths: "PathsConfig",  # type: ignore[name-defined]
     ) -> Dict[str, Any]:
         """
         Run backtest with best parameters from optimization.
@@ -586,20 +613,17 @@ class BacktestRunner:
         """
         runner = cls(
             ctx,
+            paths=paths,
             strategy_code_dir=strategy_code_dir,
             backtest_config=backtest_config,
         )
 
-        # Default params path — from slot dir if provided, else from
-        # PathsConfig.best_params_file (lazily derived from PathsConfig.from_env())
+        # Default params path — from slot dir if provided, else from paths.
         if params_path is None:
             if strategy_code_dir:
                 params_path = str(Path(strategy_code_dir) / "selected_robust_trial.json")
             else:
-                from echolon.config.paths_config import PathsConfig
-                params_path = str(
-                    PathsConfig.from_env().best_params_file
-                )
+                params_path = str(paths.best_params_file)
 
         # Load and map parameters using shared utility
         params_data = load_best_params(params_path)
@@ -611,7 +635,7 @@ class BacktestRunner:
             loader = StrategyLoader(Path(strategy_code_dir))
             slot_defaults = loader.load_attr("strategy_params", "DEFAULT_PARAMS")
         else:
-            slot_defaults = _get_default_params()
+            slot_defaults = _get_default_params(paths.strategy_code_dir)
         strategy_params = cls._map_optuna_params(optuna_params, slot_defaults)
 
         return runner.load_data(start_date=start_date, end_date=end_date).run(

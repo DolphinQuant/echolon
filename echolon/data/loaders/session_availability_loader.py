@@ -152,8 +152,12 @@ class SessionAvailabilityLoader:
         else:
             market_data_dir = self._market_data_dir
             if market_data_dir is None:
-                from echolon.config.paths_config import PathsConfig
-                market_data_dir = PathsConfig.from_env().market_data_dir
+                raise_error(
+                    "CFG-003",
+                    function="SessionAvailabilityLoader",
+                    param="market_data_dir= (or path_override=)",
+                    paths_field="market_data_dir",
+                )
             file_path = Path(market_data_dir) / self.market / self.instrument / "session_availability.csv"
             if not file_path.exists():
                 raise_error("DAT-003", path=str(file_path), symbol=self.instrument)

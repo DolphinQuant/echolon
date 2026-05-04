@@ -38,6 +38,7 @@ Example:
     engine = EngineFactory.create_deploy_engine(ctx)
 """
 
+from pathlib import Path
 from typing import Dict, Any, Optional, Type, TYPE_CHECKING
 import logging
 
@@ -106,6 +107,7 @@ class EngineFactory:
         ctx: TradingContext,
         calendar_path: Optional[str] = None,
         mode: str = "backtest",
+        market_data_dir: Optional[Path] = None,
     ) -> IMarketAdapter:
         """
         Create market adapter based on TradingContext.
@@ -163,6 +165,7 @@ class EngineFactory:
                 symbol=instrument_code,
                 trading_calendar_path=calendar_path,
                 days_before_rollover=days_before_rollover_by_mode[mode],
+                market_data_dir=market_data_dir,
             )
         elif market == "CRYPTO":
             return adapter_class(
@@ -237,6 +240,7 @@ class EngineFactory:
         indicators_dir: Optional[str] = None,
         strategy_logger_enabled: bool = True,
         strategy_logger_dir: Optional[str] = None,
+        market_data_dir: Optional[Path] = None,
     ) -> 'ITradingEngine':
         """
         Create backtest trading engine with appropriate hooks.
@@ -271,7 +275,9 @@ class EngineFactory:
         from echolon.backtest.engine.hooks.contract_aware.hook import ContractAwareHook   # lazy
         from echolon.backtest.engine.hooks.session_aware import SessionAwareHook   # lazy
 
-        market_adapter = cls.create_market_adapter(ctx, calendar_path, mode="backtest")
+        market_adapter = cls.create_market_adapter(
+            ctx, calendar_path, mode="backtest", market_data_dir=market_data_dir
+        )
         frequency_context = cls.create_frequency_context(ctx, market_adapter)
 
         # Determine trading mode
@@ -341,6 +347,7 @@ class EngineFactory:
         calendar_path: Optional[str] = None,
         client: Any = None,
         platform: Optional[str] = None,
+        market_data_dir: Optional[Path] = None,
     ) -> 'ITradingEngine':
         """
         Create deployment trading engine.
@@ -359,7 +366,9 @@ class EngineFactory:
         """
         platform = platform or "miniqmt"
 
-        market_adapter = cls.create_market_adapter(ctx, calendar_path, mode="deploy")
+        market_adapter = cls.create_market_adapter(
+            ctx, calendar_path, mode="deploy", market_data_dir=market_data_dir
+        )
         frequency_context = cls.create_frequency_context(ctx, market_adapter)
 
         logger.info(

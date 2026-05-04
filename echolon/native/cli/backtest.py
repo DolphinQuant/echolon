@@ -32,10 +32,23 @@ def _run_backtest(
     bar_size: Optional[str] = None,
     unsafe: bool = False,
     json_output: bool = False,
+    verbose: bool = False,
+    paths_config: Optional[Path] = None,
 ) -> None:
     """Plain Python helper — same body as ``backtest_single`` but without
     typer ``OptionInfo`` defaults so it's callable from other CLI commands
-    (e.g. ``hello``)."""
+    (e.g. ``hello``).
+
+    ``verbose=True`` raises the echolon namespace logger to DEBUG.
+    """
+    import logging
+    logging.basicConfig(
+        level=logging.DEBUG if verbose else logging.INFO,
+        format="%(levelname)s:%(name)s:%(message)s",
+    )
+    if verbose:
+        os.environ.setdefault("ECHOLON_DEBUG_MODULES", "echolon.*")
+        logging.getLogger("echolon").setLevel(logging.DEBUG)
     # Recover ctx from marker if available.
     ws_root: Optional[Path] = None
     try:
@@ -94,18 +107,39 @@ def _run_backtest(
             typer.echo("✓ Validation passed.")
 
     # Thread workspace as ECHOLON_PROJECT_ROOT so PathsConfig.from_env() resolves
-    # all defaults (raw_data_dir, market_data_dir, indicators_backtest_dir, etc.)
-    # relative to the workspace.
+    # defaults relative to the workspace (only used when no marker overrides
+    # and no --paths-config flag).
     if ws_root is not None:
         os.environ["ECHOLON_PROJECT_ROOT"] = str(ws_root)
 
     from echolon.config.paths_config import PathsConfig
     from echolon import quick_start
-    from echolon.backtest.engine.backtest_runner import BacktestRunner
+
+    # Path-config resolution order (most explicit wins):
+    #   1. --paths-config <file.json>  (CLI flag, this run only)
+    #   2. workspace marker's `paths` overrides (set by `echolon init`/`hello`)
+    #   3. PathsConfig.from_env() (ECHOLON_PROJECT_ROOT or cwd)
+    paths: Optional[PathsConfig] = None
+    if paths_config is not None:
+        paths = PathsConfig.from_file(paths_config)
+        if not json_output:
+            typer.echo(f"[ECHOLON] Paths from --paths-config: {paths_config}")
+    else:
+        paths_overrides_raw = marker.get("paths") if marker else None
+        if paths_overrides_raw and ws_root is not None:
+            valid_fields = set(PathsConfig.model_fields.keys())
+            overrides_abs = {
+                k: ws_root / v
+                for k, v in paths_overrides_raw.items()
+                if k in valid_fields
+            }
+            paths = PathsConfig.from_project_root(ws_root, **overrides_abs)
+    from echolon.backtest.engine.backtest_runner import BacktestRunner, _RunnerConfig
     from echolon.indicators.run import run_indicator_calculation
     from echolon.strategy.loader import StrategyLoader
 
-    paths = PathsConfig.from_env()
+    if paths is None:
+        paths = PathsConfig.from_env()
 
     qs = quick_start(
         market=market, instrument=instrument,
@@ -155,8 +189,17 @@ def _run_backtest(
     if not json_output:
         typer.echo(f"[ECHOLON] Running backtest: {strategy_dir.name} ({instrument} {start}..{end})")
 
+    # Pin the runner's internal path config to our resolved PathsConfig so
+    # the marker.paths overrides (workspace/indicators, data/) actually win.
+    runner_cfg = _RunnerConfig(
+        indicator_dir=str(paths.indicators_backtest_dir),
+        market_data_dir=str(paths.market_data_dir),
+        backtest_results_dir=str(paths.backtest_results_dir),
+    )
     runner = BacktestRunner(
         ctx=ctx,
+        paths=paths,
+        config=runner_cfg,
         strategy_code_dir=str(strategy_dir.resolve()),
         backtest_config=bt_cfg,
     )
@@ -186,15 +229,18 @@ def _run_backtest(
         # (Hello catches this; standalone `echolon backtest` lets it propagate.)
         raise
 
-    metrics = (result or {}).get("performance_metrics", {}) if isinstance(result, dict) else {}
+    # ``runner.run`` returns a flat metrics dict at the top level — keys
+    # like sharpe_ratio_annual / total_return_pct / max_drawdown_pct (already
+    # in percent) / total_trades.
+    metrics = result if isinstance(result, dict) else {}
     if json_output:
         import json as _json
         _json.dump({
             "ok": True,
-            "sharpe": metrics.get("sharpe_ratio"),
-            "max_drawdown": metrics.get("max_drawdown"),
-            "annual_return": metrics.get("annual_return"),
-            "win_rate": metrics.get("win_rate"),
+            "sharpe": metrics.get("sharpe_ratio_annual"),
+            "max_drawdown": metrics.get("max_drawdown_pct"),
+            "annual_return": metrics.get("total_return_pct"),
+            "win_rate": metrics.get("win_rate_pct"),
             "total_trades": metrics.get("total_trades"),
             "profit_factor": metrics.get("profit_factor"),
             "trades_per_week": metrics.get("trades_per_week"),
@@ -207,13 +253,16 @@ def _run_backtest(
         }, sys.stdout, indent=2)
         sys.stdout.write("\n")
     else:
-        sharpe = metrics.get("sharpe_ratio")
-        max_dd = metrics.get("max_drawdown")
+        sharpe = metrics.get("sharpe_ratio_annual")
+        max_dd_pct = metrics.get("max_drawdown_pct")
+        ann_ret_pct = metrics.get("total_return_pct")
         n_trades = metrics.get("total_trades", 0)
         sharpe_str = f"{sharpe:.2f}" if isinstance(sharpe, (int, float)) else str(sharpe)
-        max_dd_str = f"{max_dd*100:.1f}%" if isinstance(max_dd, (int, float)) else str(max_dd)
+        max_dd_str = f"{max_dd_pct:.1f}%" if isinstance(max_dd_pct, (int, float)) else str(max_dd_pct)
+        ret_str = f"{ann_ret_pct:.2f}%" if isinstance(ann_ret_pct, (int, float)) else str(ann_ret_pct)
         typer.echo(
-            f"[ECHOLON] ✓ Sharpe: {sharpe_str} | MaxDD: {max_dd_str} | {n_trades} trades"
+            f"[ECHOLON] ✓ Sharpe: {sharpe_str} | Return: {ret_str} | "
+            f"MaxDD: {max_dd_str} | {n_trades} trades"
         )
 
 
@@ -227,17 +276,27 @@ def backtest_single(
     bar_size: Optional[str] = typer.Option(None, "--bar-size"),
     unsafe: bool = typer.Option(False, "--unsafe", help="Skip pre-validation"),
     json_output: bool = typer.Option(False, "--json", help="Emit machine-readable JSON metrics (for LLM agents)"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show per-bar Risk/Entry/Exit/Sizer trace (DEBUG level)"),
+    paths_config: Optional[Path] = typer.Option(
+        None, "--paths-config",
+        help="JSON file with PathsConfig overrides (must include 'project_root'). "
+             "Beats the workspace marker; relative paths resolve against the JSON file's dir.",
+    ),
 ) -> None:
     """Run a backtest, recovering ctx from the workspace marker file.
 
-    Output mode:
+    Output modes:
     - default: human-readable progress + summary line.
     - --json: a single JSON object on stdout with keys
       ``{sharpe, max_drawdown, total_trades, annual_return, win_rate, ...}``.
+    - --verbose: show per-bar component trace.
+    - --paths-config <file>: hand-edited JSON config overrides workspace
+      marker paths.
     """
     _run_backtest(
         strategy_dir=strategy_dir,
         instrument=instrument, start=start, end=end, market=market,
         frequency=frequency, bar_size=bar_size,
-        unsafe=unsafe, json_output=json_output,
+        unsafe=unsafe, json_output=json_output, verbose=verbose,
+        paths_config=paths_config,
     )

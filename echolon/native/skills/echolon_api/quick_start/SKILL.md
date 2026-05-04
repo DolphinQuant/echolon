@@ -77,7 +77,7 @@ ctx = MarketFactory.create(market="SHFE", instrument="al", frequency="interday",
 run_data_pipeline(ctx, paths=paths, skip_extraction=False)
 ```
 
-For pip-installed end-users without a project layout, use `PathsConfig.from_platformdirs("echolon")` (requires `pip install echolon[platformdirs]`). See the `config_reference` skill for full `PathsConfig` field listing.
+For pip-installed end-users without a project layout, use `PathsConfig.from_platformdirs("echolon")` (platformdirs ships as a hard dep with echolon). See the `config_reference` skill for full `PathsConfig` field listing.
 
 ## Common errors at this stage
 

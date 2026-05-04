@@ -49,12 +49,15 @@ def test_echolon_never_imports_xtquant():
                 ), f"{mod_name} imports from xtquant (file: {f})"
 
 
-def test_api_minute_extractor_uses_injected_client():
+def test_api_minute_extractor_uses_injected_client(tmp_path):
     """Verify SHFEApiMinuteExtractor accepts and uses injected client."""
     mock_client = MagicMock()
     mock_client.get_market_data_ex.return_value = {}
 
-    ex = SHFEApiMinuteExtractor(market="SHFE", asset="aluminum", client=mock_client)
+    ex = SHFEApiMinuteExtractor(
+        market="SHFE", asset="aluminum", client=mock_client,
+        raw_data_dir=tmp_path,
+    )
 
     # Verify client is stored
     assert ex.client is mock_client

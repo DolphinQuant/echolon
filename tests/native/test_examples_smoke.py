@@ -171,12 +171,22 @@ def test_02_momentum_breakout_columns_match_declaration() -> None:
     assert "lowest_low" in declared
 
 
+def _mb_indicators(lookback: int = 20, *, high: float, low: float) -> dict[str, float]:
+    """Build the indicator map momentum_breakout's two-sided entry/exit reads.
+
+    Both ``highest_high_N`` and ``lowest_low_N`` are queried each bar — the
+    stub must provide both, otherwise the entry's ``lowest_low`` lookup
+    KeyErrors before the LONG-side check resolves.
+    """
+    return {f"highest_high_{lookback}": high, f"lowest_low_{lookback}": low}
+
+
 def test_02_momentum_breakout_entry_long_on_breakout() -> None:
     example = _EXAMPLES_ROOT / "momentum_breakout"
     entry_mod = _load_module(example, "entry")
     engine = _build_engine(
-        indicators={"highest_high_20": 100.0},
-        price=101.0,
+        indicators=_mb_indicators(20, high=100.0, low=80.0),
+        price=101.0,  # > prior 20-bar high → LONG
     )
     component = entry_mod.entry_rule(
         trading_engine=engine, run_context="optimization",
@@ -188,12 +198,30 @@ def test_02_momentum_breakout_entry_long_on_breakout() -> None:
     assert out.intent.value == "ENTRY_LONG"
 
 
-def test_02_momentum_breakout_entry_hold_below_high() -> None:
+def test_02_momentum_breakout_entry_short_on_breakdown() -> None:
+    """New SHORT pathway: close < prior N-bar low."""
     example = _EXAMPLES_ROOT / "momentum_breakout"
     entry_mod = _load_module(example, "entry")
     engine = _build_engine(
-        indicators={"highest_high_20": 100.0},
-        price=99.0,
+        indicators=_mb_indicators(20, high=100.0, low=80.0),
+        price=79.0,  # < prior 20-bar low → SHORT
+    )
+    component = entry_mod.entry_rule(
+        trading_engine=engine, run_context="optimization",
+        printlog=False, lookback=20,
+    )
+    out = component.generate_signal()
+    assert out.signal == "SHORT"
+    assert out.intent is not None
+    assert out.intent.value == "ENTRY_SHORT"
+
+
+def test_02_momentum_breakout_entry_hold_inside_channel() -> None:
+    example = _EXAMPLES_ROOT / "momentum_breakout"
+    entry_mod = _load_module(example, "entry")
+    engine = _build_engine(
+        indicators=_mb_indicators(20, high=100.0, low=80.0),
+        price=90.0,  # inside the channel → HOLD
     )
     component = entry_mod.entry_rule(
         trading_engine=engine, run_context="optimization",
@@ -207,8 +235,8 @@ def test_02_momentum_breakout_exit_long_on_breakdown() -> None:
     example = _EXAMPLES_ROOT / "momentum_breakout"
     exit_mod = _load_module(example, "exit")
     engine = _build_engine(
-        indicators={"lowest_low_10": 95.0},
-        price=94.0,
+        indicators=_mb_indicators(10, high=105.0, low=95.0),
+        price=94.0,  # < prior 10-bar low → exit LONG
         position=_make_long_position(),
     )
     component = exit_mod.exit_rule(
@@ -221,12 +249,35 @@ def test_02_momentum_breakout_exit_long_on_breakdown() -> None:
     assert out.intent.value == "EXIT_LONG"
 
 
-def test_02_momentum_breakout_exit_holds_above_low() -> None:
+def test_02_momentum_breakout_exit_short_on_breakout() -> None:
+    """New SHORT exit pathway: close > prior N-bar high while short."""
     example = _EXAMPLES_ROOT / "momentum_breakout"
     exit_mod = _load_module(example, "exit")
     engine = _build_engine(
-        indicators={"lowest_low_10": 95.0},
-        price=96.0,
+        indicators=_mb_indicators(10, high=105.0, low=95.0),
+        price=106.0,  # > prior 10-bar high → exit SHORT
+        position=Position(
+            symbol="test", size=-1.0, avg_price=100.0,
+            market_value=-100.0, unrealized_pnl=0.0, realized_pnl=0.0,
+            direction="SHORT",
+        ),
+    )
+    component = exit_mod.exit_rule(
+        trading_engine=engine, run_context="optimization",
+        printlog=False, exit_lookback=10,
+    )
+    out = component.should_exit()
+    assert out.should_exit is True
+    assert out.intent is not None
+    assert out.intent.value == "EXIT_SHORT"
+
+
+def test_02_momentum_breakout_exit_holds_inside_channel() -> None:
+    example = _EXAMPLES_ROOT / "momentum_breakout"
+    exit_mod = _load_module(example, "exit")
+    engine = _build_engine(
+        indicators=_mb_indicators(10, high=105.0, low=95.0),
+        price=100.0,  # inside the channel → keep holding
         position=_make_long_position(),
     )
     component = exit_mod.exit_rule(
@@ -245,8 +296,8 @@ def test_02_momentum_breakout_entry_uses_declared_lookback_range() -> None:
     entry_mod = _load_module(example, "entry")
     for lookback in (10, 25, 50):
         engine = _build_engine(
-            indicators={f"highest_high_{lookback}": 100.0},
-            price=101.0,
+            indicators=_mb_indicators(lookback, high=100.0, low=80.0),
+            price=101.0,  # LONG breakout
         )
         component = entry_mod.entry_rule(
             trading_engine=engine, run_context="optimization",
@@ -266,31 +317,49 @@ def test_03_rsi_columns_match_declaration() -> None:
     assert "rsi" in declared
 
 
+_RSI_PARAMS = {"rsi_period": 14, "oversold": 30, "overbought": 70}
+
+
 def test_03_rsi_entry_long_when_oversold() -> None:
     example = _EXAMPLES_ROOT / "rsi_mean_reversion"
     entry_mod = _load_module(example, "entry")
     engine = _build_engine(indicators={"rsi_14": 25.0}, price=100.0)
     component = entry_mod.entry_rule(
         trading_engine=engine, run_context="optimization",
-        printlog=False, rsi_period=14, oversold=30,
+        printlog=False, **_RSI_PARAMS,
     )
     out = component.generate_signal()
     assert out.signal == "LONG"
+    assert out.intent.value == "ENTRY_LONG"
 
 
-def test_03_rsi_entry_holds_when_not_oversold() -> None:
+def test_03_rsi_entry_short_when_overbought() -> None:
+    """New SHORT pathway: RSI > overbought."""
+    example = _EXAMPLES_ROOT / "rsi_mean_reversion"
+    entry_mod = _load_module(example, "entry")
+    engine = _build_engine(indicators={"rsi_14": 75.0}, price=100.0)
+    component = entry_mod.entry_rule(
+        trading_engine=engine, run_context="optimization",
+        printlog=False, **_RSI_PARAMS,
+    )
+    out = component.generate_signal()
+    assert out.signal == "SHORT"
+    assert out.intent.value == "ENTRY_SHORT"
+
+
+def test_03_rsi_entry_holds_when_in_neutral_zone() -> None:
     example = _EXAMPLES_ROOT / "rsi_mean_reversion"
     entry_mod = _load_module(example, "entry")
     engine = _build_engine(indicators={"rsi_14": 50.0}, price=100.0)
     component = entry_mod.entry_rule(
         trading_engine=engine, run_context="optimization",
-        printlog=False, rsi_period=14, oversold=30,
+        printlog=False, **_RSI_PARAMS,
     )
     out = component.generate_signal()
     assert out.signal == "HOLD"
 
 
-def test_03_rsi_exit_when_overbought() -> None:
+def test_03_rsi_exit_long_when_overbought() -> None:
     example = _EXAMPLES_ROOT / "rsi_mean_reversion"
     exit_mod = _load_module(example, "exit")
     engine = _build_engine(
@@ -299,10 +368,32 @@ def test_03_rsi_exit_when_overbought() -> None:
     )
     component = exit_mod.exit_rule(
         trading_engine=engine, run_context="optimization",
-        printlog=False, rsi_period=14, overbought=70,
+        printlog=False, **_RSI_PARAMS,
     )
     out = component.should_exit()
     assert out.should_exit is True
+    assert out.intent.value == "EXIT_LONG"
+
+
+def test_03_rsi_exit_short_when_oversold() -> None:
+    """New SHORT exit pathway: RSI < oversold while short."""
+    example = _EXAMPLES_ROOT / "rsi_mean_reversion"
+    exit_mod = _load_module(example, "exit")
+    engine = _build_engine(
+        indicators={"rsi_14": 25.0}, price=100.0,
+        position=Position(
+            symbol="test", size=-1.0, avg_price=100.0,
+            market_value=-100.0, unrealized_pnl=0.0, realized_pnl=0.0,
+            direction="SHORT",
+        ),
+    )
+    component = exit_mod.exit_rule(
+        trading_engine=engine, run_context="optimization",
+        printlog=False, **_RSI_PARAMS,
+    )
+    out = component.should_exit()
+    assert out.should_exit is True
+    assert out.intent.value == "EXIT_SHORT"
 
 
 def test_03_rsi_entry_uses_declared_period_range() -> None:
@@ -314,7 +405,7 @@ def test_03_rsi_entry_uses_declared_period_range() -> None:
         engine = _build_engine(indicators={f"rsi_{period}": 25.0}, price=100.0)
         component = entry_mod.entry_rule(
             trading_engine=engine, run_context="optimization",
-            printlog=False, rsi_period=period, oversold=30,
+            printlog=False, rsi_period=period, oversold=30, overbought=70,
         )
         out = component.generate_signal()
         assert out.signal == "LONG", f"rsi_period={period} should produce LONG when RSI=25"
@@ -345,7 +436,7 @@ def test_03_rsi_raises_on_missing_column() -> None:
     engine = _build_engine(indicators={"rsi": 25.0}, price=100.0)  # bare name, missing _14
     component = entry_mod.entry_rule(
         trading_engine=engine, run_context="optimization",
-        printlog=False, rsi_period=14, oversold=30,
+        printlog=False, rsi_period=14, oversold=30, overbought=70,
     )
     with pytest.raises(KeyError):
         component.generate_signal()

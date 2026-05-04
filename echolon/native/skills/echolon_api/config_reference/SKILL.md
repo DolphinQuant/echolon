@@ -101,7 +101,7 @@ paths = PathsConfig.from_platformdirs("echolon")
 # Windows: %APPDATA%/echolon/...
 ```
 
-Requires the optional extra: `pip install echolon[platformdirs]`.
+`platformdirs` ships as a hard dep with echolon; no extras needed.
 
 **Explicit overrides** (any field):
 

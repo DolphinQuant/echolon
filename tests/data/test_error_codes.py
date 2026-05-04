@@ -30,11 +30,14 @@ def test_nonexistent_state_file_returns_empty(tmp_path: Path):
 
 
 def test_missing_main_contract_raises_dat_003(tmp_path: Path):
-    """_load_main_contract_data raises DAT-003 when the main_contract.csv is absent."""
+    """_load_main_contract_data raises DAT-003 when the main_contract.csv is absent.
+
+    main_contract.csv now lives in market_data_dir alongside trading_calendar.csv
+    (was raw_data_dir; migrated in 2026-Q2)."""
     from echolon.markets.shfe.contract_rules import _load_main_contract_data
 
     with pytest.raises(DataError) as exc:
-        _load_main_contract_data("al", raw_data_dir=tmp_path)
+        _load_main_contract_data("al", market_data_dir=tmp_path)
 
     assert exc.value.code == "DAT-003"
     assert "al" in str(exc.value)

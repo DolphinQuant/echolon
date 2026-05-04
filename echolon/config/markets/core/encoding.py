@@ -17,11 +17,11 @@ _decoders: Dict[str, Callable[[int], str]] = {}
 
 
 def register_encoder(market: str, encoder: Callable[[str], int]) -> None:
-    """Register a market-specific phase encoder."""
-    _encoders[market.upper()] = encoder
+ """Register a market-specific phase encoder."""
+ _encoders[market.upper()] = encoder
 
 
 def register_decoder(market: str, decoder: Callable[[int], str]) -> None:
-    """Register a market-specific phase decoder."""
-    _decoders[market.upper()] = decoder
+ """Register a market-specific phase decoder."""
+ _decoders[market.upper()] = decoder
 

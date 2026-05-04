@@ -5,7 +5,7 @@ from echolon.strategy.hooks.session_aware_component_hook import SessionAwareComp
 from echolon.strategy.hooks.session_aware_strategy_hook import SessionAwareStrategyHook
 
 __all__ = [
-    "ForcedExitStrategyHook",
-    "SessionAwareComponentHook",
-    "SessionAwareStrategyHook",
+ "ForcedExitStrategyHook",
+ "SessionAwareComponentHook",
+ "SessionAwareStrategyHook",
 ]

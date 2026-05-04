@@ -51,3 +51,4 @@ showing the typical LLM-author mistake. `EchelonError.docs_url` points here.
 ## Config (CFG-*)
 - [CFG-001](CFG-001.md): end_date before start_date
 - [CFG-002](CFG-002.md): Required directory missing
+- [CFG-003](CFG-003.md): Required path config not injected

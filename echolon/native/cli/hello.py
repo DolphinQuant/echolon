@@ -1,10 +1,7 @@
 """`echolon hello` — out-of-the-box demo.
 
-Internally: copy bundled SHFE aluminum sample → copy minimal template →
-write workspace marker → run backtest. No network. ~30 seconds.
-
-Distinct from `echolon init` only in the data source: hello uses the
-bundled wheel sample; init downloads via akshare.
+Internally: delegate to `echolon init` (akshare download + scaffold) →
+run backtest. Requires network on first run; ~30 seconds.
 """
 from __future__ import annotations
 import os
@@ -13,26 +10,22 @@ from pathlib import Path
 
 import typer
 
-from echolon.data.sample import copy_sample_to, get_sample_manifest
-from echolon.native.templates import template_path
-from echolon.native.workspace import write_marker
-
 DEMO_DIR_NAME = "echolon-hello"
 
 
 def hello_command(
-    bundle: str = typer.Option("shfe_al", "--bundle", help="Sample bundle name"),
+    instrument: str = typer.Option("aluminum", "--instrument",
+                                   help="SHFE instrument name (e.g. aluminum, copper)"),
     template: str = typer.Option("momentum_breakout", "--template",
                                   help="Template to scaffold under strategy/baseline/. "
                                        "Default 'momentum_breakout' produces actual trades on the demo data; "
                                        "'minimal' is hold-forever (educational, no trades)."),
     force: bool = typer.Option(False, "--force", help="Overwrite existing ./echolon-hello/"),
 ) -> None:
-    """Bundled-data instant demo. Lays a workspace, scaffolds a strategy,
+    """Akshare-driven instant demo. Lays a workspace, scaffolds a strategy,
     runs a backtest."""
 
-    # Pre-flight ta-lib (the indicator pipeline imports talib). If missing,
-    # surface the friendly install hint upfront instead of failing mid-run.
+    # Pre-flight ta-lib (the indicator pipeline imports talib).
     try:
         import talib  # noqa: F401
     except ImportError:
@@ -62,46 +55,30 @@ def hello_command(
             )
             raise typer.Exit(2)
         shutil.rmtree(demo)
-    demo.mkdir(parents=True, exist_ok=False)
-    typer.echo(f"[ECHOLON] Creating demo workspace at ./{demo.name}/")
 
-    # 1. Copy bundled sample. copy_sample_to writes to PathsConfig's canonical layout:
-    #   demo/data/{market}/{instrument_code}/main_contract.csv
-    #   demo/workspace/data/market_data/{market}/{instrument}/sort_by_contract/...
-    manifest = get_sample_manifest(bundle)
-    copy_sample_to(bundle, demo)
-    typer.echo(
-        f"[ECHOLON]   data + workspace/data/market_data populated  "
-        f"({len(manifest['contracts'])} contracts, "
-        f"{manifest['date_range'][0]}–{manifest['date_range'][1]})"
+    # Compute a 2-year window ending today so we have enough data for the
+    # default backtest window.
+    from datetime import date, timedelta
+    end_date = date.today()
+    start_date = end_date - timedelta(days=730)
+
+    # Delegate to init's plain-Python implementation (skips typer Option defaults).
+    from echolon.native.cli.init import _init_impl
+    typer.echo(f"[ECHOLON] Downloading {instrument} data via akshare...")
+    _init_impl(
+        target=demo,
+        template=template,
+        market="SHFE",
+        instrument=instrument,
+        start=start_date.isoformat(),
+        end=end_date.isoformat(),
+        initial_capital=200000.0,
+        force=False,
     )
 
-    # 2. Scaffold template into strategy/baseline/.
-    strategy_root = demo / "strategy" / "baseline"
-    strategy_root.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(template_path(template), strategy_root, dirs_exist_ok=True)
-    typer.echo(f"[ECHOLON]   strategy/baseline/  ({template} template)")
-
-    # 3. Empty output dir.
-    (demo / "output").mkdir(parents=True, exist_ok=True)
-
-    # 4. Workspace marker.
-    write_marker(
-        demo,
-        market=manifest["market"], instrument=manifest["instrument"],
-        instrument_code=manifest["instrument_code"],
-        frequency=manifest["frequency"], bar_size=manifest["bar_size"],
-        date_range=tuple(manifest["date_range"]),
-        data_source="bundled", initial_capital=200000.0,
-    )
-    typer.echo(f"[ECHOLON]   .echolon-workspace.json")
-
-    # 5. Set ECHOLON_PROJECT_ROOT so all subsequent pipeline calls resolve
-    #    paths relative to the demo workspace.
-    os.environ["ECHOLON_PROJECT_ROOT"] = str(demo)
-
-    # 6. Run backtest immediately so the user sees a number.
+    # Run backtest immediately so the user sees a number.
     typer.echo(f"[ECHOLON] Running backtest...")
+    strategy_root = demo / "strategy" / "baseline"
     from echolon.native.cli.backtest import _run_backtest
     try:
         _run_backtest(strategy_dir=strategy_root)
@@ -109,14 +86,12 @@ def hello_command(
         if e.exit_code != 0:
             typer.echo(f"[ECHOLON] (Backtest exited {e.exit_code} — see output above.)")
     except Exception as exc:
-        # The bundled sample is small; some templates (or short windows) may
-        # produce zero trades and raise BT-002. The DEMO completed successfully
-        # — the user saw the pipeline end-to-end. Surface the message and continue.
         typer.echo(f"[ECHOLON] Backtest raised: {type(exc).__name__}: {exc}")
-        typer.echo(f"[ECHOLON] (Pipeline completed; the bundled sample window or "
-                   f"chosen template may not produce trades. Try editing "
+        typer.echo(f"[ECHOLON] (Pipeline completed; the chosen template may not "
+                   f"produce trades on this window. Try editing "
                    f"./{demo.name}/strategy/baseline/entry.py.)")
 
     typer.echo("")
+    typer.echo(f"[ECHOLON] Backtest artifacts: ./{demo.name}/workspace/current/backtest/")
     typer.echo(f"[ECHOLON] Try editing ./{demo.name}/strategy/baseline/entry.py and re-running:")
     typer.echo(f"[ECHOLON]   echolon backtest single ./{demo.name}/strategy/baseline/")

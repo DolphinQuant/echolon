@@ -95,24 +95,32 @@ class SHFEAkshareExtractor(BaseExtractor):
         all_frames: list[pd.DataFrame] = []
         for contract in self._list_contracts_in_range(start_date, end_date):
             logger.info(f"[SHFE_AKSHARE] Fetching {contract.upper()}")
-            df = ak.futures_zh_daily_sina(symbol=contract.upper())
+            try:
+                df = ak.futures_zh_daily_sina(symbol=contract.upper())
+            except (ValueError, KeyError, AttributeError) as e:
+                logger.debug(f"[SHFE_AKSHARE] Skipping {contract}: {type(e).__name__}: {e}")
+                continue
             if df is None or len(df) == 0:
                 continue
-            df = df.copy()
-            df["contract"] = contract
-            df = df.rename(columns={"hold": "open_interest"})
-            df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
-            df = df[(df["date"] >= start_date) & (df["date"] <= end_date)]
-            if df.empty:
+            try:
+                df = df.copy()
+                df["contract"] = contract
+                df = df.rename(columns={"hold": "open_interest"})
+                df["date"] = pd.to_datetime(df["date"]).dt.strftime("%Y-%m-%d")
+                df = df[df["date"] <= end_date]
+                if df.empty:
+                    continue
+                df = df.sort_values("date").reset_index(drop=True)
+                df["prev_close"] = df["close"].shift(1).fillna(df["close"])
+                df["settlement"] = df["close"]
+                df["prev_settlement"] = df["settlement"].shift(1).fillna(df["settlement"])
+                df["price_change"] = df["close"] - df["prev_close"]
+                df["settlement_change"] = df["settlement"] - df["prev_settlement"]
+                df["turnover"] = df["volume"] * df["close"]
+                all_frames.append(df[self.CANONICAL_COLUMNS])
+            except (ValueError, KeyError) as e:
+                logger.debug(f"[SHFE_AKSHARE] Skipping {contract} during shape: {e}")
                 continue
-            df = df.sort_values("date").reset_index(drop=True)
-            df["prev_close"] = df["close"].shift(1).fillna(df["close"])
-            df["settlement"] = df["close"]
-            df["prev_settlement"] = df["settlement"].shift(1).fillna(df["settlement"])
-            df["price_change"] = df["close"] - df["prev_close"]
-            df["settlement_change"] = df["settlement"] - df["prev_settlement"]
-            df["turnover"] = df["volume"] * df["close"]
-            all_frames.append(df[self.CANONICAL_COLUMNS])
 
         if not all_frames:
             logger.warning(f"[SHFE_AKSHARE] No data for {self.futures_code} in [{start_date}, {end_date}]")

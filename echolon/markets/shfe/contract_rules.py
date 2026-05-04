@@ -34,8 +34,8 @@ from echolon.errors import raise_error
 from .trading_calendar import TradingCalendar, get_last_trading_day_of_month
 
 # Cache for main contract data to avoid repeated file reads.
-# Keyed by (symbol_lower, str(resolved raw_data_dir)) so different injected
-# raw-data directories don't collide on re-entry.
+# Keyed by (symbol_lower, str(resolved market_data_dir)) so different injected
+# market-data directories don't collide on re-entry.
 _main_contract_cache: Dict[Tuple[str, str], pd.DataFrame] = {}
 
 
@@ -150,36 +150,58 @@ def _get_rollover_signal_date(
 
 def _load_main_contract_data(
     symbol: str,
-    raw_data_dir: Optional[Path] = None,
+    market_data_dir: Optional[Path] = None,
 ) -> pd.DataFrame:
     """
     Load main contract data from CSV file.
 
+    main_contract.csv is a derived market-data artifact (same kind as
+    trading_calendar.csv) and lives at::
+
+        {market_data_dir}/SHFE/{instrument_name}/main_contract.csv
+
+    Host code that produces main_contract.csv elsewhere is responsible for
+    placing it at this path before calling echolon's backtest pipeline.
+
     Args:
-        symbol: Product symbol (e.g., 'al', 'cu', 'rb')
-        raw_data_dir: Optional base raw-data directory. When None, falls back
-            to ``PathsConfig.from_env()``.
+        symbol: Product symbol (e.g., 'al', 'cu', 'rb') — instrument CODE.
+            Resolved to instrument name via MarketFactory.
+        market_data_dir: Required base market-data directory (typically
+            ``paths.market_data_dir``).
 
     Returns:
         DataFrame with 'date' and 'main_contract' columns
 
     Raises:
-        EchelonError (DAT-003): If main_contract.csv doesn't exist for symbol
+        EchelonError (CFG-003): If market_data_dir is None.
+        EchelonError (DAT-003): If main_contract.csv is missing.
     """
     global _main_contract_cache
 
     symbol_lower = symbol.lower()
 
-    if raw_data_dir is None:
-        from echolon.config.paths_config import PathsConfig
-        raw_data_dir = PathsConfig.from_env().raw_data_dir
-    raw_data_dir = Path(raw_data_dir).resolve()
+    if market_data_dir is None:
+        raise_error(
+            "CFG-003",
+            function="get_main_contract / contract_rules._load_main_contract_data",
+            param="market_data_dir=",
+            paths_field="market_data_dir",
+        )
+    market_data_dir = Path(market_data_dir).resolve()
 
-    cache_key = (symbol_lower, str(raw_data_dir))
+    cache_key = (symbol_lower, str(market_data_dir))
     if cache_key in _main_contract_cache:
         return _main_contract_cache[cache_key]
 
-    csv_path = raw_data_dir / "SHFE" / symbol_lower / "main_contract.csv"
+    # Resolve instrument name from code via MarketFactory so the path is
+    # always {market_data_dir}/SHFE/{instrument_name}/main_contract.csv
+    # (co-located with sort_by_contract/, sort_by_date.csv, trading_calendar.csv).
+    from echolon.config.markets.factory import MarketFactory
+    spec = MarketFactory.get_instrument_flexible("SHFE", symbol_lower)
+    if spec is None:
+        raise_error("DAT-003", path=f"<unknown-instrument:{symbol}>", symbol=symbol)
+    csv_path = market_data_dir / "SHFE" / spec.name.lower() / "main_contract.csv"
+
     if not csv_path.exists():
         raise_error("DAT-003", path=str(csv_path), symbol=symbol)
 
@@ -194,34 +216,35 @@ def _load_main_contract_data(
 def get_main_contract(
     trading_date: date,
     symbol: str,
-    raw_data_dir: Optional[Path] = None,
+    market_data_dir: Optional[Path] = None,
 ) -> str:
     """
     Get the main contract code for a given trading date.
 
-    Looks up the main contract from the main_contract.csv file, which contains
-    the actual main contract determined by trading volume/open interest.
+    Looks up the main contract from main_contract.csv at::
+
+        {market_data_dir}/SHFE/{instrument_name}/main_contract.csv
 
     Args:
         trading_date: The trading date
         symbol: Product symbol (e.g., 'al', 'cu', 'rb')
-        raw_data_dir: Optional base raw-data directory. When None, falls back
-            to ``PathsConfig.from_env()``.
+        market_data_dir: Required base market-data directory (typically
+            ``paths.market_data_dir``). Missing value raises CFG-003.
 
     Returns:
         Main contract code (e.g., 'al2403', 'rb2410')
 
     Raises:
-        FileNotFoundError: If main_contract.csv doesn't exist
-        ValueError: If no main contract data available for the date
+        EchelonError (CFG-003): If market_data_dir is None.
+        EchelonError (DAT-003): If main_contract.csv is missing.
+        ValueError: If no main contract data available for the date.
 
     Examples:
-        >>> get_main_contract(date(2024, 1, 15), 'al')
+        >>> get_main_contract(date(2024, 1, 15), 'al',
+        ...                   market_data_dir=paths.market_data_dir)
         'al2403'
-        >>> get_main_contract(date(2024, 9, 15), 'rb')
-        'rb2501'  # rb has different rollover rules than al/cu
     """
-    df = _load_main_contract_data(symbol, raw_data_dir=raw_data_dir)
+    df = _load_main_contract_data(symbol, market_data_dir=market_data_dir)
 
     # Find the most recent entry on or before trading_date
     mask = df['date'] <= trading_date
@@ -281,7 +304,7 @@ def get_rollover_target(
     check_date: date,
     position_size: int,
     calendar: Optional[TradingCalendar] = None,
-    raw_data_dir: Optional[Path] = None,
+    market_data_dir: Optional[Path] = None,
 ) -> Optional[str]:
     """
     Get the target contract for rollover.
@@ -291,15 +314,15 @@ def get_rollover_target(
         check_date: Current date
         position_size: Current position size
         calendar: Optional trading calendar
-        raw_data_dir: Optional base raw-data directory forwarded to
-            get_main_contract. When None, falls back to
-            ``PathsConfig.from_env()``.
+        market_data_dir: Required base market-data directory forwarded to
+            get_main_contract (typically ``paths.market_data_dir``).
 
     Returns:
         Target contract code, or None if no rollover needed
 
     Examples:
-        >>> get_rollover_target('al2403', date(2024, 2, 27), 10)
+        >>> get_rollover_target('al2403', date(2024, 2, 27), 10,
+        ...                     market_data_dir=paths.market_data_dir)
         'al2404'  # If rollover is needed
     """
     if not should_rollover(current_contract, check_date, position_size, calendar):
@@ -307,4 +330,4 @@ def get_rollover_target(
 
     # Get the main contract for current date (which would be the next contract)
     symbol, _, _ = parse_contract(current_contract)
-    return get_main_contract(check_date, symbol, raw_data_dir=raw_data_dir)
+    return get_main_contract(check_date, symbol, market_data_dir=market_data_dir)

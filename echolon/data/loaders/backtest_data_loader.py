@@ -96,8 +96,13 @@ def load_backtest_data(
     # --- Load pre-calculated indicators ---
     if indicators_path is None:
         if indicator_dir is None:
-            from echolon.config.paths_config import PathsConfig
-            indicator_dir = PathsConfig.from_env().indicators_backtest_dir
+            from echolon.errors import raise_error
+            raise_error(
+                "CFG-003",
+                function="load_backtest_data",
+                param="indicators_path= or indicator_dir=",
+                paths_field="indicators_backtest_dir",
+            )
         indicators_path = os.path.join(str(indicator_dir), instrument, "strategy_indicators.csv")
     indicators_data = pd.read_csv(indicators_path)
 
@@ -157,8 +162,13 @@ def load_backtest_data(
 
     # --- Load trading calendar ---
     if market_data_dir is None:
-        from echolon.config.paths_config import PathsConfig
-        market_data_dir = PathsConfig.from_env().market_data_dir
+        from echolon.errors import raise_error
+        raise_error(
+            "CFG-003",
+            function="load_backtest_data",
+            param="market_data_dir=",
+            paths_field="market_data_dir",
+        )
     calendar_path = os.path.join(str(market_data_dir), market.upper(), instrument, "trading_calendar.csv")
     trading_calendar = pd.read_csv(calendar_path)
     trading_calendar['date'] = pd.to_datetime(trading_calendar['date'])
@@ -208,8 +218,13 @@ def load_indicator_metadata(
     """
     if metadata_path is None:
         if indicator_dir is None:
-            from echolon.config.paths_config import PathsConfig
-            indicator_dir = PathsConfig.from_env().indicators_backtest_dir
+            from echolon.errors import raise_error
+            raise_error(
+                "CFG-003",
+                function="load_indicator_metadata",
+                param="metadata_path= or indicator_dir=",
+                paths_field="indicators_backtest_dir",
+            )
         instrument = ctx.instrument_name
         metadata_path = os.path.join(str(indicator_dir), instrument, "strategy_indicator_metadata.json")
     with open(metadata_path, 'r') as f:

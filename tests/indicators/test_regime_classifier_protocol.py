@@ -1,13 +1,13 @@
-"""Phase C+G Protocol/registry mechanics tests (echolon-side).
+"""Protocol/registry mechanics tests for regime classifiers.
 
 The ``RegimeClassifier`` Protocol is the extension point for paradigm-
-specific regime machinery. Echolon ships ZERO built-in classifiers (post
-Phase G); consumers register their own (TRS via qorka, HMM/GMM/Carry
-via user code) through the registry.
+specific regime machinery. Echolon ships ZERO built-in classifiers; host
+code registers its own (rule-based, HMM, GMM, Carry, etc.) through the
+registry.
 
 These tests verify the **paradigm-blind** Protocol shape + registry
-mechanics. TRS classifier conformance tests live in qorka at
-``qorka/tests/paradigms/test_trs_classifier_protocol.py``.
+mechanics. Classifier-specific conformance tests are the responsibility
+of whoever ships the classifier.
 """
 from __future__ import annotations
 
@@ -32,10 +32,10 @@ def test_unregistered_classifier_raises_helpful_error():
         get_regime_classifier("nonexistent_classifier")
 
 
-def test_unregistered_optimizer_raises_with_qorka_pointer():
+def test_unregistered_optimizer_raises_helpful_error():
     from echolon.indicators.registry import get_regime_optimizer
     # Use a name that's guaranteed not to be registered
-    with pytest.raises(KeyError, match="qorka.modules.paradigms.trs"):
+    with pytest.raises(KeyError, match="No regime optimizer registered"):
         get_regime_optimizer("definitely_not_registered_optimizer")
 
 

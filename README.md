@@ -4,6 +4,9 @@
 [![Python](https://img.shields.io/pypi/pyversions/echolon.svg)](https://pypi.org/project/echolon/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/status-beta-yellow.svg)](https://pypi.org/project/echolon/)
+[![By DolphinQuant](https://img.shields.io/badge/by-DolphinQuant-005f87)](https://dolphinquant.com)
+
+> 📖 [English](README.md) · [简体中文](README.zh-CN.md)
 
 > A Python toolkit for futures trading research, built so an LLM agent can drive it directly. Scaffold a strategy, validate it, backtest it, read structured errors when something breaks. Currently focused on SHFE daily futures.
 
@@ -17,7 +20,7 @@ Echolon ships three top-level commands matching the natural newcomer arc:
 
 | Command | Purpose | Time |
 |---|---|---|
-| `echolon hello` | First impression. Bundled SHFE aluminum data + bundled strategy + auto-backtest. Offline. | ~30s |
+| `echolon hello` | First impression. Downloads SHFE aluminum (last 2y) via akshare + scaffolds strategy + auto-backtest. Network required. | ~30s |
 | `echolon init <workspace> --market SHFE --instrument <i> --start <d> --end <d>` | Real project. Downloads market data via akshare (free, no registry), scaffolds a strategy from a bundled template, writes a workspace marker. | ~1–5 min |
 | `echolon backtest single <strategy_dir>` | Iterate. Walks up from `strategy_dir` to recover context from the workspace marker; recomputes indicators and runs backtest with zero flags. | ~5–10s |
 
@@ -29,16 +32,21 @@ mkdir -p ~/echolon-playground && cd ~/echolon-playground
 echolon hello
 ```
 
-This creates `./echolon-hello/` with bundled SHFE aluminum data, the `momentum_breakout` strategy template, an `.echolon-workspace.json` marker, and runs a backtest immediately:
+This downloads ~2 years of SHFE aluminum via akshare, scaffolds the `momentum_breakout` strategy template, writes an `.echolon-workspace.json` marker, and runs a backtest immediately:
 
 ```
 ./echolon-hello/
 ├── .echolon-workspace.json     ← marker — `echolon backtest` recovers ctx from here
-├── data/SHFE/al/main_contract.csv
-├── workspace/data/market_data/SHFE/aluminum/{sort_by_contract/,sort_by_date.csv,trading_calendar.csv}
-├── strategy/baseline/          ← editable template — fill in your logic here
-└── output/                     ← backtest artifacts
+├── data/                       ← YOUR inputs (curation) — see data/README.md
+│   └── SHFE/al/main_contract.csv  ← roll convention; edit to change rules
+├── workspace/
+│   ├── data/                   ← pipeline output (regenerable) — see workspace/data/README.md
+│   │   └── market_data/SHFE/aluminum/{sort_by_contract/,sort_by_date.csv,trading_calendar.csv}
+│   └── current/backtest/       ← backtest artifacts land here (logs + metrics)
+└── strategy/baseline/          ← editable template — fill in your logic here
 ```
+
+Two trees for two lifecycles: `data/` is **yours** (persists across reruns); `workspace/` is **derived** (the pipeline rebuilds it). Each tree has a `README.md` explaining the split.
 
 **Try this next:** open `./echolon-hello/strategy/baseline/entry.py`, change a parameter (e.g. the breakout lookback in `strategy_params.py`), and re-run:
 
@@ -51,7 +59,7 @@ Watch the Sharpe shift.
 ### Start a real project — `echolon init`
 
 ```bash
-pip install echolon[shfe]      # adds akshare for the data downloader
+pip install echolon      # akshare is included by default
 echolon init my-zinc-strategy --market SHFE --instrument zinc \
                               --start 2022-01-01 --end 2024-12-31 \
                               --template momentum_breakout
@@ -105,6 +113,15 @@ What's in flight, roughly in order:
 - CME futures and equities (architectural slot exists; no implementation yet)
 
 If your work is SHFE futures research with an LLM in the loop, you can use this today. If you need crypto, US markets, or live trading, you're early — open an issue if you want to drive a particular slice and we'll talk about timing.
+
+## What runs on echolon
+
+Echolon is the research engine inside [Qorka](https://dolphinquant.com), [DolphinQuant](https://dolphinquant.com)'s AI-native strategy generation product. Qorka drives the iterative loop on top of echolon — design → code → backtest → analyze → evaluate → refine — and the strategies that survive that loop are deployed live on SHFE. You can see them running in real time on the [DolphinQuant portfolio dashboard](https://dolphinquant.com); Qorka itself is in private beta with a public waitlist on the same site.
+
+Two implications for you:
+
+- **Echolon is exercised by real money on real markets daily.** The error codes, the validators, the contract conventions — they're the way they are because something in production failed in that exact way once. We don't get to ship sloppy.
+- **Echolon is fully usable on its own.** If you're here to do your own research, the open-source engine is the whole product, not a stripped demo. The Qorka-side work (paradigm orchestration, mode-decision policy, strategy registry) lives in our private monorepo on top — replaceable by anyone with the engine in hand.
 
 ## What's actually AI-native about it
 
@@ -248,4 +265,4 @@ If echolon shows up in academic work:
 
 ## Status
 
-v0.1.1, beta, 2026. Active development. Issues and pull requests welcome at [github.com/dolphinquant/echolon](https://github.com/dolphinquant/echolon).
+v0.1.1, beta, 2026. Active development. Built and maintained by [DolphinQuant](https://dolphinquant.com) — the same team running Qorka on SHFE. Issues and pull requests welcome at [github.com/dolphinquant/echolon](https://github.com/dolphinquant/echolon).

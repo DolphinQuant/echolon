@@ -153,6 +153,21 @@ ERROR_CATALOG: dict[str, dict] = {
             "  field:        {field}"
         ),
     },
+    "CFG-003": {
+        "class": ConfigError,
+        "what": "Required path config not injected",
+        "why": (
+            "Echolon library functions no longer fall back to "
+            "PathsConfig.from_env(); the caller must inject the directory "
+            "explicitly. This prevents silent reliance on cwd / env vars."
+        ),
+        "fix_template": (
+            "Construct one PathsConfig at program startup and pass the "
+            "appropriate field through:\n"
+            "  function: {function}\n"
+            "  missing:  {param} (e.g. paths.{paths_field})"
+        ),
+    },
     "STR-001": {
         "class": StrategyStructureError,
         "what": "Strategy directory missing required file",

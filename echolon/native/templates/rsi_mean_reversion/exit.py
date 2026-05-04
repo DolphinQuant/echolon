@@ -1,4 +1,4 @@
-"""RSI mean reversion: exit on overbought."""
+"""RSI mean reversion: LONG exits on overbought, SHORT exits on oversold."""
 
 from echolon.strategy.component import BaseComponent
 from echolon.strategy.interfaces import OrderIntent
@@ -9,6 +9,7 @@ class exit_rule(BaseComponent):
     def __init__(self, trading_engine, **params):
         super().__init__(trading_engine, **params)
         self.rsi_period = self.params["rsi_period"]
+        self.oversold = self.params["oversold"]
         self.overbought = self.params["overbought"]
         self.bars_held = 0
 
@@ -23,7 +24,8 @@ class exit_rule(BaseComponent):
         else:
             self.bars_held += 1
             rsi = self.get_indicator(f"rsi_{self.rsi_period}")
-            if rsi > self.overbought:
+            is_long = pos.size > 0
+            if is_long and rsi > self.overbought:
                 out = ExitSignalOutput(
                     should_exit=True,
                     exit_reason=f"RSI={rsi} > {self.overbought}",
@@ -31,9 +33,18 @@ class exit_rule(BaseComponent):
                     bars_since_entry=self.bars_held,
                     intent=OrderIntent.EXIT_LONG,
                 )
+            elif not is_long and rsi < self.oversold:
+                out = ExitSignalOutput(
+                    should_exit=True,
+                    exit_reason=f"RSI={rsi} < {self.oversold}",
+                    position_size=abs(pos.size),
+                    bars_since_entry=self.bars_held,
+                    intent=OrderIntent.EXIT_SHORT,
+                )
             else:
                 out = ExitSignalOutput(
-                    should_exit=False, exit_reason="Holding",
+                    should_exit=False,
+                    exit_reason="Holding LONG" if is_long else "Holding SHORT",
                     position_size=abs(pos.size), bars_since_entry=self.bars_held,
                 )
         self.log_exit_output(out)

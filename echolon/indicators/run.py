@@ -9,6 +9,7 @@ Output directory: workspace/data/indicators/backtest/{instrument}/
 """
 import os
 import logging
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from datetime import datetime
 import pandas as pd
@@ -29,7 +30,7 @@ def run_indicator_calculation(
     regime_params: Optional[Dict[str, Any]] = None,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
-    paths: Optional["PathsConfig"] = None,  # type: ignore[name-defined]
+    paths: "PathsConfig",  # type: ignore[name-defined]
 ) -> pd.DataFrame:
     """
     Run indicator calculation on market data.
@@ -49,47 +50,28 @@ def run_indicator_calculation(
 
                 {"rsi": {"timeperiod": [5, 30]}, "market_regime": {}}
 
-        trading_dates: List of trading dates to process (optional; loads from calendar if None).
-            If None, start_date and end_date are required and used to load calendar dates.
+        trading_dates: List of trading dates to process (optional; loads from
+            calendar if None). If None, start_date and end_date are required.
         use_parallel: Use parallel processing.
         regime_params: Regime classification parameters required when
-            *indicator_list* contains ``market_regime`` on an interday ctx.
-            Produce by calling
-            ``echolon.indicators.get_regime_optimizer("market_regime").optimize(
-            df=None, n_trials=400, ctx=ctx)`` after qorka has registered the
-            TRS optimizer at session start
-            (``modules.paradigms.trs.regime_machinery.setup_classifiers()``).
-
-            For custom regime classifiers (HMM, GMM, etc.), register them via
-            ``echolon.indicators.registry.register_regime_classifier()`` before
-            invoking this function. The pipeline dispatches by name via the
-            classifier registry; the built-in ``market_regime`` classifier is
-            auto-registered at module-load time. See
-            :mod:`echolon.indicators.protocols` for the Protocol.
+            *indicator_list* contains a registered classifier name on an
+            interday ctx. Produce via
+            ``echolon.indicators.get_regime_optimizer(name).optimize(
+            df=None, n_trials=400, ctx=ctx)`` after the optimizer has been
+            registered. Register classifiers + optimizers via
+            ``echolon.indicators.registry.register_regime_classifier()`` /
+            ``register_regime_optimizer()`` at session startup.
         start_date: ISO date string for backtest start (e.g. ``"2018-01-01"``).
             Required if trading_dates is None.
         end_date: ISO date string for backtest end.
             Required if trading_dates is None.
+        paths: Required PathsConfig built once at program startup.
 
     Returns:
         DataFrame with main contract indicators.
 
     Raises:
         ValueError: If trading_dates is None and start_date/end_date are not provided.
-
-    Example:
-        >>> from echolon.config.markets.factory import MarketFactory
-        >>> ctx = MarketFactory.create(
-        ...     market='SHFE', instrument='al', frequency='interday', bar_size='1d',
-        ... )
-        >>> indicators = run_indicator_calculation(
-        ...     ctx,
-        ...     output_dir="/path/to/output",
-        ...     indicator_list={"rsi": {"timeperiod": [5, 30]}},
-        ...     regime_params=my_regime_params,
-        ...     start_date="2018-01-01",
-        ...     end_date="2024-12-31",
-        ... )
     """
     # Validate indicator_list schema early for fail-fast
     IndicatorList.model_validate(indicator_list)
@@ -118,7 +100,11 @@ def run_indicator_calculation(
                 "start_date and end_date are required when trading_dates is None. "
                 "Pass both start_date and end_date, or provide trading_dates directly."
             )
-        trading_dates = _load_trading_dates(market, instrument, start_date, end_date)
+        # Forward paths so the calendar lookup honors workspace-local overrides.
+        trading_dates = _load_trading_dates(
+            market, instrument, start_date, end_date,
+            market_data_dir=paths.market_data_dir,
+        )
 
     logger.info(f"[INDICATORS] Processing {len(trading_dates)} trading dates")
 
@@ -137,6 +123,7 @@ def run_indicator_calculation(
         output_dir=output_dir,
         regime_params=regime_params,
         backtest_start_year=backtest_start_year,
+        paths=paths,
     )
 
     # Process all contracts
@@ -155,6 +142,8 @@ def _load_trading_dates(
     instrument: str,
     start_date: Optional[str] = None,
     end_date: Optional[str] = None,
+    *,
+    market_data_dir: Path,
 ) -> List[datetime]:
     """Load trading dates from calendar."""
     from echolon.data.loaders.calendar_loader import get_trading_dates
@@ -164,9 +153,7 @@ def _load_trading_dates(
         asset=instrument,
         start_date=start_date,
         end_date=end_date,
+        market_data_dir=market_data_dir,
     )
 
     return dates
-
-
-

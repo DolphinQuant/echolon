@@ -129,16 +129,29 @@ class BacktraderStrategyBridge(bt.Strategy):
         from the Backtrader data feed with the market data interface.
         """
         ctx = self._engine.get_trading_context()
-        # Use per-slot metadata path if strategy_code_dir is set
+        # Use per-slot metadata path if strategy_code_dir is set. The runner
+        # threads indicators_backtest_dir into strategy params via
+        # get_strategy_class — required for slot lookup, no env fallback.
         code_dir = self.p.strategy_code_dir
+        from pathlib import Path
+        ind_dir_param = getattr(self.p, 'indicators_backtest_dir', None)
+        if ind_dir_param is None:
+            from echolon.errors import raise_error
+            raise_error(
+                "CFG-003",
+                function="BacktraderStrategyBridge._register_indicators",
+                param="indicators_backtest_dir strategy param",
+                paths_field="indicators_backtest_dir",
+            )
+        indicators_backtest_dir = Path(ind_dir_param)
         if code_dir is not None:
-            from pathlib import Path
-            from echolon.config.paths_config import PathsConfig
-            indicators_backtest_dir = PathsConfig.from_env().indicators_backtest_dir
             slot_meta = indicators_backtest_dir / Path(code_dir).name / "strategy_indicator_metadata.json"
-            metadata = load_indicator_metadata(ctx=ctx, metadata_path=str(slot_meta) if slot_meta.exists() else None)
+            if slot_meta.exists():
+                metadata = load_indicator_metadata(ctx=ctx, metadata_path=str(slot_meta))
+            else:
+                metadata = load_indicator_metadata(ctx=ctx, indicator_dir=indicators_backtest_dir)
         else:
-            metadata = load_indicator_metadata(ctx=ctx)
+            metadata = load_indicator_metadata(ctx=ctx, indicator_dir=indicators_backtest_dir)
 
         registered_indicators = []
         failed_indicators = []
@@ -435,34 +448,28 @@ _STRATEGY_CLASS_CACHE: Dict[str, Type[bt.Strategy]] = {}
 from echolon.config.markets.core.context import TradingContext
 
 
-def get_strategy_class(ctx: TradingContext, strategy_code_dir: Optional[str] = None) -> Type[bt.Strategy]:
-    """
-    Get Backtrader-compatible strategy class based on TradingContext.
-
-    This function configures BacktraderStrategyBridge with ctx values,
-    returning a class ready for Cerebro. The engine is injected separately
-    by engine.setup() via strategy_params.
-
-    The class is cached and registered in the module namespace to enable
-    pickle serialization for multiprocessing (Optuna optimization).
+def get_strategy_class(
+    ctx: TradingContext,
+    strategy_code_dir: Optional[str] = None,
+    indicators_backtest_dir: Optional[str] = None,
+) -> Type[bt.Strategy]:
+    """Get Backtrader-compatible strategy class based on TradingContext.
 
     Args:
         ctx: TradingContext (single source of truth for market/instrument config)
         strategy_code_dir: Optional path to strategy code directory.
-            If provided, strategy is loaded from this directory via importlib
-            instead of from strategy/platform_agnostic/.
-
-    Returns:
-        BacktraderStrategyBridge class configured with ctx params
+        indicators_backtest_dir: Optional indicators-backtest root used to
+            resolve per-slot ``strategy_indicator_metadata.json``.
     """
     strategy_name = 'default'
     market = ctx.market_code
     instrument = ctx.instrument_name
     instrument_code = ctx.instrument_code
 
-    # Create a unique cache key based on config values
-    # Include strategy_code_dir so different slots get different classes
-    cache_key = f"{strategy_name}_{market}_{instrument}_{instrument_code}_{strategy_code_dir or 'default'}"
+    cache_key = (
+        f"{strategy_name}_{market}_{instrument}_{instrument_code}"
+        f"_{strategy_code_dir or 'default'}_{indicators_backtest_dir or 'default'}"
+    )
 
     # Return cached class if exists (required for pickle compatibility)
     if cache_key in _STRATEGY_CLASS_CACHE:
@@ -485,6 +492,7 @@ def get_strategy_class(ctx: TradingContext, strategy_code_dir: Optional[str] = N
                 ('instrument_code', instrument_code),  # Code for trading
                 ('strategy_params', {}),
                 ('strategy_code_dir', strategy_code_dir),  # Custom strategy dir (None = platform_agnostic)
+                ('indicators_backtest_dir', indicators_backtest_dir),
                 ('printlog', True),
             )
         }

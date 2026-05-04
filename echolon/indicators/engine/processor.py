@@ -116,6 +116,8 @@ class IndicatorProcessor:
         n_jobs: int = None,
         regime_params: Optional[Dict[str, Any]] = None,
         backtest_start_year: Optional[int] = None,
+        *,
+        paths: "PathsConfig",  # type: ignore[name-defined]
     ):
         """
         Initialize the parallel processor.
@@ -124,32 +126,20 @@ class IndicatorProcessor:
             ctx: TradingContext with market, instrument, frequency, bar_size configuration
             trading_date_list: List of trading dates to process
             indicator_list: Flat-dict indicator specification (required).
-                Keys are indicator names (lower-case); values are param dicts
-                supporting Cartesian sweeps.  E.g.::
-
-                    {"rsi": {"timeperiod": [5, 30]}, "market_regime": {}}
-
-                Pass ``{}`` only if no indicators are needed.
             output_dir: Directory to save processed indicator files
             n_jobs: Number of parallel processes (default: CPU count)
-            regime_params: Regime classification parameters (required when
-                ``indicator_list`` contains ``market_regime`` on interday ctx).
-                Produce via ``echolon.indicators.get_regime_optimizer(
-                "market_regime").optimize(df=None, n_trials=400, ctx=ctx)``
-                after qorka has registered the TRS optimizer at session start
-                (``modules.paradigms.trs.regime_machinery.setup_classifiers()``).
-
-                For custom regime classifiers, register via
-                ``echolon.indicators.registry.register_regime_classifier()``.
-                The pipeline routes by indicator name; the built-in
-                ``market_regime`` classifier is auto-registered at module load.
+            regime_params: Regime classification parameters required when
+                ``indicator_list`` contains a registered classifier name on
+                an interday ctx.
             backtest_start_year: Earliest year (e.g. 2018) used to filter
                 contracts in :meth:`_is_contract_in_backtest_period`.
+            paths: Required PathsConfig for data lookups (market_data_dir).
         """
         self._provided_regime_params = regime_params
         self._backtest_start_year = backtest_start_year
         # Store context for frequency-aware indicator parameters
         self.ctx = ctx
+        self._paths = paths
 
         # Caller-supplied indicator list (flat-dict schema)
         self.indicator_list = indicator_list
@@ -266,7 +256,8 @@ class IndicatorProcessor:
         df = load_contract_ohlcv(
             market=self.market,
             asset=self.asset,
-            contract=contract_name
+            contract=contract_name,
+            market_data_dir=self._paths.market_data_dir,
         )
 
         if df is None or df.empty:
@@ -390,7 +381,10 @@ class IndicatorProcessor:
     def get_contract_files(self) -> List[str]:
         """Get list of contract files to process using data_pipeline loader."""
         # Use data_pipeline loader to get available contracts
-        all_contracts = get_available_contracts(market=self.market, asset=self.asset)
+        all_contracts = get_available_contracts(
+            market=self.market, asset=self.asset,
+            market_data_dir=self._paths.market_data_dir,
+        )
 
         # Filter for contracts matching our futures code (e.g., "al" for aluminum)
         contract_files = []
@@ -516,11 +510,15 @@ class IndicatorProcessor:
             logger.info("[INDICATOR_PROCESSOR] Extracting main contract indicators")
 
         main_contract_indicators = []
+        market_data_dir = self._paths.market_data_dir
 
         for trading_date in trading_dates_list:
             # Get main contract for this date using SHFE contract rules
             try:
-                main_contract = get_main_contract(trading_date.date(), self.futures_code)
+                main_contract = get_main_contract(
+                    trading_date.date(), self.futures_code,
+                    market_data_dir=market_data_dir,
+                )
             except ValueError:
                 logger.debug(f"No main contract for date: {trading_date}")
                 continue

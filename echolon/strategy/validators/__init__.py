@@ -2,7 +2,7 @@
 
 Each validator under this package is a pure function:
 
-    def validate_<name>(**inputs) -> Report:
+ def validate_<name>(**inputs) -> Report:
 
 Validators accumulate findings instead of raising — callers get the full
 picture in one shot. See _report.py for the result type.

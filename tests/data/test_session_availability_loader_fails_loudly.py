@@ -1,25 +1,25 @@
-"""When no explicit path AND no market_data_dir, SessionAvailabilityLoader must
-raise DAT-003 on missing conventional file — not silently default to empty data."""
+"""SessionAvailabilityLoader must fail loudly when path/config is missing —
+either CFG-003 if no kwarg was injected, or DAT-003 if the conventional file
+under the supplied tree is missing."""
 from pathlib import Path
 
 import pytest
 
-from echolon.errors import DataError
+from echolon.errors import ConfigError, DataError
 
 
-def test_loader_raises_when_conventional_file_missing(tmp_path: Path, monkeypatch):
-    """With ECHOLON_PROJECT_ROOT pointing at an empty tree, the loader's
-    lazy PathsConfig.from_env fallback resolves to a missing file → DAT-003."""
-    monkeypatch.setenv("ECHOLON_PROJECT_ROOT", str(tmp_path))
+def test_loader_raises_cfg003_when_no_path_or_market_data_dir(tmp_path: Path):
+    """With neither path= nor market_data_dir=, the loader must raise CFG-003.
+    (No silent PathsConfig.from_env() fallback.)"""
     from echolon.data.loaders.session_availability_loader import SessionAvailabilityLoader
 
-    with pytest.raises(DataError) as exc:
+    with pytest.raises(ConfigError) as exc:
         SessionAvailabilityLoader(
             market="SHFE",
             instrument="aluminum",
             bar_size_minutes=15,
         )
-    assert exc.value.code == "DAT-003"
+    assert exc.value.code == "CFG-003"
 
 
 def test_loader_with_explicit_path_override_warns_and_empty(tmp_path: Path):

@@ -1,4 +1,12 @@
-"""Loaders accept an explicit path override, bypassing MARKET_DATA_DIR convention."""
+"""Loaders honor an injected ``market_data_dir`` (workspace-local override).
+
+The previous ``path=`` kwarg on ``load_trading_calendar`` /
+``load_ohlcv`` / ``load_contract_ohlcv`` / ``get_trading_dates`` was dropped
+in favor of a single mechanism: the caller injects ``market_data_dir`` and
+the loader resolves the conventional sub-path. ``SessionAvailabilityLoader``
+keeps a ``path`` kwarg with distinct ``path_override`` semantics (graceful
+warn on missing file).
+"""
 import pandas as pd
 import pytest
 
@@ -8,92 +16,92 @@ from echolon.data.loaders.session_availability_loader import SessionAvailability
 
 
 # ---------------------------------------------------------------------------
-# ohlcv_loader
+# ohlcv_loader — workspace-local override via market_data_dir
 # ---------------------------------------------------------------------------
 
-def test_load_ohlcv_accepts_path_override(tmp_path):
-    custom = tmp_path / "custom_ohlcv.csv"
-    custom.write_text(
+def test_load_ohlcv_with_injected_market_data_dir(tmp_path):
+    target = tmp_path / "SHFE" / "aluminum"
+    target.mkdir(parents=True)
+    (target / "sort_by_date.csv").write_text(
         "date,open,high,low,close,volume\n"
         "2020-01-02,100,101,99,100.5,1000\n"
         "2020-01-03,101,102,100,101.5,1100\n"
     )
-    df = load_ohlcv(market="SHFE", asset="aluminum", path=str(custom))
+    df = load_ohlcv(market="SHFE", asset="aluminum", market_data_dir=tmp_path)
     assert len(df) == 2
     assert list(df.columns) == ["date", "open", "high", "low", "close", "volume"]
 
 
-def test_load_ohlcv_path_override_missing_file_raises(tmp_path):
+def test_load_ohlcv_missing_file_raises(tmp_path):
+    """Missing OHLCV file at the conventional path surfaces DAT-001."""
     from echolon.errors import DataError
 
     with pytest.raises(DataError) as exc:
-        load_ohlcv(market="SHFE", asset="aluminum", path=str(tmp_path / "does_not_exist.csv"))
+        load_ohlcv(market="SHFE", asset="aluminum", market_data_dir=tmp_path)
     assert exc.value.code == "DAT-001"
 
 
-def test_load_ohlcv_path_override_bypasses_market_data_dir(tmp_path):
-    """When path is given, MARKET_DATA_DIR/{market}/{asset}/sort_by_date.csv is NOT used."""
-    custom = tmp_path / "override.csv"
-    custom.write_text("date,open,high,low,close,volume\n2020-01-02,5,6,4,5.5,999\n")
-    # This would fail if the loader tried to build the default path (no such dir)
-    df = load_ohlcv(market="NONEXISTENT_MARKET", asset="nonexistent_asset", path=str(custom))
-    assert len(df) == 1
-
-
-def test_load_contract_ohlcv_accepts_path_override(tmp_path):
-    custom = tmp_path / "al2403.csv"
-    custom.write_text(
+def test_load_contract_ohlcv_with_injected_market_data_dir(tmp_path):
+    target = tmp_path / "SHFE" / "aluminum" / "sort_by_contract"
+    target.mkdir(parents=True)
+    (target / "al2403.csv").write_text(
         "date,open,high,low,close,volume\n"
         "2024-03-01,100,101,99,100.5,500\n"
     )
-    df = load_contract_ohlcv(market="SHFE", asset="aluminum", contract="al2403",
-                              path=str(custom))
+    df = load_contract_ohlcv(
+        market="SHFE", asset="aluminum", contract="al2403",
+        market_data_dir=tmp_path,
+    )
     assert df is not None
     assert len(df) == 1
 
 
-def test_load_contract_ohlcv_path_override_missing_returns_none(tmp_path):
-    """load_contract_ohlcv returns None (not raises) for missing contract — keep that behaviour."""
+def test_load_contract_ohlcv_missing_returns_none(tmp_path):
+    """load_contract_ohlcv returns None (not raises) for missing contract."""
     result = load_contract_ohlcv(
         market="SHFE", asset="aluminum", contract="al9999",
-        path=str(tmp_path / "does_not_exist.csv")
+        market_data_dir=tmp_path,
     )
     assert result is None
 
 
 # ---------------------------------------------------------------------------
-# calendar_loader
+# calendar_loader — workspace-local override via market_data_dir
 # ---------------------------------------------------------------------------
 
-def test_load_trading_calendar_accepts_path_override(tmp_path):
-    custom = tmp_path / "cal.csv"
-    custom.write_text("date,is_trading_day\n2020-01-02,1\n2020-01-03,1\n")
-    df = load_trading_calendar(market="SHFE", asset="aluminum", path=str(custom))
+def test_load_trading_calendar_with_injected_market_data_dir(tmp_path):
+    target = tmp_path / "SHFE" / "aluminum"
+    target.mkdir(parents=True)
+    (target / "trading_calendar.csv").write_text(
+        "date,is_trading_day\n2020-01-02,1\n2020-01-03,1\n"
+    )
+    df = load_trading_calendar(
+        market="SHFE", asset="aluminum", market_data_dir=tmp_path,
+    )
     assert len(df) == 2
 
 
-def test_load_trading_calendar_path_override_bypasses_market_data_dir(tmp_path):
-    custom = tmp_path / "cal.csv"
-    custom.write_text("date,is_trading_day\n2020-01-02,1\n")
-    df = load_trading_calendar(market="NONEXISTENT", asset="nobody", path=str(custom))
-    assert len(df) == 1
-
-
-def test_load_trading_calendar_path_override_missing_file_raises(tmp_path):
+def test_load_trading_calendar_missing_file_raises(tmp_path):
     with pytest.raises(FileNotFoundError):
-        load_trading_calendar(market="SHFE", asset="aluminum",
-                              path=str(tmp_path / "missing.csv"))
+        load_trading_calendar(
+            market="SHFE", asset="aluminum", market_data_dir=tmp_path,
+        )
 
 
-def test_get_trading_dates_accepts_path_override(tmp_path):
-    custom = tmp_path / "cal.csv"
-    custom.write_text("date,is_trading_day\n2020-01-02,1\n2020-01-06,1\n")
-    dates = get_trading_dates(market="SHFE", asset="aluminum", path=str(custom))
+def test_get_trading_dates_with_injected_market_data_dir(tmp_path):
+    target = tmp_path / "SHFE" / "aluminum"
+    target.mkdir(parents=True)
+    (target / "trading_calendar.csv").write_text(
+        "date,is_trading_day\n2020-01-02,1\n2020-01-06,1\n"
+    )
+    dates = get_trading_dates(
+        market="SHFE", asset="aluminum", market_data_dir=tmp_path,
+    )
     assert len(dates) == 2
 
 
 # ---------------------------------------------------------------------------
-# session_availability_loader
+# session_availability_loader — keeps path= for path_override semantics
 # ---------------------------------------------------------------------------
 
 def test_session_availability_loader_accepts_path_override(tmp_path):

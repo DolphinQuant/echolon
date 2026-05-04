@@ -31,6 +31,7 @@ dependencies = [
     "ccxt>=4.0.0",
     "apscheduler>=3.10.0",
     "pydantic>=2.0.0",
+    "pydantic-settings>=2.0.0",
     "structlog>=23.0.0",
     "python-dotenv>=1.0.0",
     "pyarrow>=14.0.0",
@@ -40,16 +41,20 @@ dependencies = [
     "pytz>=2023.3",
     "scipy>=1.11.0",
     "typer>=0.9.0",
+    # Batteries-included as of v0.1.x: these used to live behind extras
+    # ([shfe], [mcp], [platformdirs]) but each is on the first-impression
+    # path — `echolon hello` needs akshare, the AI-native pitch needs the
+    # MCP server, PathsConfig.from_platformdirs is the recommended
+    # default for pip-installed users without a workspace marker.
+    # Two-step installs hurt the dolphinquant.com → echolon → qorka funnel.
+    # Re-introduce extras only for genuinely-optional integrations later
+    # (e.g. crypto via ccxt-extras, MiniQMT for live SHFE on Windows).
+    "akshare>=1.13.0",
+    "mcp>=1.0.0",
+    "platformdirs>=4.0.0",
 ]
 
 [project.optional-dependencies]
-platformdirs = ["platformdirs>=4.0.0"]
-mcp = [
-    "mcp>=1.0.0",
-]
-shfe = [
-    "akshare>=1.13.0",
-]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",

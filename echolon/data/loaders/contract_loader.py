@@ -409,7 +409,12 @@ from echolon.markets.shfe.contract_rules import (  # noqa: E402
 _DEFAULT_SYMBOL = "al"
 
 
-def get_main_contract(ref_date: _datetime = None, symbol: str = _DEFAULT_SYMBOL) -> str:
+def get_main_contract(
+    ref_date: _datetime = None,
+    symbol: str = _DEFAULT_SYMBOL,
+    *,
+    market_data_dir: Path,
+) -> str:
     """
     Get the main futures contract code with ``.SF`` exchange suffix.
 
@@ -419,6 +424,9 @@ def get_main_contract(ref_date: _datetime = None, symbol: str = _DEFAULT_SYMBOL)
     Args:
         ref_date: Reference date. Defaults to ``datetime.now()`` if not provided.
         symbol: Product symbol (e.g. ``'al'``, ``'cu'``). Defaults to ``'al'``.
+        market_data_dir: Required. Base market-data directory containing
+            ``SHFE/{instrument_name}/main_contract.csv`` (typically
+            ``paths.market_data_dir``).
 
     Returns:
         Main contract code with suffix (e.g. ``'al2508.SF'``).
@@ -426,7 +434,7 @@ def get_main_contract(ref_date: _datetime = None, symbol: str = _DEFAULT_SYMBOL)
     current_date = ref_date if ref_date is not None else _datetime.now()
     trading_date = current_date.date() if isinstance(current_date, _datetime) else current_date
 
-    bare_code = _get_main_contract_canonical(trading_date, symbol)
+    bare_code = _get_main_contract_canonical(trading_date, symbol, market_data_dir=market_data_dir)
     contract = f"{bare_code}.SF"
 
     logger.debug(f"Main contract for {trading_date}: {contract}")
