@@ -1,6 +1,6 @@
 # Echolon
 
-[![PyPI](https://img.shields.io/pypi/v/echolon.svg)](https://pypi.org/project/echolon/)
+[![PyPI](https://img.shields.io/pypi/v/echolon.svg?cacheSeconds=300)](https://pypi.org/project/echolon/)
 [![Python](https://img.shields.io/pypi/pyversions/echolon.svg)](https://pypi.org/project/echolon/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 [![Status](https://img.shields.io/badge/status-beta-yellow.svg)](https://pypi.org/project/echolon/)
