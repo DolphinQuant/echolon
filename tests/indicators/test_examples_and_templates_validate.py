@@ -30,7 +30,7 @@ _FIXTURES = _all_fixture_paths()
 
 @pytest.mark.parametrize("fixture_path", _FIXTURES, ids=lambda p: str(p.relative_to(_REPO_ROOT)))
 def test_fixture_validates_against_indicator_list_schema(fixture_path):
-    data = json.loads(fixture_path.read_text())
+    data = json.loads(fixture_path.read_text(encoding="utf-8"))
     # Must be flat-dict (no 4-section section-key literals).
     for legacy_key in (
         "indicators_with_lookback",

@@ -16,7 +16,7 @@ def test_backtest_help_lists_portfolio():
 
 def test_backtest_portfolio_invokes_runner(tmp_path):
     cfg = tmp_path / "portfolio_deploy_config.json"
-    cfg.write_text('{"slots": [], "schedule": {}, "account": {}, "deploy": {}}')
+    cfg.write_text('{"slots": [], "schedule": {}, "account": {}, "deploy": {}}', encoding="utf-8")
     output_dir = tmp_path / "portfolio_backtest"
 
     with patch("echolon.backtest.cli.PortfolioBacktestRunner") as MockRunner, \
@@ -49,7 +49,7 @@ def test_backtest_portfolio_invokes_runner(tmp_path):
 
 def test_backtest_portfolio_skip_per_window_flag(tmp_path):
     cfg = tmp_path / "portfolio_deploy_config.json"
-    cfg.write_text('{"slots": [], "schedule": {}, "account": {}, "deploy": {}}')
+    cfg.write_text('{"slots": [], "schedule": {}, "account": {}, "deploy": {}}', encoding="utf-8")
 
     with patch("echolon.backtest.cli.PortfolioBacktestRunner") as MockRunner, \
          patch("echolon.backtest.cli.PortfolioDeployConfig.load") as MockLoad:

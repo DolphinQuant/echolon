@@ -44,7 +44,7 @@ def test_full_init_creates_workspace_with_data_and_strategy(tmp_path):
     # Workspace marker + recoverable context.
     marker = workspace / ".echolon-workspace.json"
     assert marker.is_file()
-    m = json.loads(marker.read_text())
+    m = json.loads(marker.read_text(encoding="utf-8"))
     assert m["instrument"] == "aluminum"
     assert m["instrument_code"] == "al"
     assert m["market"] == "SHFE"

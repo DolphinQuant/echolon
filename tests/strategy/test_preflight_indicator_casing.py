@@ -35,7 +35,7 @@ def _make_strategy_with_indicator_use(root: Path, code_name: str, json_name: str
             def calculate_size(self, signal, portfolio):
                 return 0
     """))
-    (root / "component.py").write_text("# marker file")
+    (root / "component.py").write_text("# marker file", encoding="utf-8")
     (root / "strategy_params.py").write_text(dedent("""
         DEFAULT_PARAMS = {
             'entry_params': {'printlog': False},

@@ -58,7 +58,7 @@ def test_migrated_subsystems_use_catalog():
         path = base / rel
         if not path.exists():
             continue
-        tree = ast.parse(path.read_text())
+        tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.walk(tree):
             if isinstance(node, ast.Raise) and _raise_node_is_forbidden(node):
                 offenders.append((rel, node.lineno))

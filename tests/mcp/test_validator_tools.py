@@ -121,7 +121,7 @@ def test_validate_debug_completion_happy_path(tmp_path):
 def test_validate_debug_completion_missing_artifact(tmp_path):
     artifact = tmp_path / "nonexistent_artifact.json"  # does not exist
     log_file = tmp_path / "debug.log"
-    log_file.write_text("STAGE 4 COMPLETE\nSTAGE 5 COMPLETE\nFINAL SUCCESS\n")
+    log_file.write_text("STAGE 4 COMPLETE\nSTAGE 5 COMPLETE\nFINAL SUCCESS\n", encoding="utf-8")
 
     fn = _get_tool_fn("validate_debug_completion")
     result = fn(artifact_path=str(artifact), log_path=str(log_file))
@@ -141,7 +141,7 @@ def test_return_shape_invariant(tmp_path):
     """validate_debug_completion (negative case) exercises the full finding shape."""
     artifact = tmp_path / "missing.json"  # does not exist
     log_file = tmp_path / "debug.log"
-    log_file.write_text("some log content")
+    log_file.write_text("some log content", encoding="utf-8")
 
     fn = _get_tool_fn("validate_debug_completion")
     result = fn(artifact_path=str(artifact), log_path=str(log_file))

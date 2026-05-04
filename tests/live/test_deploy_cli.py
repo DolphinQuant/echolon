@@ -47,7 +47,7 @@ def test_deploy_single_invokes_trading_runner(tmp_path):
 def test_deploy_portfolio_invokes_portfolio_runner(tmp_path):
     """`echolon deploy portfolio --config X` runs PortfolioTradingRunner."""
     cfg = tmp_path / "portfolio_deploy_config.json"
-    cfg.write_text('{"slots": [], "schedule": {}, "account": {}, "deploy": {}}')
+    cfg.write_text('{"slots": [], "schedule": {}, "account": {}, "deploy": {}}', encoding="utf-8")
 
     with patch("echolon.live.cli.PortfolioTradingRunner") as MockRunner, \
          patch("echolon.live.cli.PortfolioDeployConfig.load") as MockLoad:
@@ -68,7 +68,7 @@ def test_deploy_portfolio_invokes_portfolio_runner(tmp_path):
 def test_deploy_portfolio_cycle_runs_single_cycle(tmp_path):
     """`echolon deploy portfolio-cycle` calls run_single_cycle once."""
     cfg = tmp_path / "portfolio_deploy_config.json"
-    cfg.write_text('{"slots": [], "schedule": {}, "account": {}, "deploy": {}}')
+    cfg.write_text('{"slots": [], "schedule": {}, "account": {}, "deploy": {}}', encoding="utf-8")
 
     with patch("echolon.live.cli.PortfolioTradingRunner") as MockRunner, \
          patch("echolon.live.cli.PortfolioDeployConfig.load") as MockLoad:
@@ -89,7 +89,7 @@ def test_deploy_portfolio_cycle_runs_single_cycle(tmp_path):
 def test_deploy_portfolio_validate_only_skips_run(tmp_path):
     """`--validate-only` loads config but does not start the runner."""
     cfg = tmp_path / "portfolio_deploy_config.json"
-    cfg.write_text('{"slots": [], "schedule": {}, "account": {}, "deploy": {}}')
+    cfg.write_text('{"slots": [], "schedule": {}, "account": {}, "deploy": {}}', encoding="utf-8")
 
     with patch("echolon.live.cli.PortfolioTradingRunner") as MockRunner, \
          patch("echolon.live.cli.PortfolioDeployConfig.load") as MockLoad:

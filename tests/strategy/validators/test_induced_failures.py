@@ -58,7 +58,7 @@ def test_induced_VAL_003_missing_json_key(tmp_path: Path):
     artifact.write_text(json.dumps({"trial_number": 42}))  # missing params, metrics
 
     log = tmp_path / "debug.log"
-    log.write_text("STAGE 4 COMPLETE\nSTAGE 5 COMPLETE\nFINAL SUCCESS\n")
+    log.write_text("STAGE 4 COMPLETE\nSTAGE 5 COMPLETE\nFINAL SUCCESS\n", encoding="utf-8")
 
     report = validate_debug_completion(artifact_path=artifact, log_path=log)
     codes = [f.code for f in report.findings]
@@ -194,7 +194,7 @@ def test_induced_BT_010_missing_log_marker(tmp_path: Path):
         "trial_number": 1, "params": {}, "metrics": {"sharpe_ratio": 1.0},
     }))
     log = tmp_path / "debug.log"
-    log.write_text("STAGE 4 COMPLETE\n")  # missing STAGE 5 + FINAL SUCCESS
+    log.write_text("STAGE 4 COMPLETE\n", encoding="utf-8")  # missing STAGE 5 + FINAL SUCCESS
 
     report = validate_debug_completion(artifact_path=artifact, log_path=log)
     codes = [f.code for f in report.findings]

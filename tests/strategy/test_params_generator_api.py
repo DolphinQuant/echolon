@@ -134,7 +134,7 @@ def test_generated_file_uses_absolute_echolon_import(tmp_path):
         params_file_path=str(params_file),
         output_path=str(output),
     )
-    content = output.read_text()
+    content = output.read_text(encoding="utf-8")
     assert "from echolon.strategy.parameter_architecture import" in content
     assert "from ..parameter_architecture import" not in content
 
@@ -242,7 +242,7 @@ def test_bad_json_returns_failure(tmp_path):
     from echolon.strategy.generators import generate_strategy_params
 
     bad = tmp_path / "params_to_optimize.json"
-    bad.write_text("{this is not valid JSON")
+    bad.write_text("{this is not valid JSON", encoding="utf-8")
     output = tmp_path / "strategy_params.py"
 
     result = generate_strategy_params(

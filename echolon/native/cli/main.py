@@ -26,6 +26,20 @@ def _callback(
     version: bool = typer.Option(False, "--version", help="Show version and exit"),
 ) -> None:
     """Echolon CLI — multi-command entry point."""
+    # Force UTF-8 stdout/stderr so Unicode glyphs (✓, →, em-dashes, Chinese
+    # in user-supplied symbols, etc.) round-trip on every platform. Windows
+    # consoles default to cp1252 and would otherwise raise UnicodeEncodeError
+    # on the first emoji or arrow we print. errors="replace" is a defensive
+    # backstop for the rare case a downstream pipe is locked to a narrower
+    # encoding — the message gets a `?` instead of a crash.
+    import sys
+    for stream in (sys.stdout, sys.stderr):
+        if hasattr(stream, "reconfigure"):
+            try:
+                stream.reconfigure(encoding="utf-8", errors="replace")
+            except Exception:
+                pass
+
     from echolon._internal.structured_logging import install_structured_logging
     install_structured_logging()
 

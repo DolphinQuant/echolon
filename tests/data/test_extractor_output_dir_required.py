@@ -35,7 +35,7 @@ def test_no_project_root_write_in_extractor_source():
     spec = importlib.util.find_spec("echolon.data.extractors.base")
     base = Path(spec.origin).parent  # echolon/data/extractors/
     for py in base.rglob("*.py"):
-        src = py.read_text()
+        src = py.read_text(encoding="utf-8")
         # Allow imports of PROJECT_ROOT (for reading config), forbid joining into 'data' dir
         assert 'PROJECT_ROOT / "data"' not in src and "PROJECT_ROOT, 'data'" not in src, \
             f"install-dir write in {py}"

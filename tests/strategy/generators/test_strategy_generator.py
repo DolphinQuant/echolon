@@ -68,4 +68,4 @@ def test_strategy_generator_overwrites_with_force(tmp_path: Path):
     (tmp_path / "strategy.py").write_text("# user-modified content", encoding="utf-8")
 
     generate_strategy(strategy_dir=tmp_path, force=True)
-    assert "# user-modified content" not in (tmp_path / "strategy.py").read_text()
+    assert "# user-modified content" not in (tmp_path / "strategy.py").read_text(encoding="utf-8")

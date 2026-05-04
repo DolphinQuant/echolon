@@ -23,7 +23,7 @@ def test_all_nan_column_writes_sidecar_warning(tmp_path: Path):
 
     sidecar = output_path.with_suffix(output_path.suffix + ".warnings.json")
     assert sidecar.exists()
-    payload = json.loads(sidecar.read_text())
+    payload = json.loads(sidecar.read_text(encoding="utf-8"))
     assert "rsi_14" in payload["warnings"]
     assert payload["warnings"]["rsi_14"]["code"] == "IND-003"
     assert "macd" not in payload["warnings"]

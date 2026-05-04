@@ -8,7 +8,7 @@ from echolon.native.validation.indicator_validator import validate_indicator_nam
 
 def _write_json(tmp_path: Path, content: str) -> Path:
     p = tmp_path / "strategy_indicator_list.json"
-    p.write_text(content)
+    p.write_text(content, encoding="utf-8")
     return p
 
 
@@ -45,7 +45,7 @@ def test_missing_json_returns_empty(tmp_path):
 
 def test_multiple_files_checked(tmp_path):
     _write_json(tmp_path, '{"rsi": {"timeperiod": 10}}')
-    (tmp_path / "entry.py").write_text("x = self.get_indicator('RSI_10')")
-    (tmp_path / "exit.py").write_text("y = self.get_indicator('rsi_10')")
+    (tmp_path / "entry.py").write_text("x = self.get_indicator('RSI_10')", encoding="utf-8")
+    (tmp_path / "exit.py").write_text("y = self.get_indicator('rsi_10')", encoding="utf-8")
     errors = validate_indicator_names(tmp_path)
     assert len([e for e in errors if e.code == "IND-001"]) >= 1

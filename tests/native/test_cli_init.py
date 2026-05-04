@@ -43,7 +43,7 @@ def test_init_unknown_template_fails(tmp_path):
 def test_init_existing_dir_fails(tmp_path):
     out = tmp_path / "existing"
     out.mkdir()
-    (out / "junk.py").write_text("")
+    (out / "junk.py").write_text("", encoding="utf-8")
     result = runner.invoke(app, ["init", str(out), "--template", "minimal"])
     assert result.exit_code != 0
 

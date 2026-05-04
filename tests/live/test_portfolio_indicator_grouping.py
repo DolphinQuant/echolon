@@ -12,7 +12,7 @@ from echolon.indicators.utils.merge_indicators import merge_indicator_lists
 def test_phase0_portfolio_source_groups_by_instrument_and_barsize():
     """The phase 0 implementation must loop over get_slots_by_instrument_and_barsize,
     not per-slot, so two slots on the same instrument share one compute."""
-    src = Path("echolon/live/orchestrator/portfolio.py").read_text()
+    src = Path("echolon/live/orchestrator/portfolio.py").read_text(encoding="utf-8")
     assert "get_slots_by_instrument_and_barsize()" in src, (
         "portfolio.py phase 0 must group slots by (instrument, bar_size)"
     )
@@ -25,14 +25,14 @@ def test_phase0_portfolio_source_groups_by_instrument_and_barsize():
 
 def test_phase0_portfolio_output_dir_is_group_dir():
     """Shared output dir format: {instrument_code}_{bar_size}/"""
-    src = Path("echolon/live/orchestrator/portfolio.py").read_text()
+    src = Path("echolon/live/orchestrator/portfolio.py").read_text(encoding="utf-8")
     assert 'f"{instrument_code}_{bar_size}"' in src
 
 
 def test_trading_slot_resolves_group_dir_fallback():
     """trading_slot._get_indicators_path falls back to {instrument_code}_{bar_size}/ when
     the per-slot dir is absent — this is how slots find the merged output."""
-    src = Path("echolon/live/slot/trading_slot.py").read_text()
+    src = Path("echolon/live/slot/trading_slot.py").read_text(encoding="utf-8")
     assert "{sc.instrument_code}_{sc.bar_size}" in src
 
 

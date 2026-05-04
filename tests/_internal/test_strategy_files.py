@@ -39,7 +39,7 @@ def test_save_writes_v1_format(tmp_path: Path):
     cp = {"market_regime": {"fast_ma_period": 12}}
     out = save_calculator_params(tmp_path, cp)
     assert out.name == "calculator_params.json"
-    written = json.loads(out.read_text())
+    written = json.loads(out.read_text(encoding="utf-8"))
     assert written["version"] == 1
     assert written["calculators"] == cp
 

@@ -11,7 +11,7 @@ from echolon.indicators.run import run_indicator_calculation
 
 
 def _src(mod_path: str) -> str:
-    return Path(mod_path).read_text()
+    return Path(mod_path).read_text(encoding="utf-8")
 
 
 def test_run_indicator_calculation_signature_has_indicator_list():

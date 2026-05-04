@@ -66,4 +66,4 @@ def test_entry_generator_overwrites_with_force(tmp_path: Path):
     (tmp_path / "entry.py").write_text("# user-modified content", encoding="utf-8")
 
     generate_entry(strategy_dir=tmp_path, force=True)
-    assert "# user-modified content" not in (tmp_path / "entry.py").read_text()
+    assert "# user-modified content" not in (tmp_path / "entry.py").read_text(encoding="utf-8")

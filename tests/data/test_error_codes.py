@@ -10,7 +10,7 @@ from echolon.errors import DataError
 def test_corrupt_state_raises_dat_002(tmp_path: Path):
     """_load_state_file must raise DAT-002 on corrupt JSON, not silently return {}."""
     state_file = tmp_path / "strategy_state.json"
-    state_file.write_text("{ this is not valid json")
+    state_file.write_text("{ this is not valid json", encoding="utf-8")
 
     from echolon.live.slot.trading_slot import _load_state_file
 

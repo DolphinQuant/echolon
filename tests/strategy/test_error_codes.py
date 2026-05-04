@@ -14,7 +14,7 @@ def test_loader_missing_file_raises_str_001(tmp_path: Path):
     # Create a 5-file directory (missing strategy_indicator_list.json)
     for name in ("entry.py", "exit.py", "risk.py", "sizer.py",
                  "strategy_params.py"):
-        (tmp_path / name).write_text("# stub")
+        (tmp_path / name).write_text("# stub", encoding="utf-8")
 
     # Import the public loader — match the real name discovered in Step 1.
     from echolon.strategy import loader as loader_mod
@@ -32,8 +32,8 @@ def test_loader_missing_file_raises_str_001(tmp_path: Path):
 def test_loader_missing_class_raises_str_002(tmp_path: Path):
     """Loader should raise STR-002 when a required class name is not exported."""
     for name in ("exit.py", "risk.py", "sizer.py", "strategy_params.py"):
-        (tmp_path / name).write_text("# stub")
-    (tmp_path / "strategy_indicator_list.json").write_text("{}")
+        (tmp_path / name).write_text("# stub", encoding="utf-8")
+    (tmp_path / "strategy_indicator_list.json").write_text("{}", encoding="utf-8")
     (tmp_path / "entry.py").write_text(dedent("""
         class NotEntry:
             pass

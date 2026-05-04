@@ -69,7 +69,7 @@ def test_scaffold_component_happy_path(kind, tmp_path):
     assert result["output_path"] == str(expected_file)
 
     # File must be a valid Python stub — at minimum it should be non-empty
-    content = expected_file.read_text()
+    content = expected_file.read_text(encoding="utf-8")
     assert len(content) > 0
 
 
@@ -120,13 +120,13 @@ def test_scaffold_component_overwrites_with_force(tmp_path):
 
     # Manually corrupt the file
     entry_file = tmp_path / "entry.py"
-    entry_file.write_text("# manually edited sentinel")
+    entry_file.write_text("# manually edited sentinel", encoding="utf-8")
 
     # Force overwrite
     third = fn(kind="entry", strategy_dir=str(tmp_path), force=True)
     assert third["success"] is True
     assert third["error"] is None
 
-    content = entry_file.read_text()
+    content = entry_file.read_text(encoding="utf-8")
     assert "manually edited sentinel" not in content
     assert len(content) > 50  # real scaffold is much larger than the sentinel

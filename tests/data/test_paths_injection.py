@@ -48,7 +48,7 @@ def test_no_module_level_forbidden_settings_imports_anywhere():
         # The source file itself defines these — skip.
         if py == base / "config" / "settings.py":
             continue
-        src_lines = py.read_text().splitlines()
+        src_lines = py.read_text(encoding="utf-8").splitlines()
         tree = ast.parse("\n".join(src_lines))
         for node in ast.iter_child_nodes(tree):
             if not isinstance(node, ast.ImportFrom):

@@ -66,4 +66,4 @@ def test_exit_generator_overwrites_with_force(tmp_path: Path):
     (tmp_path / "exit.py").write_text("# user-modified content", encoding="utf-8")
 
     generate_exit(strategy_dir=tmp_path, force=True)
-    assert "# user-modified content" not in (tmp_path / "exit.py").read_text()
+    assert "# user-modified content" not in (tmp_path / "exit.py").read_text(encoding="utf-8")

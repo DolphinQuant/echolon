@@ -136,7 +136,7 @@ def test_stdio_generate_strategy_params_writes_file(tmp_path):
 
     asyncio.run(run())
     assert output.exists()
-    content = output.read_text()
+    content = output.read_text(encoding="utf-8")
     assert "from echolon.strategy.parameter_architecture import" in content
     assert "DEFAULT_PARAMS" in content
     assert "optuna_search_space" in content

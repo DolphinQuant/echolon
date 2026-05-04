@@ -141,10 +141,13 @@ def test_cli_entry_points_call_install_structured_logging():
     from pathlib import Path
 
     base = Path(__file__).parent.parent.parent / "echolon"
-    # Find every file with a top-level `def main`
+    # Find every file with a top-level `def main`. Read with explicit utf-8
+    # so the test passes on Windows (where the default codec is cp1252 and
+    # any non-ASCII char in the source — em-dashes, ✓, →, Chinese — raises
+    # UnicodeDecodeError).
     cli_files: list[Path] = []
     for py in base.rglob("*.py"):
-        src = py.read_text()
+        src = py.read_text(encoding="utf-8")
         if "\ndef main(" in src or src.startswith("def main("):
             cli_files.append(py)
 
@@ -152,7 +155,7 @@ def test_cli_entry_points_call_install_structured_logging():
 
     offenders: list[tuple[str, str]] = []
     for path in cli_files:
-        tree = ast.parse(path.read_text())
+        tree = ast.parse(path.read_text(encoding="utf-8"))
         for node in ast.iter_child_nodes(tree):
             if not (isinstance(node, ast.FunctionDef) and node.name == "main"):
                 continue

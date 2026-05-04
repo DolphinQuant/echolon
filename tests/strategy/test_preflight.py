@@ -40,7 +40,7 @@ def _make_valid_strategy(root: Path) -> None:
             'sizer_params': {'printlog': False},
         }
     """))
-    (root / "strategy_indicator_list.json").write_text('{}')
+    (root / "strategy_indicator_list.json").write_text('{}', encoding="utf-8")
 
 
 def test_preflight_valid_strategy_passes(tmp_path):
@@ -120,7 +120,7 @@ def test_preflight_fails_fast_on_first_check(tmp_path):
     _make_valid_strategy(tmp_path)
     # Break both STR-001 (missing file) and PRM-002 (missing params key)
     (tmp_path / "sizer.py").unlink()
-    (tmp_path / "strategy_params.py").write_text("DEFAULT_PARAMS = {}")
+    (tmp_path / "strategy_params.py").write_text("DEFAULT_PARAMS = {}", encoding="utf-8")
 
     from echolon.strategy.preflight import preflight
     from echolon.errors import StrategyStructureError

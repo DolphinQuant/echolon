@@ -70,7 +70,7 @@ def test_generate_strategy_params_happy_path(tmp_path):
     assert result["success"] is True
     assert result["output_path"] == str(output)
     assert output.exists()
-    content = output.read_text()
+    content = output.read_text(encoding="utf-8")
     assert "from echolon.strategy.parameter_architecture import" in content
     assert isinstance(result["corrections"], list)
 
@@ -110,7 +110,7 @@ def test_generate_strategy_params_reports_corrections(tmp_path):
 def test_generate_strategy_params_bad_json_returns_failure(tmp_path):
     fn = _get_tool_fn("generate_strategy_params")
     bad = tmp_path / "params_to_optimize.json"
-    bad.write_text("{not json")
+    bad.write_text("{not json", encoding="utf-8")
     output = tmp_path / "strategy_params.py"
 
     result = fn(

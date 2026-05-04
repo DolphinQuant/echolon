@@ -71,4 +71,4 @@ def test_sizer_generator_overwrites_with_force(tmp_path: Path):
     (tmp_path / "sizer.py").write_text("# user-modified content", encoding="utf-8")
 
     generate_sizer(strategy_dir=tmp_path, force=True)
-    assert "# user-modified content" not in (tmp_path / "sizer.py").read_text()
+    assert "# user-modified content" not in (tmp_path / "sizer.py").read_text(encoding="utf-8")

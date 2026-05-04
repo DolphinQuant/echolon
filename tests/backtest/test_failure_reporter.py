@@ -148,7 +148,7 @@ def test_write_json_artifact_round_trips(tmp_path: Path):
         window_id=1,
     )
 
-    payload = json.loads(out_path.read_text())
+    payload = json.loads(out_path.read_text(encoding="utf-8"))
     assert payload["window_id"] == 1
     assert payload["n_trials"] == 200
     assert payload["n_failed"] == 35

@@ -130,7 +130,7 @@ def _make_long_position(size: float = 1.0, avg_price: float = 100.0) -> Position
 
 def _declared_columns(example_dir: Path) -> dict[str, Any]:
     """Read ``strategy_indicator_list.json`` and return the raw flat dict."""
-    return json.loads((example_dir / "strategy_indicator_list.json").read_text())
+    return json.loads((example_dir / "strategy_indicator_list.json").read_text(encoding="utf-8"))
 
 
 # ---------------------------------------------------------------------------

@@ -92,7 +92,7 @@ def test_setup_backtest_logging_references_real_loggers():
     from pathlib import Path
 
     src_path = Path(importlib.import_module("echolon.backtest.logging_utils").__file__)
-    tree = ast.parse(src_path.read_text())
+    tree = ast.parse(src_path.read_text(encoding="utf-8"))
 
     # Collect every string literal inside setup_backtest_logging that looks
     # like a dotted echolon.* logger name.
