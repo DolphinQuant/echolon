@@ -622,9 +622,8 @@ class PortfolioTradingRunner:
             group_id = f"{instrument_code}_{bar_size}"
             group_dir = os.path.join(str(indicators_backtest_dir), group_id)
 
-            # Collect each slot's flat-dict indicator_list + regime_params.
-            # Phase E: get_regime_params reads calculator_params.json (new
-            # format) or auto-migrates legacy regime_params.json.
+            # Collect each slot's flat-dict indicator_list + regime_params
+            # (read from calculator_params.json).
             from echolon._internal.strategy_files import get_regime_params
             slot_configs_with_ind = []
             for sc in slot_configs:

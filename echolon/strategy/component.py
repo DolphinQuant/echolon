@@ -624,8 +624,8 @@ class BaseComponent(ABC):
                 "Use get_session_phase() instead."
             )
 
-        # Phase G: classifier label_map comes from the registered classifier
-        # (qorka registers via setup_classifiers when paradigm='trs').
+        # Classifier label_map comes from the registered classifier — host
+        # code must call register_regime_classifier(...) at session startup.
         from echolon.indicators.registry import get_regime_classifier
         classifier = get_regime_classifier('market_regime')
         numeric_regime = self.market_data.get_indicator('market_regime', index)

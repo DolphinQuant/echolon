@@ -1,7 +1,7 @@
 """AI-Native smoke test — the launch readiness criterion.
 
 Simulates a fresh Claude session using echolon end-to-end:
-1. echolon init-strategy my_test --template minimal
+1. echolon init my_test --template minimal
 2. echolon validate my_test/          -> passes
 3. Break it on purpose
 4. echolon validate my_test/ --json   -> fails with PRM-001 + docs link
@@ -25,7 +25,7 @@ def test_full_agent_loop(tmp_path):
     target = tmp_path / "my_test"
 
     # Step 1: scaffold from template
-    r = runner.invoke(app, ["init-strategy", str(target), "--template", "minimal"])
+    r = runner.invoke(app, ["init", str(target), "--template", "minimal"])
     assert r.exit_code == 0, r.stdout
 
     # Step 2: validate — should pass
@@ -86,7 +86,7 @@ def test_every_template_passes_validation(tmp_path):
     """All bundled templates must scaffold into valid strategies."""
     for tmpl in ("minimal", "momentum_breakout", "rsi_mean_reversion"):
         target = tmp_path / tmpl
-        r = runner.invoke(app, ["init-strategy", str(target), "--template", tmpl])
+        r = runner.invoke(app, ["init", str(target), "--template", tmpl])
         assert r.exit_code == 0, r.stdout
         r = runner.invoke(app, ["validate", str(target)])
         assert r.exit_code == 0, f"Template {tmpl} failed validation:\n{r.stdout}"

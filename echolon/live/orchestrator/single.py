@@ -384,9 +384,8 @@ class TradingRunner:
             return
         indicator_list = load_indicator_list(ind_path)
 
-        # Phase E: read calculator_params.json (new format) or legacy
-        # regime_params.json (auto-migrated). Returns None if neither file
-        # has market_regime params.
+        # Read regime params from calculator_params.json. Returns None if
+        # the strategy has no regime classifier configured.
         regime_params = get_regime_params(strategy_code_dir)
 
         end_date = (

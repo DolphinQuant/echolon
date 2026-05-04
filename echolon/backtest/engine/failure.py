@@ -1,19 +1,9 @@
 """Structured failure record for optimization trials.
 
-Replaces the free-text ``error_message`` string that
-:class:`OptimizationMetrics` used to carry. The structured form preserves
-the error code, context dict, and truncated traceback across the
+Carries the error code, context dict, and truncated traceback across the
 worker→controller process boundary, so the controller (running in the
 parent process) can dedup, surface, and serialize failures for downstream
 agents.
-
-Design context: see
-``qorka/docs/superpowers/plans/2026-04-24-schema-extras-and-silent-optuna-failures.md``.
-Previously ``OptimizationRunner.run_trial`` caught exceptions in the worker
-process, logged ``WARNING`` via the worker's local logger (invisible to the
-parent), and returned a plain string. The string then got discarded before
-``study.tell``. Net effect: 1000 trial failures could collapse into a single
-``CRITICAL`` log line with no root cause anywhere.
 """
 from __future__ import annotations
 

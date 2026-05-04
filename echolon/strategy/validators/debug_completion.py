@@ -1,7 +1,6 @@
 """Validate that debug-stage artifacts landed on disk as expected.
 
-Replaces qorka's LLM-based ``debug_completion_validator_agent`` with
-a deterministic three-check sweep:
+Deterministic three-check sweep:
 
 1. ``STR-001`` — ``selected_robust_trial.json`` (or the custom
    ``artifact_path``) exists and the log file exists.

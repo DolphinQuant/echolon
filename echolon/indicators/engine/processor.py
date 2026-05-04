@@ -679,14 +679,13 @@ def _validate_regime_params(
     regime_params: Optional[Dict],
     ctx,
 ) -> None:
-    """Raise ValueError when ``market_regime`` is requested on interday ctx but
-    ``regime_params`` is None.
+    """Raise ValueError when a registered regime classifier is requested on
+    an interday ctx but ``regime_params`` is None.
 
-    For TRS-paradigm regime params, install qorka and call
-    ``modules.paradigms.trs.regime_machinery.setup_classifiers()`` at session
-    start, then::
+    Produce ``regime_params`` by registering an optimizer at session start
+    (via ``register_regime_optimizer``) and then calling::
 
-        params = echolon.indicators.get_regime_optimizer("market_regime").optimize(
+        params = echolon.indicators.get_regime_optimizer(name).optimize(
             df=None, n_trials=400, ctx=ctx,
         )
 
@@ -698,9 +697,8 @@ def _validate_regime_params(
     if ctx.is_intraday:
         return  # regime_params not needed for intraday
 
-    # Phase G: registry-aware check. Any indicator name that matches a
-    # registered classifier requires regime_params (the classifier's
-    # hyperparameter dict).
+    # Registry-aware check. Any indicator name that matches a registered
+    # classifier requires regime_params (the classifier's hyperparameter dict).
     from echolon.indicators.registry import list_classifiers
     registered = {n.lower() for n in list_classifiers()}
     keys_lower = {k.lower() for k in indicator_list.keys()}
@@ -711,8 +709,8 @@ def _validate_regime_params(
             "regime_params is None. Use the classifier registry: "
             "echolon.indicators.get_regime_optimizer('<classifier_name>').optimize("
             "df=None, n_trials=400, ctx=ctx). "
-            "For TRS rule-based optimization, install qorka and call "
-            "modules.paradigms.trs.regime_machinery.setup_classifiers() first."
+            "Register the optimizer at session startup via "
+            "echolon.indicators.registry.register_regime_optimizer(...)."
         )
 
 

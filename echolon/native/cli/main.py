@@ -54,7 +54,6 @@ app.command(name="hello")(hello_cmd.hello_command)
 app.command(name="doctor")(doctor_cmd.doctor_command)
 app.command(name="validate")(validate_cmd.validate_command)
 app.command(name="init")(init_cmd.init_command)
-app.command(name="init-strategy")(init_cmd.init_strategy_command)  # back-compat alias
 app.command(name="schema")(schema_cmd.schema_command)
 app.command(name="run")(run_cmd.run_command)
 app.command(name="migrate")(migrate_cmd.migrate_command)

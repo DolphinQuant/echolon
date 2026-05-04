@@ -1,13 +1,11 @@
 """File-format readers for strategy directory artifacts.
 
-Phase E paradigm-decoupling: ``calculator_params.json`` is the
-paradigm-blind successor to ``regime_params.json``. The new file format
-supports any registered classifier (market_regime, future HMM, future
-Carry term-structure) under one schema; legacy ``regime_params.json``
-files auto-migrate on load so existing strategies in
-``output_bank/`` continue to work without manual intervention.
+``calculator_params.json`` is the paradigm-blind file format for
+classifier hyperparameters. It supports any registered classifier
+(rule-based market regime, HMM, GMM, Carry term-structure, etc.) under
+one schema.
 
-New file format (``calculator_params.json``)::
+File format (``calculator_params.json``)::
 
     {
       "version": 1,
@@ -20,13 +18,6 @@ New file format (``calculator_params.json``)::
         }
       }
     }
-
-Legacy file format (``regime_params.json``) — auto-migrated::
-
-    {"params": {"fast_ma_period": 12, ...}}    # wrapped form
-    {"fast_ma_period": 12, ...}                # flat form
-
-Both legacy shapes are read into ``calculators["market_regime"]``.
 """
 from __future__ import annotations
 
@@ -36,42 +27,29 @@ from typing import Any, Dict, Optional
 
 
 _CALCULATOR_PARAMS_FILENAME = "calculator_params.json"
-_LEGACY_REGIME_PARAMS_FILENAME = "regime_params.json"
 
 
 def load_calculator_params(strategy_dir: Path | str) -> Dict[str, Dict[str, Any]]:
-    """Read calculator_params.json (or auto-migrate legacy regime_params.json).
+    """Read calculator_params.json from a strategy directory.
 
     Args:
         strategy_dir: Path to the strategy directory containing the params file.
 
     Returns:
-        Dict mapping calculator_name → params dict. Empty dict if neither
-        file is present.
-
-    Examples::
-
-        params = load_calculator_params(Path("output_bank/cu_1d_200_1"))
-        regime_params = params.get("market_regime")  # back-compat accessor
+        Dict mapping calculator_name → params dict. Empty dict if the file
+        is missing.
     """
     strategy_dir = Path(strategy_dir)
-    new_path = strategy_dir / _CALCULATOR_PARAMS_FILENAME
+    path = strategy_dir / _CALCULATOR_PARAMS_FILENAME
 
-    if new_path.exists():
-        data = json.loads(new_path.read_text())
+    if path.exists():
+        data = json.loads(path.read_text())
         version = data.get("version")
         if version == 1:
             return data.get("calculators", {}) or {}
-        # Future schema versions → handle here
-
-    legacy_path = strategy_dir / _LEGACY_REGIME_PARAMS_FILENAME
-    if legacy_path.exists():
-        legacy_data = json.loads(legacy_path.read_text())
-        # Two legacy shapes:
-        #   {"params": {...}}  (wrapped — qorka-generated)
-        #   {...}              (flat — early hand-rolled)
-        inner = legacy_data.get("params", legacy_data)
-        return {"market_regime": inner}
+        raise ValueError(
+            f"Unknown calculator_params.json version: {version!r} in {path}"
+        )
 
     return {}
 
@@ -80,7 +58,7 @@ def save_calculator_params(
     strategy_dir: Path | str,
     calculator_params: Dict[str, Dict[str, Any]],
 ) -> Path:
-    """Write calculator_params.json in the new schema.
+    """Write calculator_params.json in the v1 schema.
 
     Args:
         strategy_dir: Path to the strategy directory.

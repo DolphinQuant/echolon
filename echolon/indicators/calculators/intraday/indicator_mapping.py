@@ -176,8 +176,6 @@ INTRADAY_INDICATOR_MAPPING = {
     "VAR": {"function": "var", "file": INDICATOR_FILES["talib_indicator"]},
     "ADOSC": {"function": "adosc", "file": INDICATOR_FILES["talib_indicator"]},
 
-    # Market Regime - REMOVED (Phase G: classifier owned by qorka and registered via the registry path)
-
     # =========================================================================
     # SECTION 4: INTRADAY-SPECIFIC INDICATORS
     # =========================================================================

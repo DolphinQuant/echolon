@@ -631,11 +631,11 @@ class StrategyParamsGenerator:
 Strategy Parameters — generated from params_to_optimize.json by
 echolon.strategy.generators.strategy_params_generator.
 
-Manual edits are permitted — downstream tooling (e.g. the qorka coding
-agent) may patch this file to fix bugs or adjust ranges. Note that any
-manual change WILL be overwritten if the generator is re-run; for a change
-to persist across regeneration, also update params_to_optimize.json (or
-the IndicatorConfig caps that feed the generator).
+Manual edits are permitted — downstream tooling may patch this file to
+fix bugs or adjust ranges. Note that any manual change WILL be overwritten
+if the generator is re-run; for a change to persist across regeneration,
+also update params_to_optimize.json (or the IndicatorConfig caps that
+feed the generator).
 
 To regenerate:
 1. Edit workspace/current/strategy/params_to_optimize.json

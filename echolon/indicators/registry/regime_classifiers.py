@@ -1,12 +1,10 @@
 """Registry for pluggable regime classifiers + optimizers.
 
-Single-process, thread-safe. Consumers register at import time (built-in
-:mod:`echolon.indicators.calculators.interday.market_regime`) or at session
-startup (e.g., qorka calling its TRS setup). Echolon's pipeline looks up
-classifiers/optimizers by name at runtime.
+Single-process, thread-safe. Host code registers classifiers at session
+startup; echolon's pipeline looks them up by name at runtime.
 
 Echolon does NOT depend on any consumer. Registration is the only direction
-of dependency — consumers call into echolon's registry, never vice-versa.
+of dependency — host code calls into echolon's registry, never vice-versa.
 
 See :mod:`echolon.indicators.protocols` for the Protocol definitions.
 """
@@ -84,9 +82,8 @@ def get_regime_optimizer(classifier_name: str) -> RegimeClassifierOptimizer:
         The registered :class:`RegimeClassifierOptimizer`.
 
     Raises:
-        KeyError: If no optimizer is registered for ``classifier_name``.
-            The error message points users to qorka's TRS setup for the
-            common case.
+        KeyError: If no optimizer is registered for ``classifier_name``. The
+            error message lists currently-registered optimizer names.
     """
     with _LOCK:
         if classifier_name not in _OPTIMIZERS:
@@ -94,9 +91,8 @@ def get_regime_optimizer(classifier_name: str) -> RegimeClassifierOptimizer:
             raise KeyError(
                 f"No regime optimizer registered for classifier={classifier_name!r}. "
                 f"Registered optimizers: {registered}. "
-                f"For TRS rule-based optimization, install qorka and call "
-                f"`from qorka.modules.paradigms.trs.regime_machinery import "
-                f"setup_classifiers; setup_classifiers()` at session startup."
+                f"Register an optimizer via register_regime_optimizer(...) "
+                f"before invoking the indicator pipeline."
             )
         return _OPTIMIZERS[classifier_name]
 

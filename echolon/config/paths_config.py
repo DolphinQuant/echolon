@@ -13,7 +13,7 @@ Configuration sources (precedence: highest first):
 4. **Convention defaults** — derived from ``project_root`` via
    ``<root>/{session,workspace,output,data}`` layout
 
-Typical usage from a host project (e.g. qorka)::
+Typical usage from a host project::
 
     from echolon.config.paths_config import PathsConfig
     paths = PathsConfig.from_project_root(Path(__file__).parent.parent)

@@ -662,14 +662,8 @@ class BaseStrategy(IStrategyCallbacks):
         # Use the canonical numeric→string regime map from indicators.utils so
         # this method agrees with market_metrics, backtest_metrics, and the
         # market_regime calculator. The previous local map ({0: ranging,
-        # 1: trending_up, 2: trending_down, 3: volatile}) was inconsistent with
-        # the canonical encoding (1: trending_up, -1: trending_down, 0: ranging,
-        # 2: volatile) — strategies reading regime here would silently
-        # mis-classify volatile bars as trending_down and treat valid -1
-        # values as 'unknown'.
-        # Phase G: classifier label_map comes from the registered classifier,
-        # not a hard-coded import. The 'market_regime' classifier must be
-        # registered (qorka does this via setup_classifiers when paradigm='trs').
+        # Classifier label_map comes from the registered classifier — host
+        # code must call register_regime_classifier(...) at session startup.
         # Strategies running without a registered classifier raise a clear
         # error rather than silently returning 'unknown'.
         from echolon.indicators.registry import get_regime_classifier

@@ -1,18 +1,15 @@
 """Pluggable interfaces for paradigm-specific machinery.
 
-Echolon ships a built-in rule-based regime classifier (the historical TRS
-interday model). Consumers register custom classifiers — HMM, GMM, Carry
-term-structure, custom domain — via the registry in
-``echolon.indicators.registry``.
+Echolon ships **no built-in regime classifiers**. Host code registers its
+own classifiers — TRS rule-based, HMM, GMM, Carry term-structure, custom
+domain — via the registry in ``echolon.indicators.registry``.
 
 Echolon does not depend on any consumer; it only knows about names that
-have been registered with it. This means qorka (or any user) can plug in
-custom classifiers / optimizers without modifying echolon source.
+have been registered with it. Any external package can plug in custom
+classifiers / optimizers without modifying echolon source.
 
-See:
-- :mod:`echolon.indicators.registry.regime_classifiers` for registry API
-- :mod:`echolon.indicators.calculators.interday.market_regime` for the
-  built-in TRS rule-based classifier
+See :mod:`echolon.indicators.registry.regime_classifiers` for the
+registry API.
 """
 from __future__ import annotations
 from typing import Protocol, Dict, Any, runtime_checkable
@@ -75,10 +72,9 @@ class RegimeClassifier(Protocol):
 class RegimeClassifierOptimizer(Protocol):
     """A pluggable hyperparameter optimizer for a :class:`RegimeClassifier`.
 
-    Echolon does NOT ship optimizers as part of its public API — TRS
-    rule-based optimization (the historical 1,164-line
-    ``InterdayRegimeOptimizer``) lives in qorka under the TRS-paradigm
-    machinery, registered via this Protocol.
+    Echolon does NOT ship optimizers as part of its public API. Host code
+    registers its own optimizer (e.g. an Optuna-driven search over a
+    rule-based classifier's parameter space) via this Protocol.
 
     Required attributes:
         classifier_name: Name of the :class:`RegimeClassifier` this

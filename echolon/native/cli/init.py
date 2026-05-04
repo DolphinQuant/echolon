@@ -250,7 +250,7 @@ def _full_init_shfe(*, instrument_data_root: Path, instrument: str, instrument_c
 def _derive_main_contract_from_volume(raw_df, out_path: Path) -> None:
     """Pick the contract with maximum daily volume per trading date.
 
-    Output schema: date,main_contract — same as qorka's extract_main_contract.
+    Output schema: ``date,main_contract``.
     """
     import pandas as pd
     df = raw_df.copy()
@@ -329,7 +329,3 @@ def _write_stub_data(instrument_data_root: Path, instrument: str, instrument_cod
     pd.DataFrame({
         "date": ["2024-01-02"], "main_contract": ["al2401.SF"],
     }).to_csv(instrument_data_root / "main_contract.csv", index=False)
-
-
-# Back-compat alias for `cli/main.py`'s existing `init-strategy` registration.
-init_strategy_command = init_command

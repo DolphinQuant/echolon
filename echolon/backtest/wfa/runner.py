@@ -113,9 +113,7 @@ class WFARunner:
         framework = _sp.framework
 
         # Clean stale backtest artefacts from the prior run before starting
-        # a fresh WFA pass. Previously delegated to qorka's
-        # ``lib.file_operation.clean_backtest_folder`` — inlined here to
-        # remove the host-app dependency; the cleanup target is
+        # a fresh WFA pass. Cleanup target is
         # ``self._paths.backtest_results_dir`` (already injected).
         _stale_artefacts = [
             "backtest_results.json",
@@ -287,11 +285,9 @@ class WFARunner:
         completed_windows = [w for w in self.config.windows if w.oos_results is not None]
 
         if not completed_windows:
-            # Loud failure — previously this was a silent ``return {}`` which
-            # let the host app (qorka's main.py) exit zero with no artifacts.
             # Every window's ``trial_failure_summary.json`` already carries
-            # the structured root cause; WFA-001 simply stops the pipeline
-            # and points the user/agent at those breadcrumbs.
+            # the structured root cause; WFA-001 stops the pipeline and
+            # points the user/agent at those breadcrumbs.
             logger.error("WFA: No windows completed successfully — raising WFA-001")
             raise_error(
                 "WFA-001",

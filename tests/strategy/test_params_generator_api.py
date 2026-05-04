@@ -282,9 +282,9 @@ def test_package_exports_public_symbols():
 def test_generate_creates_missing_output_parent_dir(tmp_path):
     """write_to_file must create the output's parent directory when missing.
 
-    Pre-fix, qorka workspace cleaners that remove `workspace/current/code/`
-    between iterations caused the next `generate_strategy_params` call to
-    fail with a misleading "Input file not found: <output_path>" message.
+    Workspace cleaners that remove ``workspace/current/code/`` between
+    iterations would otherwise cause the next ``generate_strategy_params``
+    call to fail with a misleading "Input file not found" message.
     """
     from echolon.strategy.generators import generate_strategy_params
 

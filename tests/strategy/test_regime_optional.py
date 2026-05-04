@@ -1,13 +1,7 @@
-"""Phase A regime-optional contract tests.
+"""Regime-optional contract tests.
 
-Echolon's paradigm-decoupling Phase A relaxed ``EntrySignalOutput.regime``
-from required → Optional. TRS-paradigm strategies still populate it; TSMOM
-and other paradigms can omit it.
-
-These tests are the regression contract for that relaxation.
-
-See docs/superpowers/plans/2026-05-01-echolon-paradigm-decoupling-execution.md
-(Phase A in qorka's plan repo).
+``EntrySignalOutput.regime`` is Optional. TRS-paradigm strategies populate
+it; TSMOM and other paradigms can omit it.
 """
 from __future__ import annotations
 

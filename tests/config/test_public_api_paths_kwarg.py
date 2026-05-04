@@ -1,9 +1,8 @@
-"""Phase P2 — echolon public entry points accept paths= kwarg.
+"""Echolon public entry points accept a ``paths=`` kwarg.
 
-Coverage test enforcing the plan's P2 contract: every function a host project
-(qorka) calls to drive data pipeline / indicators / backtest / live orchestration
-must accept ``paths: PathsConfig | None``. Explicit injection is the intended
-pattern; reflex ``PathsConfig.from_env()`` stays as an end-user fallback.
+Every function a host project calls to drive data pipeline / indicators /
+backtest / live orchestration accepts ``paths: PathsConfig``. Explicit
+injection is the only supported pattern.
 """
 import inspect
 
@@ -59,13 +58,9 @@ def test_optuna_optimizer_init_accepts_paths():
     assert _signature_accepts_paths(OptunaOptimizer.__init__)
 
 
-# Phase D removed echolon.indicators.optimization — the TRS rule-based
-# optimizer is now owned by qorka under modules/paradigms/trs/regime_machinery/.
-# That module's `optimize_regime_params(...)` continues to accept `paths=`,
-# but it's no longer an echolon public surface, so it's not part of this
-# echolon-side paths-kwarg contract test.
-
-
-# MarketFactory.from_session / .load_target and TradingTarget.load were
-# removed at E1 — host apps now load session state themselves and call
-# MarketFactory.create() with explicit values. No paths= surface to test.
+# Regime classifier optimizers are not part of echolon's public API. Host
+# code registers its own via ``register_regime_optimizer(...)``; the
+# optimize() entry point conforms to whatever signature that host picks.
+#
+# MarketFactory.create() takes explicit market/instrument/frequency values —
+# host apps load their own session state. No ``paths=`` surface to test here.
