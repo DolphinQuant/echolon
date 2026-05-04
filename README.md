@@ -140,14 +140,14 @@ After `pip install echolon`, the `echolon-mcp` console script is on your `PATH`.
 
 | Runtime | Setup |
 |---|---|
-| **Claude Code** | `claude mcp add echolon -- echolon-mcp` |
+| **Claude Code** | `claude mcp add -s user echolon -- echolon-mcp` |
 | Cursor | Settings → MCP Servers → add `{"echolon": {"command": "echolon-mcp"}}` |
 | OpenAI Codex CLI | Add `echolon` server to `~/.codex/config.toml` |
 | OpenAI Agents SDK (Python) | `MCPServerStdio(command="echolon-mcp")` |
 | LangChain / LangGraph | via [`langchain-mcp-adapters`](https://pypi.org/project/langchain-mcp-adapters/) |
 | CrewAI / AutoGen / others | Any [MCP-compatible](https://modelcontextprotocol.io/) client adapter |
 
-For **Claude Code** specifically: the `--` separates the registration name (`echolon`) from the launch command (`echolon-mcp`). After running once, `claude mcp list` should show `echolon` as a connected stdio server. Restart the Claude Code session to pick up the new tools (prefix `mcp__echolon__*`).
+For **Claude Code** specifically: `-s user` (short for `--scope user`) makes the registration apply across **all** your projects — drop it and Claude Code defaults to `local` scope, which only registers the server for the current project directory. The `--` separates the registration name (`echolon`) from the launch command (`echolon-mcp`). After running once, `claude mcp list` should show `echolon` as a connected stdio server. Restart the Claude Code session to pick up the new tools (prefix `mcp__echolon__*`).
 
 The agent's orientation manual is [`llms.txt`](./llms.txt) — point your agent at it once and it'll know where to find everything else.
 
