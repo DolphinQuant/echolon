@@ -199,10 +199,10 @@ def _init_impl(
         },
     )
 
-    # Pre-create indicator slot dir + workspace/current/backtest so the
-    # subsequent `backtest single` lands artifacts in the right place.
+    # Pre-create indicator slot dir + workspace/backtest so the subsequent
+    # `backtest single` lands artifacts in the right place.
     indicators_root.mkdir(parents=True, exist_ok=True)
-    (target / "workspace" / "current" / "backtest").mkdir(parents=True, exist_ok=True)
+    (target / "workspace" / "backtest").mkdir(parents=True, exist_ok=True)
 
     # READMEs documenting the two trees.
     _write_data_readmes(target)
@@ -288,8 +288,8 @@ def _write_data_readmes(target: Path) -> None:
     )
     (target / "workspace" / "README.md").write_text(
         "# Working Artifacts (Regenerable)\n\n"
-        "Computed indicators + per-iteration backtest results. Safe to "
-        "delete and re-derive from `data/`. Layout:\n\n"
+        "Computed indicators + backtest results. Safe to delete and "
+        "re-derive from `data/`. Layout:\n\n"
         "```\n"
         "workspace/\n"
         "  indicators/\n"
@@ -297,8 +297,7 @@ def _write_data_readmes(target: Path) -> None:
         "      strategy_indicators.csv\n"
         "      strategy_indicator_metadata.json\n"
         "      by_contract/\n"
-        "  current/\n"
-        "    backtest/                   # latest run's results\n"
+        "  backtest/                     # latest run's results + logs\n"
         "```\n"
     )
 

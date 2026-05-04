@@ -82,15 +82,32 @@ class PathsConfig(BaseSettings):
 
     @model_validator(mode="after")
     def _fill_conventions_and_absolutise(self) -> "PathsConfig":
-        """Apply convention defaults for any field left unset, then absolutise."""
+        """Apply convention defaults for any field left unset, then absolutise.
+
+        Default layout (flat, OSS-friendly)::
+
+            <root>/
+              data/                           # raw_data_dir
+              workspace/
+                data/market_data/             # market_data_dir
+                data/indicators/backtest/     # indicators_backtest_dir
+                backtest/                     # backtest_results_dir
+                strategy/baseline/            # strategy_code_dir
+              output/                         # output_dir
+              session/                        # session_dir
+
+        Host apps that want an iteration-loop layout (e.g. qorka's
+        ``workspace/current/{code,backtest,analysis}/``) override the relevant
+        fields when constructing PathsConfig.
+        """
         root = Path(self.project_root).absolute()
         workspace = self.workspace_dir or (root / "workspace")
         indicators = workspace / "data" / "indicators"
         current = self.current_dir or (workspace / "current")
-        strategy_code = self.strategy_code_dir or (current / "code")
+        strategy_code = self.strategy_code_dir or (workspace / "strategy" / "baseline")
 
-        # The defaults dict mirrors from_project_root but only fills None fields,
-        # so explicit kwargs / env vars stay authoritative.
+        # Defaults dict — only fills None fields so explicit kwargs / env vars
+        # stay authoritative.
         defaults: dict[str, Path] = {
             "project_root": root,
             "session_dir": root / "session",
@@ -102,7 +119,7 @@ class PathsConfig(BaseSettings):
             "indicators_backtest_dir": indicators / "backtest",
             "current_dir": current,
             "strategy_code_dir": strategy_code,
-            "backtest_results_dir": current / "backtest",
+            "backtest_results_dir": workspace / "backtest",
             "current_analysis_dir": current / "analysis",
             "best_params_file": strategy_code / "selected_robust_trial.json",
             "deploy_config_file": root / "session" / "deploy_config.json",

@@ -92,6 +92,6 @@ def hello_command(
                    f"./{demo.name}/strategy/baseline/entry.py.)")
 
     typer.echo("")
-    typer.echo(f"[ECHOLON] Backtest artifacts: ./{demo.name}/workspace/current/backtest/")
+    typer.echo(f"[ECHOLON] Backtest artifacts: ./{demo.name}/workspace/backtest/")
     typer.echo(f"[ECHOLON] Try editing ./{demo.name}/strategy/baseline/entry.py and re-running:")
     typer.echo(f"[ECHOLON]   echolon backtest single ./{demo.name}/strategy/baseline/")
