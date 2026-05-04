@@ -10,7 +10,7 @@
 
 > **专为 LLM Agent 设计的期货研究回测框架**。自带 MCP 服务器、23 个内置 skill、31 个分门别类的错误码、带类型的 Pydantic 配置 — Agent 调的是结构化工具,不用对着大段文字描述硬猜 API。SHFE 日线期货端到端可用。
 
-[Qorka](https://dolphinquant.com)([DolphinQuant](https://dolphinquant.com) 旗下的 AI 原生策略生成产品)的内部研究引擎,每个交易日都在 SHFE 上用真金白银磨。错误码、校验器、合约约定长成现在这个样子,是因为产线上正好出过一次同样形状的事故。
+[Qorka](https://dolphinquant.com)([DolphinQuant](https://dolphinquant.com) 旗下的 AI 原生策略生成产品)的内部研究引擎,每个交易日都在 SHFE 上进行实盘交易。
 
 ## 快速上手
 
@@ -92,7 +92,7 @@ Echolon **不会**从原始 OHLCV 自动推导 `main_contract.csv` — 这份文
 
 ## 项目信息
 
-Apache 2.0 — 见 [LICENSE](LICENSE)。可自由使用,商用非商用都行。活跃开发中,v0.1.1 beta。由 [DolphinQuant](https://dolphinquant.com) 开发并维护 — 同一支团队在 SHFE 上运营 Qorka。欢迎到 [github.com/dolphinquant/echolon](https://github.com/dolphinquant/echolon) 提 issue 和 pull request。
+Apache 2.0 — 见 [LICENSE](LICENSE)。可自由使用,商用非商用都行。活跃开发中,v0.1.2 beta。由 [DolphinQuant](https://dolphinquant.com) 开发并维护 — 同一支团队在 SHFE 上运营 Qorka。欢迎到 [github.com/dolphinquant/echolon](https://github.com/dolphinquant/echolon) 提 issue 和 pull request。
 
 ```bibtex
 @software{echolon,

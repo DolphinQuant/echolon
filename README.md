@@ -10,7 +10,7 @@
 
 > **An LLM-agent-native backtest framework for futures research.** Ships an MCP server, 23 in-package skills, 31 catalogued error codes, and typed Pydantic configs — agents call structured tools instead of guessing API shapes from prose docs. End-to-end on SHFE daily futures.
 
-Production engine inside [Qorka](https://dolphinquant.com), [DolphinQuant](https://dolphinquant.com)'s AI-native strategy generation product. Exercised by real money on SHFE every trading day. The error codes, validators, and contract conventions are the way they are because something failed in production in that exact way once.
+Production engine inside [Qorka](https://dolphinquant.com), [DolphinQuant](https://dolphinquant.com)'s AI-native strategy generation product. Exercised by real money on SHFE every trading day. 
 
 ## Quickstart
 
@@ -92,7 +92,7 @@ Echolon does **not** auto-derive `main_contract.csv` from raw OHLCV — it's a U
 
 ## Project info
 
-Apache 2.0 — see [LICENSE](LICENSE). Use freely, commercially or otherwise. Active development, v0.1.1 beta. Built and maintained by [DolphinQuant](https://dolphinquant.com) — the same team running Qorka on SHFE. Issues and pull requests welcome at [github.com/dolphinquant/echolon](https://github.com/dolphinquant/echolon).
+Apache 2.0 — see [LICENSE](LICENSE). Use freely, commercially or otherwise. Active development, v0.1.2 beta. Built and maintained by [DolphinQuant](https://dolphinquant.com) — the same team running Qorka on SHFE. Issues and pull requests welcome at [github.com/dolphinquant/echolon](https://github.com/dolphinquant/echolon).
 
 ```bibtex
 @software{echolon,
