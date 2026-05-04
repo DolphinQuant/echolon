@@ -51,11 +51,11 @@ Behind the scenes the agent calls `list_skills` → picks `patterns` and `quick_
 | Runtime | Setup |
 |---|---|
 | **Claude Code** | `claude mcp add -s user echolon -- echolon-mcp` |
-| Cursor | Settings → MCP Servers → add `{"echolon": {"command": "echolon-mcp"}}` |
-| OpenAI Codex CLI | Add `echolon` server to `~/.codex/config.toml` |
+| Cursor | In `~/.cursor/mcp.json` add an entry under `mcpServers`: `"echolon": {"command": "echolon-mcp", "args": []}` |
+| OpenAI Codex CLI | `codex mcp add echolon -- echolon-mcp` (writes `[mcp_servers.echolon]` to `~/.codex/config.toml`) |
 | OpenAI Agents SDK (Python) | `MCPServerStdio(name="echolon", params={"command": "echolon-mcp", "args": []})` |
 | LangChain / LangGraph | [`langchain-mcp-adapters`](https://pypi.org/project/langchain-mcp-adapters/): `MultiServerMCPClient({"echolon": {"transport": "stdio", "command": "echolon-mcp", "args": []}})` |
-| CrewAI / AutoGen / others | Any [MCP-compatible](https://modelcontextprotocol.io/) client adapter |
+| Any other [MCP-compatible](https://modelcontextprotocol.io/) client (CrewAI, AutoGen, …) | Configure it as a stdio server with `command="echolon-mcp"`, no args. See your client's MCP docs for the call shape. |
 
 For Claude Code: `-s user` makes the registration apply across all your projects (drop it for current-project-only); `--` separates the registration name from the launch command. After running once, `claude mcp list` should show `echolon` as a connected stdio server. The agent's orientation guide is [`llms.txt`](./echolon/llms.txt) — also dropped at the workspace root by `echolon init` / `hello` so an agent walking into the project finds it without needing the package.
 

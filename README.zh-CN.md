@@ -51,11 +51,11 @@ claude mcp add -s user echolon -- echolon-mcp      # 2. 注册 MCP 服务器(用
 | 运行时 | 配置方式 |
 |---|---|
 | **Claude Code** | `claude mcp add -s user echolon -- echolon-mcp` |
-| Cursor | 设置 → MCP Servers → 添加 `{"echolon": {"command": "echolon-mcp"}}` |
-| OpenAI Codex CLI | 在 `~/.codex/config.toml` 里加一个 `echolon` 服务器 |
+| Cursor | 在 `~/.cursor/mcp.json` 的 `mcpServers` 下加一条:`"echolon": {"command": "echolon-mcp", "args": []}` |
+| OpenAI Codex CLI | `codex mcp add echolon -- echolon-mcp`(会在 `~/.codex/config.toml` 里写入 `[mcp_servers.echolon]`) |
 | OpenAI Agents SDK (Python) | `MCPServerStdio(name="echolon", params={"command": "echolon-mcp", "args": []})` |
 | LangChain / LangGraph | [`langchain-mcp-adapters`](https://pypi.org/project/langchain-mcp-adapters/):`MultiServerMCPClient({"echolon": {"transport": "stdio", "command": "echolon-mcp", "args": []}})` |
-| CrewAI / AutoGen / 其他 | 任何[兼容 MCP 的](https://modelcontextprotocol.io/) 客户端适配器 |
+| 其他[兼容 MCP](https://modelcontextprotocol.io/) 的客户端(CrewAI、AutoGen 等) | 按 stdio 服务器配置,`command="echolon-mcp"`,不需要 args。具体调用形式参见所用客户端的 MCP 文档。 |
 
 Claude Code 注意:`-s user` 把注册写到用户级,所有项目都能用(去掉它就只对当前项目生效);`--` 把注册名和启动命令分开。注册一次后跑 `claude mcp list` 应该能看到 `echolon` 是已连接的 stdio 服务器。Agent 的入门导引在 [`llms.txt`](./echolon/llms.txt) — `echolon init` / `hello` 也会把副本写到 workspace 根目录,这样 Agent 即便没接 MCP 也能在本地找到。
 
