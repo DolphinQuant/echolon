@@ -105,7 +105,7 @@ def test_raise_error_raises_correct_subclass():
 def test_raise_error_sets_docs_url():
     with pytest.raises(EchelonError) as exc_info:
         raise_error("VAL-001", file="x", method="y", missing=[])
-    assert "https://echolon.dev/docs/errors/VAL-001" in exc_info.value.docs_url
+    assert "errors/codes/VAL-001.md" in exc_info.value.docs_url
 
 
 def test_raise_error_unknown_code_raises_keyerror():
@@ -172,6 +172,6 @@ def test_echolon_error_str_includes_docs_url():
         raise_error("STR-001", strategy_dir="/tmp/x", missing_files="sizer.py")
     except EchelonError as exc:
         s = str(exc)
-        assert "echolon.dev/docs/errors/STR-001" in s or "docs/errors/STR-001" in s
+        assert "errors/codes/STR-001.md" in s
     else:
         raise AssertionError("raise_error did not raise")

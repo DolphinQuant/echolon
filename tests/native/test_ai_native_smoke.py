@@ -57,7 +57,7 @@ def test_full_agent_loop(tmp_path):
 
     # Verify the error carries a docs_url
     prm_err = next(e for e in payload["errors"] if e["code"] == "PRM-001")
-    assert "https://echolon.dev/docs/errors/PRM-001" in prm_err["docs_url"]
+    assert "errors/codes/PRM-001.md" in prm_err["docs_url"]
     # Verify each error field is populated (agents need these)
     for required_field in ("code", "what", "why", "fix", "context", "docs_url"):
         assert required_field in prm_err, f"Missing field: {required_field}"

@@ -32,7 +32,7 @@ def _make_error(code: str, **context_vars):
     return entry["class"](
         code=code, what=entry["what"], why=entry["why"], fix=fix,
         context=dict(context_vars),
-        docs_url=f"https://echolon.dev/docs/errors/{code}",
+        docs_url=f"https://github.com/dolphinquant/echolon/blob/main/echolon/native/errors/codes/{code}.md",
     )
 
 

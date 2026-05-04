@@ -8,7 +8,7 @@
 
 > 📖 [English](README.md) · [简体中文](README.zh-CN.md)
 
-> **An LLM-agent-native backtest framework for futures research.** Ships an MCP server, 23 in-package skills, 31 catalogued error codes, and typed Pydantic configs — agents call structured tools instead of guessing API shapes from prose docs. End-to-end on SHFE daily futures.
+> **An LLM-agent-native backtest framework for futures research.** Ships an MCP server, 22 in-package skills, 32 catalogued error codes, and typed Pydantic configs — agents call structured tools instead of guessing API shapes from prose docs. End-to-end on SHFE daily futures.
 
 Production engine inside [Qorka](https://dolphinquant.com), [DolphinQuant](https://dolphinquant.com)'s AI-native strategy generation product. Exercised by real money on SHFE every trading day. 
 
@@ -62,8 +62,8 @@ For Claude Code: `-s user` makes the registration apply across all your projects
 ## What's in scope today
 
 **Done end-to-end** (production-grade, exercised daily):
-- SHFE daily futures research — data ingestion, 217-indicator catalog, Backtrader execution, Optuna TPE optimization (single + multi-objective), walk-forward analysis with deployment-readiness scoring, KMeans-based robust trial selection.
-- Agent surface — 22 MCP tools, 23 skills, 31 error codes, 3 working templates.
+- SHFE daily futures research — data ingestion, 214-indicator catalog, Backtrader execution, Optuna TPE optimization (single + multi-objective), walk-forward analysis with deployment-readiness scoring, KMeans-based robust trial selection.
+- Agent surface — 23 MCP tools, 22 skills, 32 error codes, 3 working templates.
 
 **Not yet** (open an issue if you want to drive a slice forward):
 - SHFE intraday backtesting — data pipeline ready, engine plumbing being firmed up.
