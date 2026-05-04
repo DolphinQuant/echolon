@@ -211,6 +211,31 @@ def run_data_pipeline(
         contracts = splitter.split(raw_data)
         logger.info(f"[DATA_PIPELINE] Split into {len(contracts)} contracts")
 
+    # Step 6: Populate main_contract.csv (required by SHFE adapter +
+    # contract-aware broker). Two sources, in priority order:
+    #   1. Pre-computed file at {raw_data_dir}/{market}/{instrument_code}/
+    #      main_contract.csv — host apps that ship a curated main-contract
+    #      timeline (e.g., qorka) keep it next to the raw extractor input
+    #      tree. Copy it verbatim.
+    #   2. Derive max-volume-per-day from the standardized OHLCV. Used by
+    #      fresh `echolon init` workspaces that don't ship a curated file.
+    # Goal: every `run_data_pipeline` call leaves market_data_dir/{instrument}/
+    # with all four canonical artifacts (sort_by_date.csv, sort_by_contract/,
+    # trading_calendar.csv, main_contract.csv) — no separate scaffolding step.
+    if raw_data is not None and not is_intraday:
+        import shutil
+        main_contract_path = output_path / "main_contract.csv"
+        raw_main_contract = (
+            paths.raw_data_dir / market / ctx.instrument_code / "main_contract.csv"
+        )
+        if raw_main_contract.is_file():
+            logger.info(f"[DATA_PIPELINE] Step 6: Copying main_contract.csv from {raw_main_contract}")
+            shutil.copyfile(raw_main_contract, main_contract_path)
+        else:
+            from echolon.native.cli.init import _derive_main_contract_from_volume
+            logger.info("[DATA_PIPELINE] Step 6: Deriving main_contract.csv (max-volume rule)")
+            _derive_main_contract_from_volume(raw_data, main_contract_path)
+
     # Note: Calendar generation moved to Step 1.5 (before standardization)
     # to ensure calendar exists when OHLCVStandardizer calculates trading_date
 
