@@ -167,7 +167,9 @@ def run_data_pipeline(
     if raw_data is not None:
         logger.info("[DATA_PIPELINE] Step 2: Standardizing data")
         # Load trading calendar for intraday trading_date calculation
-        trading_calendar = get_trading_calendar_instance(market, instrument)
+        trading_calendar = get_trading_calendar_instance(
+            market, instrument, market_data_dir=paths.market_data_dir,
+        )
         standardizer = OHLCVStandardizer(
             fill_missing=True,
             market=market,

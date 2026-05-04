@@ -132,7 +132,9 @@ def run_live_data_update(
 
     # Step 2: Standardise
     logger.info("[LIVE_DATA] Step 2: Standardising data")
-    trading_calendar = get_trading_calendar_instance(market, instrument)
+    trading_calendar = get_trading_calendar_instance(
+        market, instrument, market_data_dir=paths.market_data_dir,
+    )
     standardizer = OHLCVStandardizer(
         fill_missing=True,
         market=market,
