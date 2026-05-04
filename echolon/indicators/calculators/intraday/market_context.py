@@ -76,7 +76,7 @@ SESSION_CHARACTERISTICS = {
     # Granular phases (for 5m, 15m bars)
     # =========================================================================
     'night': {
-        'volatility_multiplier': 1.2,  # Average of legacy night sub-phases
+        'volatility_multiplier': 1.2,  # Average across night sub-phases
         'opening_volatility': 1.6,     # First 30 min higher vol (use bar_of_session <= buffer)
         'closing_volatility': 0.9,     # Last 30 min lower vol (use bars_remaining <= buffer)
         'typical_behavior': 'european_asian_overlap',
@@ -84,7 +84,7 @@ SESSION_CHARACTERISTICS = {
         'is_night': True,
     },
     'morning': {
-        'volatility_multiplier': 1.1,  # Average of legacy morning phases
+        'volatility_multiplier': 1.1,  # Average across morning sub-phases
         'opening_volatility': 1.5,     # First 30 min (overnight gap reaction)
         'typical_behavior': 'price_discovery_institutional_flow',
         'recommended_action': 'trend_following_with_opening_buffer',
@@ -103,7 +103,7 @@ SESSION_CHARACTERISTICS = {
         'is_night': False,
     },
     'afternoon': {
-        'volatility_multiplier': 1.0,  # Average of legacy afternoon phases
+        'volatility_multiplier': 1.0,  # Average across afternoon sub-phases
         'closing_volatility': 1.3,     # Last 15 min (settlement squaring)
         'typical_behavior': 'settlement_convergence',  # Check autocorrelation for actual pattern
         'recommended_action': 'exit_before_settlement_buffer',

@@ -2,11 +2,8 @@
 Strategy Logger Implementation
 ==============================
 
-CSV-based logging system for strategies and components,
-capturing essential component outputs and trading decisions.
-
-BACKWARD COMPATIBLE: Same interface as
-modules/backtest/backtrader_strategy/core/strategy_logger.py
+CSV-based logging system for strategies and components, capturing essential
+component outputs and trading decisions. Implements ``IStrategyLogger``.
 """
 
 import os

@@ -137,8 +137,8 @@ def calculate_opening_range(
     """
     Calculate opening range (first N minutes) indicators.
 
-    Uses bar position (bar_of_session) instead of legacy phase names to identify
-    opening range bars. This is bar-size agnostic.
+    Uses bar position (``bar_of_session``) to identify opening-range bars,
+    so it's bar-size agnostic.
 
     Works with both:
     - Granular phases: night, morning, afternoon (5m, 15m bars)

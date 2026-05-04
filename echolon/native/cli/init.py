@@ -2,19 +2,23 @@
 
 Two modes, distinguished by whether market/data flags are provided:
 
-1. Template-only (legacy `init-strategy` semantics):
-       echolon init my-strategy --template minimal
-   Just copies a bundled template into the target dir. Same as
-   `echolon examples copy <template> <dir>`.
+1. **Template-only** (no market/data flags)::
 
-2. Full workspace (new):
+       echolon init my-strategy --template minimal
+
+   Just copies a bundled template into the target dir. Same as
+   ``echolon examples copy <template> <dir>``.
+
+2. **Full workspace** (market/instrument/dates supplied)::
+
        echolon init my-zinc --market SHFE --instrument zinc \\
                             --start 2022-01-01 --end 2024-12-31 \\
                             --template minimal
-   Creates a workspace with downloaded data (via akshare),
-   main_contract.csv (derived from akshare's continuous-main series),
-   a scaffolded strategy under workspace/strategy/baseline/, and a
-   .echolon-workspace.json marker for `echolon backtest` to find later.
+
+   Creates a workspace with downloaded data (via akshare), a
+   ``main_contract.csv`` derived from per-contract volume, a scaffolded
+   strategy under ``strategy/baseline/``, and a ``.echolon-workspace.json``
+   marker for ``echolon backtest`` to find later.
 """
 from __future__ import annotations
 import os
@@ -90,7 +94,7 @@ def _init_impl(
                     typer.echo(f"[ECHOLON]   {line}", err=True)
             raise typer.Exit(3)
 
-    # Safety guards (full-init only — legacy template-only mode preserves old behavior).
+    # Safety guards apply only to full-init (template-only is just a copy).
     if is_full_init:
         cwd = Path.cwd().resolve()
         home = Path(os.environ.get("HOME", str(Path.home()))).resolve()
@@ -109,7 +113,7 @@ def _init_impl(
         shutil.rmtree(target)
 
     if not is_full_init:
-        # Template-only mode (legacy init-strategy).
+        # Template-only mode: just copy a bundled template.
         target.mkdir(parents=True, exist_ok=False)
         shutil.copytree(template_path(template), target, dirs_exist_ok=True)
         typer.echo(f"✓ Scaffolded {template} → {target}")

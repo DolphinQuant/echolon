@@ -50,7 +50,7 @@ class SessionDayInfo:
     total_bars: int
     tradeable_phases: list
 
-    # Backward compatibility properties for granular phases
+    # Convenience accessors for individual phases.
     @property
     def has_night(self) -> bool:
         """Whether night session exists (granular or aggregated)."""

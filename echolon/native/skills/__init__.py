@@ -1,11 +1,8 @@
 """Echolon skills — programmatic access to in-package skill markdown.
 
-Phase F-10b: makes the SKILL.md packets reachable via MCP for agents that
-connect through ``echolon-mcp`` without an in-runtime skill loader. Skills
-were previously visible only to skill-runtime consumers (Claude Code Skill
-tool, OpenAI Agents SDK skill loader). MCP-only agents had to know the
-filesystem path to read them via direct file access — which doesn't resolve
-inside a pip-installed wheel for downstream consumers.
+Makes the ``SKILL.md`` packets reachable via MCP for agents connecting
+through ``echolon-mcp``, plus to direct skill-runtime consumers (Claude
+Code Skill tool, OpenAI Agents SDK skill loader).
 
 The ``Skill`` dataclass + ``list_skills()`` / ``get_skill(name)`` API
 mirrors the patterns and templates surfaces; the MCP server wraps these

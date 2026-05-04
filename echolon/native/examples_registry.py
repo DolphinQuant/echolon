@@ -1,9 +1,9 @@
 """Registry of bundled example strategies.
 
-Phase F-8 consolidation: examples and templates are a single source. The
-on-disk location is ``echolon/native/templates/`` (package-internal so
-pip-installed users get them too); the ``echolon examples`` and
-``echolon init-strategy`` CLIs read from the same directory.
+Examples and templates share a single on-disk location:
+``echolon/native/templates/`` (package-internal so pip-installed users
+get them too). The ``echolon examples`` and ``echolon init`` CLIs both
+read from there.
 
 Names exposed to the ``examples`` CLI are the unprefixed canonical names
 (``minimal`` / ``momentum_breakout`` / ``rsi_mean_reversion``) — same as

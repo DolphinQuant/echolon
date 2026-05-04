@@ -115,9 +115,6 @@ def convert_to_serializable(obj: Any) -> Any:
     return obj
 
 
-# Backward compatibility alias
-_convert_to_serializable = convert_to_serializable
-
 def save_results_to_json(metrics: Dict, strategy_params: Dict, filepath: str):
     """
     Save backtest metrics and strategy parameters to JSON.
@@ -129,14 +126,14 @@ def save_results_to_json(metrics: Dict, strategy_params: Dict, filepath: str):
 
         results_data = {
             "run_timestamp": datetime.now().isoformat(),
-            "performance_metrics": _convert_to_serializable({
+            "performance_metrics": convert_to_serializable({
             k: v for k, v in metrics.items() if k != 'trades'
             }),
-            "strategy_parameters": _convert_to_serializable({
+            "strategy_parameters": convert_to_serializable({
                 k: v for k, v in strategy_params.items()
                 if k not in ['historical_closes_dict', 'trading_calendar', 'trades']
             }),
-            "trades": _convert_to_serializable(metrics.get('trades', []))
+            "trades": convert_to_serializable(metrics.get('trades', []))
         }
 
         os.makedirs(os.path.dirname(filepath), exist_ok=True)

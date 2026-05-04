@@ -399,7 +399,7 @@ class StrategyParamsGenerator:
                     owner = self._find_owner_component(param_name)
                 shared_components = [owner, component_name] if owner != component_name else [component_name]
             else:
-                # Check legacy format (SHARED by in description)
+                # Fall back to parsing "SHARED by ..." from the description text.
                 shared_components = self._extract_shared_components(param_spec['description'])
                 if shared_components:
                     owner = self._determine_owner(shared_components)

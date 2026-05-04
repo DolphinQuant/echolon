@@ -197,9 +197,6 @@ INDICATOR_MAPPING = {
     "ADOSC": {"function": "adosc", "file": INDICATOR_FILES["talib_indicator"]}
 }
 
-# Phase F-5: cluster categorization removed. has_lookback is now derived from
-# the indicator's function signature via :class:`echolon.indicators.catalog.IndicatorInfo`.
-
 # Function to get all available indicator keys
 def get_all_indicator_keys():
     """Return list of all available indicator keys"""
@@ -244,23 +241,15 @@ def get_function(indicator_key, frequency: str = "day"):
     # Get the function from the module
     return getattr(module, function_name, None)
 
-# Keep the old function for backward compatibility
-def get_function_name(indicator_key):
-    """Get function name by indicator key (deprecated, use get_function instead)"""
-    mapping = INDICATOR_MAPPING.get(indicator_key.upper())
-    return mapping["function"] if mapping else None
-
-# Function to get function + file metadata by indicator key
 def get_indicator_info(indicator_key, frequency: str = "day"):
-    """
-    Get function + file metadata by indicator key.
+    """Get function + file metadata by indicator key.
 
     Args:
         indicator_key: Indicator name (e.g., 'RSI', 'VWAP')
         frequency: Data frequency ('day' for interday, 'minute' for intraday)
 
     Returns:
-        Dict with 'function' and 'file' keys (Phase F-5: 'cluster' removed)
+        Dict with 'function' and 'file' keys.
     """
     # Route to intraday mapping for intraday frequencies
     if frequency in ("minute", "intraday"):

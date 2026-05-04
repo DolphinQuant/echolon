@@ -208,11 +208,6 @@ INTRADAY_INDICATOR_MAPPING = {
     "HOUR_OF_DAY": {"function": "hour_of_day", "file": INDICATOR_FILES["session_indicators"]},
     "MINUTE_OF_HOUR": {"function": "minute_of_hour", "file": INDICATOR_FILES["session_indicators"]},
 
-    # Bulk calculators (legacy - for full DataFrame calculation)
-    "SESSION_LEVELS": {"function": "calculate_session_levels", "file": INDICATOR_FILES["session_indicators"]},
-    "OPENING_RANGE": {"function": "calculate_opening_range", "file": INDICATOR_FILES["session_indicators"]},
-    "TIME_FEATURES": {"function": "calculate_time_features", "file": INDICATOR_FILES["session_indicators"]},
-
     # Previous Session Indicators
     "PREV_SESSION_HIGH": {"function": "prev_session_high", "file": INDICATOR_FILES["session_indicators"]},
     "PREV_SESSION_LOW": {"function": "prev_session_low", "file": INDICATOR_FILES["session_indicators"]},
@@ -311,10 +306,6 @@ def get_function(indicator_key: str):
     )
 
     return getattr(module, function_name, None)
-
-
-# Phase F-5: cluster categorization removed. has_lookback is now derived from
-# the indicator's function signature via :class:`echolon.indicators.catalog.IndicatorInfo`.
 
 
 def indicator_exists(indicator_key: str):

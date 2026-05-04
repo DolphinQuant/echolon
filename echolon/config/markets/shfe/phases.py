@@ -173,7 +173,7 @@ TRADEABLE_PHASES_AGGREGATED: List[str] = ['night_session', 'day_session']
 # =============================================================================
 # Convert to bars at runtime: buffer_bars = buffer_minutes // bar_size_minutes
 #
-# These buffers encode the timing wisdom previously embedded in phase names:
+# Buffer windows around session boundaries:
 #   - night_opening (30 min) → night with opening buffer
 #   - night_closing (30 min) → night with closing buffer
 #   - day_opening (30 min) → morning with opening buffer

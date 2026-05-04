@@ -38,7 +38,7 @@ def _build_catalog() -> dict:
 
     Each entry has:
       - ``has_lookback``: True if the indicator has a period-like parameter
-        (sweepable single-dim lookback). Phase F-5 replacement for cluster.
+        (sweepable single-dim lookback).
       - ``function``: the underlying calculator function name
       - ``frequencies``: list of supported frequencies ("interday", "intraday", or both)
 

@@ -416,7 +416,8 @@ def _check_gates(
             ),
         ))
     else:
-        # Backward compat: no annual_returns data -> pass gate
+        # Skip G6 when the WFA window is too short to have annual returns —
+        # treat as a non-applicable gate rather than a failure.
         gates.append(GateResult(
             gate_id="G6",
             passed=True,

@@ -59,7 +59,7 @@ def aroon(df: pd.DataFrame, timeperiod: int = 14, indicator_name: str = None) ->
         elif 'DOWN' in indicator_name:
             return aroon_down
 
-    # Default: return tuple for backward compatibility
+    # No indicator_name → return both components as tuple
     return aroon_down, aroon_up
 
 
@@ -283,7 +283,7 @@ def minmax(df: pd.DataFrame, timeperiod: int = 30, indicator_name: str = None) -
         elif 'MAX' in indicator_name:
             return max_values
 
-    # Default: return tuple for backward compatibility
+    # No indicator_name → return both components as tuple
     return min_values, max_values
 
 
@@ -299,7 +299,7 @@ def minmaxindex(df: pd.DataFrame, timeperiod: int = 30, indicator_name: str = No
         elif 'MAX' in indicator_name:
             return max_indices
 
-    # Default: return tuple for backward compatibility
+    # No indicator_name → return both components as tuple
     return min_indices, max_indices
 
 
@@ -861,7 +861,7 @@ def ht_phasor(df: pd.DataFrame, indicator_name: str = None) -> Union[np.ndarray,
         elif 'QUADRATURE' in indicator_name:
             return quadrature
 
-    # Default: return tuple for backward compatibility
+    # No indicator_name → return both components as tuple
     return inphase, quadrature
 
 
@@ -877,7 +877,7 @@ def ht_sine(df: pd.DataFrame, indicator_name: str = None) -> Union[np.ndarray, T
         elif 'SINE' in indicator_name or 'HT_SINE' in indicator_name:
             return sine
 
-    # Default: return tuple for backward compatibility
+    # No indicator_name → return both components as tuple
     return sine, leadsine
 
 
@@ -925,7 +925,7 @@ def macd(df: pd.DataFrame, fastperiod: int = 12, slowperiod: int = 26, signalper
         elif 'HISTOGRAM' in indicator_name:
             return macd_histogram
 
-    # Default: return tuple for backward compatibility
+    # No indicator_name → return both components as tuple
     return macd_line, macd_signal, macd_histogram
 
 
@@ -946,7 +946,7 @@ def macdext(df: pd.DataFrame, fastperiod: int = 12, fastmatype: int = 0, slowper
         elif 'HISTOGRAM' in indicator_name:
             return macd_histogram
 
-    # Default: return tuple for backward compatibility
+    # No indicator_name → return both components as tuple
     return macd_line, macd_signal, macd_histogram
 
 
@@ -964,7 +964,7 @@ def macdfix(df: pd.DataFrame, signalperiod: int = 9, indicator_name: str = None)
         elif 'HISTOGRAM' in indicator_name:
             return macd_histogram
 
-    # Default: return tuple for backward compatibility
+    # No indicator_name → return both components as tuple
     return macd_line, macd_signal, macd_histogram
 
 
@@ -989,7 +989,7 @@ def stoch(df: pd.DataFrame, fastk_period: int = 5,
         elif 'SLOWD' in indicator_name:
             return slowd
 
-    # Default: return tuple for backward compatibility
+    # No indicator_name → return both components as tuple
     return slowk, slowd
 
 
@@ -1006,7 +1006,7 @@ def stochf(df: pd.DataFrame, fastk_period: int = 5,
         elif 'FASTD' in indicator_name:
             return fastd
 
-    # Default: return tuple for backward compatibility
+    # No indicator_name → return both components as tuple
     return fastk, fastd
 
 
@@ -1024,7 +1024,7 @@ def stochrsi(df: pd.DataFrame, timeperiod: int = 14, fastk_period: int = 5,
         elif 'FASTD' in indicator_name:
             return fastd
 
-    # Default: return tuple for backward compatibility
+    # No indicator_name → return both components as tuple
     return fastk, fastd
 
 
@@ -1043,7 +1043,7 @@ def bbands(df: pd.DataFrame, timeperiod: int = 5, nbdevup: float = 2, nbdevdn: f
         elif 'LOWER' in indicator_name:
             return lower_band
 
-    # Default: return tuple for backward compatibility
+    # No indicator_name → return both components as tuple
     return upper_band, middle_band, lower_band
 
 
@@ -1076,7 +1076,7 @@ def mama(df: pd.DataFrame, fastlimit: float = 0.5, slowlimit: float = 0.05, indi
         elif 'MAMA' in indicator_name:
             return mama_values
 
-    # Default: return tuple for backward compatibility
+    # No indicator_name → return both components as tuple
     return mama_values, fama_values
 
 

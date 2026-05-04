@@ -45,7 +45,7 @@ BARS_PER_DAY: Dict[str, int] = {
     "15m": 31,
     "30m": 16,
     "1h": 8,
-    # Long format (legacy)
+    # Long format ("Nmin")
     "1min": 465,
     "5min": 93,
     "15min": 31,
@@ -60,7 +60,7 @@ BARS_PER_DAY_NO_NIGHT: Dict[str, int] = {
     "15m": 15,
     "30m": 8,
     "1h": 4,
-    # Long format (legacy)
+    # Long format ("Nmin")
     "1min": 225,
     "5min": 45,
     "15min": 15,

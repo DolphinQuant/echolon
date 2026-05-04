@@ -2,10 +2,9 @@
 Platform-Agnostic Base Strategy Class
 =====================================
 
-BACKWARD COMPATIBLE: This module provides the foundational base strategy class
-that is completely decoupled from any specific trading platform (Backtrader,
-MiniQMT, etc.) while maintaining full backward compatibility with the original
-modules/backtest/backtrader_strategy/core/base_strategy.py.
+Base class for trading strategies, decoupled from any specific platform
+(Backtrader, MiniQMT, etc.). Strategies inherit from ``BaseStrategy`` and
+interact with the platform via the ``ITradingEngine`` interface.
 
 Architecture:
     BaseStrategy provides UNIVERSAL functionality only.
@@ -16,7 +15,7 @@ Architecture:
     - ForcedExitStrategyHook: For interday futures (contract expiry handling)
 
 Features:
-- Platform-agnostic design
+- Platform-agnostic design (interfaces, not concrete platform classes)
 - Standardized parameter handling
 - Common lifecycle methods
 - Trade tracking and logging
@@ -24,17 +23,14 @@ Features:
 - Systematic logging of strategy and component data
 - Hook-based extension mechanism
 - State persistence infrastructure
+- ``market_adapter`` / ``frequency_context`` / ``session_context_provider``
+  properties for paradigm-aware code
 
 Hook lifecycle:
 1. add_hook() -> hook.on_init(strategy)
 2. on_start() -> hook.on_start(strategy)
 3. on_bar() -> hook.on_bar_start(strategy), hook.on_bar_end(strategy)
 4. on_stop() -> hook.on_stop(strategy)
-
-New additions (backward-compatible):
-- market_adapter property for market-specific rules
-- frequency_context property for time scaling
-- add_hook() method for hook-based extension
 """
 
 from pathlib import Path
@@ -59,27 +55,17 @@ logger = logging.getLogger(__name__)
 
 
 class BaseStrategy(IStrategyCallbacks):
-    """
-    Platform-agnostic base strategy class.
+    """Platform-agnostic base strategy class.
 
-    BACKWARD COMPATIBLE with modules/backtest/backtrader_strategy/core/base_strategy.py
+    Provides common functionality for all strategies while remaining
+    independent of any specific trading platform. Strategies inherit
+    from this class and use the provided interfaces to interact with
+    market data, portfolio, and order management.
 
-    This class provides common functionality for all strategies while remaining
-    completely independent of any specific trading platform. Strategies inherit
-    from this class and use the provided interfaces to interact with market data,
-    portfolio, and order management.
-
-    Features:
-    - Platform-agnostic design
-    - Standardized parameter handling
-    - Common lifecycle methods
-    - Trade tracking and logging
-    - Component management
-    - Systematic logging of strategy and component data
-
-    New features (backward-compatible):
-    - market_adapter: Access market-specific rules (SHFE, crypto, etc.)
-    - frequency_context: Access time scaling for different bar sizes
+    Properties:
+    - ``market_adapter``: market-specific rules (SHFE, crypto, etc.)
+    - ``frequency_context``: time scaling for different bar sizes
+    - ``session_context_provider``: intraday session helpers
     """
 
     def __init__(self, trading_engine: ITradingEngine, **params):
@@ -93,7 +79,7 @@ class BaseStrategy(IStrategyCallbacks):
         **params : dict
             Strategy parameters
         """
-        # Store trading engine and interfaces (PUBLIC names for backward compat)
+        # Store trading engine and interfaces.
         self.trading_engine = trading_engine
         self.market_data = trading_engine.get_market_data()
         self.portfolio = trading_engine.get_portfolio()
@@ -148,10 +134,9 @@ class BaseStrategy(IStrategyCallbacks):
         self.risk_manager = None
 
         # Strategy directory for StrategyLoader-based component resolution.
-        # Replaces the old slot_id-based importlib.import_module approach.
         self.strategy_dir: Optional[str] = params.get('strategy_dir')
-        # Multi-slot context (optional — only set by PortfolioTradingRunner)
-        # Derive slot_id from strategy_dir for backward compat (logging, etc.)
+        # Multi-slot context (only set by PortfolioTradingRunner). slot_id
+        # defaults to strategy_dir's basename so logging stays distinct.
         self.slot_id: Optional[str] = (
             Path(self.strategy_dir).name if self.strategy_dir else params.get('slot_id')
         )
@@ -165,37 +150,23 @@ class BaseStrategy(IStrategyCallbacks):
 
     @property
     def market_adapter(self) -> Optional['IMarketAdapter']:
-        """
-        Get market-specific adapter (SHFE, crypto, etc.).
-
-        Returns None if engine doesn't provide market adapter (backward compat).
-        """
+        """Market-specific adapter (SHFE, crypto, etc.). May be None."""
         if hasattr(self.trading_engine, 'get_market_adapter'):
             return self.trading_engine.get_market_adapter()
         return None
 
     @property
     def frequency_context(self) -> Optional['IFrequencyContext']:
-        """
-        Get frequency context for time scaling.
-
-        Returns None if engine doesn't provide frequency context (backward compat).
-        """
+        """Frequency context for time scaling. May be None."""
         if hasattr(self.trading_engine, 'get_frequency_context'):
             return self.trading_engine.get_frequency_context()
         return None
 
     @property
     def session_context_provider(self) -> Optional['ISessionContext']:
-        """
-        Get session context provider for intraday trading.
+        """Intraday session context (phase, bar position, VWAP, etc.).
 
-        Returns ISessionContext implementation that provides:
-        - Session phase (night, morning, afternoon)
-        - Bar position within session (bar_of_session, bars_remaining)
-        - Session-aware indicators (VWAP, Opening Range, Session Levels)
-
-        Returns None if engine doesn't provide session context (backward compat).
+        Returns None for daily-only strategies that don't need session context.
         """
         if hasattr(self.trading_engine, 'get_session_context_provider'):
             return self.trading_engine.get_session_context_provider()
@@ -406,8 +377,8 @@ class BaseStrategy(IStrategyCallbacks):
         """
         Log component output to strategy logger.
 
-        Accepts both BaseModel instances (new standardized interface) and Dict (backward compatibility).
-        Strategy logger automatically converts BaseModel to dict for CSV logging.
+        Accepts both BaseModel instances and plain dicts. The strategy logger
+        converts BaseModel to dict automatically for CSV output.
         """
         if self.strategy_logger and output:
             # Handle BaseModel if pydantic is available
@@ -543,7 +514,7 @@ class BaseStrategy(IStrategyCallbacks):
                 message="Insufficient margin"
             )
 
-        # Convert OrderIntent to direction string for backward compat
+        # IOrderManager.submit_entry_order takes a direction string.
         direction = "LONG" if intent == OrderIntent.ENTRY_LONG else "SHORT"
         result = self.order_manager.submit_entry_order(direction, size)
 

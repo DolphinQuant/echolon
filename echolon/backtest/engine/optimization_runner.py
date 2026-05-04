@@ -25,7 +25,6 @@ Usage:
     OptimizationRunner.setup_shared_data(
         ctx=ctx,
         indicators=indicators_df,
-        strategy_class=MyStrategy,
         market_adapter=adapter,
     )
 
@@ -210,7 +209,6 @@ class OptimizationRunner:
         cls,
         ctx: TradingContext,
         indicators: pd.DataFrame,
-        strategy_class: type,  # Kept for backward compat but not stored
         market_adapter: 'IMarketAdapter',
         indicators_dir: Optional[str] = None,
         segmentation_data: Optional[pd.DataFrame] = None,
@@ -223,8 +221,8 @@ class OptimizationRunner:
         Call this once in the main process before spawning workers.
         Child processes will inherit this data via copy-on-write.
 
-        Note: strategy_class is NOT stored - it's recreated in each process
-        via get_strategy_class(ctx) to avoid pickle issues with dynamic classes.
+        The strategy class is recreated in each worker process via
+        ``get_strategy_class(ctx)`` to avoid pickle issues with dynamic classes.
 
         Parameters
         ----------

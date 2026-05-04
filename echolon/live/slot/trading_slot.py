@@ -337,8 +337,9 @@ class TradingSlot:
         """Get path to the strategy indicators CSV.
 
         Resolution order:
-          1. Per-slot path ``{indicators_backtest_dir}/{slot_id}/`` — written when
-             portfolio mode computes per-slot (legacy / divergent regime_params case).
+          1. Per-slot path ``{indicators_backtest_dir}/{slot_id}/`` — written
+             when portfolio mode computes per-slot (slots with divergent
+             regime_params).
           2. Per-group path ``{indicators_backtest_dir}/{instrument_code}_{bar_size}/``
              — written when portfolio mode merges slots on the same
              (instrument, bar_size) and computes the union once.
@@ -368,9 +369,8 @@ class TradingSlot:
     def _validate_indicators(self) -> None:
         """Validate that required indicators exist in the CSV.
 
-        Accepts flat-dict ``strategy_indicator_list.json``
-        (``{name: {param: v}}``) and legacy 4-section format (auto-translated
-        via :class:`echolon.strategy.schemas.StrategyIndicatorList`).
+        Reads flat-dict ``strategy_indicator_list.json``
+        (``{name: {param: v}}``).
         """
         indicator_list_path = os.path.join(
             self.slot_config.strategy_code_dir, "strategy_indicator_list.json"

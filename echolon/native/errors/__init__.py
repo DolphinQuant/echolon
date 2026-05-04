@@ -1,22 +1,13 @@
 """Echolon error catalog — programmatic access to error documentation.
 
-Phase F-9a: error markdown moved into the package at
-``echolon/native/errors/codes/`` (was ``docs/errors/``). Ships in the wheel
-via the ``echolon/native/errors/codes/*.md`` artifact in pyproject.toml.
+Markdown lives at ``echolon/native/errors/codes/`` and ships in the wheel.
 
-Phase F-10a: ``ErrorDoc.what`` and ``ErrorDoc.why`` are sourced FROM THE
-REGISTRY (``echolon.errors.ERROR_CATALOG``), not parsed from markdown.
-This eliminates the parallel hand-maintained renderings that previously
-allowed drift between the registry's glossary phrasing and the markdown's
-paragraph-form lead. The markdown's ``## Why this error fires`` (or
-``## Why``) sections remain — they're now treated as supplementary
-long-form prose, exposed via ``ErrorDoc.long_form_markdown``, not as the
-source of structured ``what``/``why`` fields.
-
-Long-form sections still parsed for back-compat (``fix``, ``example``,
-``common_causes``, ``related``), but the parser is best-effort: if a
-section is missing or uses an unrecognized header, the field is empty
-and ``long_form_markdown`` carries the original body verbatim.
+``ErrorDoc.what`` and ``ErrorDoc.why`` are sourced from the registry
+(``echolon.errors.ERROR_CATALOG``), not parsed from the markdown. The
+markdown's long-form prose (``## Fix``, ``## Example``, ``## Common
+causes``, ``## Related``) is best-effort parsed and exposed as structured
+fields; the original body is always available verbatim via
+``ErrorDoc.long_form_markdown`` as a parser-resilience fallback.
 """
 from dataclasses import dataclass
 from pathlib import Path

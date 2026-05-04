@@ -28,9 +28,9 @@ from echolon.native.errors import get_error_doc as _get_error_doc
 from echolon.native.validation import validate_strategy as _validate_strategy
 
 
-# Phase F-10c: generic markdown fetcher constrained to echolon/native/.
-# Resolves to the package directory regardless of install location (sdist
-# checkout vs. pip-installed wheel).
+# Generic markdown fetcher constrained to ``echolon/native/``. Resolves to
+# the package directory regardless of install location (sdist checkout vs.
+# pip-installed wheel).
 import echolon.native as _native
 _NATIVE_ROOT = Path(_native.__file__).parent
 
@@ -102,11 +102,6 @@ def build_server() -> FastMCP:
                 (no-param indicators like OBV, multi-param scalar indicators
                 like BBANDS, special-config indicators).
                 Omit for all.
-
-        Phase F-5: replaced the ``cluster`` filter with ``has_lookback``.
-        The previous 4-way cluster split collapsed to a binary because two
-        of the three "non-lookback" categories were treated identically by
-        every consumer.
         """
         return _catalog.list_all(has_lookback=has_lookback)
 
@@ -115,12 +110,8 @@ def build_server() -> FastMCP:
         """Return structured info for one indicator, or None if unknown.
 
         Keys: ``name``, ``has_lookback``, ``function``, ``file``, ``params``
-        (list of ``{name, default, type}`` dicts).
-
-        Phase F-5: ``cluster`` and ``output_columns`` fields removed —
-        ``has_lookback`` is the binary replacement; column names are
-        emitted by the runtime via ``processor._build_suffix`` (single
-        source of truth, correctly handles multi-param sweeps).
+        (list of ``{name, default, type}`` dicts). Column names emitted at
+        runtime by ``processor._build_suffix`` (handles multi-param sweeps).
         """
         info = _catalog.info(name)
         if info is None:
@@ -543,10 +534,6 @@ def build_server() -> FastMCP:
         from the YAML frontmatter ``description:`` field. Use this as a
         directory of "what doctrine is available" before calling
         ``get_skill(name)`` for the body.
-
-        Phase F-10b: previously skills were reachable only by in-runtime
-        skill loaders (Claude Code, OpenAI Agents SDK). MCP-only agents
-        now have parity access to the same content.
         """
         return [
             {"name": name, "description": (_skills.get_skill(name).description if _skills.get_skill(name) else "")}
@@ -575,10 +562,10 @@ def build_server() -> FastMCP:
     def get_doc(path: str) -> dict | None:
         """Read any markdown file under ``echolon/native/`` and return its body.
 
-        Phase F-10c: generic fallback for content not covered by the
-        dedicated tools (``get_pattern``, ``get_skill``, ``get_error_doc``,
-        ``load_template``). Useful for skill-cross-reference resolution and
-        supplementary files (``echolon/native/skills/SKILLS.md``,
+        Generic fallback for content not covered by the dedicated tools
+        (``get_pattern``, ``get_skill``, ``get_error_doc``, ``load_template``).
+        Useful for skill-cross-reference resolution and supplementary files
+        (``echolon/native/skills/SKILLS.md``,
         ``echolon/native/errors/codes/README.md``, template READMEs).
 
         Args:
@@ -609,12 +596,11 @@ def build_server() -> FastMCP:
     def validate_strategy_full(strategy_dir: str) -> dict:
         """Run every shipped validator and return merged findings.
 
-        Phase F-10d: composes all 6 individual MCP validators
-        (``validate_strategy`` / ``validate_component_protocol_signatures``
-        / ``validate_component_integration`` / ``validate_component_logging``
+        Composes the individual MCP validators (``validate_strategy`` /
+        ``validate_component_protocol_signatures`` /
+        ``validate_component_integration`` / ``validate_component_logging``
         / ``validate_parameter_access``) so an agent gets a complete
-        validation report from a single tool call instead of having to
-        know which validators exist.
+        validation report from a single tool call.
 
         Args:
             strategy_dir: Absolute path to the strategy directory.

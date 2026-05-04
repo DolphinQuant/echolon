@@ -278,11 +278,7 @@ class BacktraderStrategyBridge(bt.Strategy):
             self._start_called = True
 
     def notify_order(self, order):
-        """
-        Handle Backtrader order notifications.
-
-        BACKWARD COMPATIBLE: Logs order events to strategy logger.
-        """
+        """Handle Backtrader order notifications, logging to the strategy logger."""
         # Update order status in order manager
         status_map = {
             order.Submitted: OrderStatus.SUBMITTED,
@@ -330,11 +326,7 @@ class BacktraderStrategyBridge(bt.Strategy):
                 })
 
     def notify_trade(self, trade):
-        """
-        Handle Backtrader trade notifications.
-
-        BACKWARD COMPATIBLE: Logs trade events to strategy logger.
-        """
+        """Handle Backtrader trade notifications, logging to the strategy logger."""
         if not trade.isclosed:
             return
 

@@ -1,12 +1,15 @@
 """
 Parallel Indicator Processor
 
-Optimized version of the indicator calculation workflow that:
-1. Processes contract files in parallel via data_pipeline loaders
-2. Uses the new TA-Lib indicator system (indicator_utils.py and indicator_mapping.py)
-3. Converts data to numpy arrays for efficient calculation
-4. Outputs indicators in the same format as the legacy system
-5. Uses session-based context (SESSION_PHASE, VOLATILITY_STATE) for intraday
+Indicator calculation workflow:
+1. Process contract files in parallel via data-pipeline loaders.
+2. Dispatch to TA-Lib calculators (``indicator_utils.py`` and
+   ``indicator_mapping.py``).
+3. Convert to numpy arrays for efficient calculation.
+4. Output one row per (trading_date, contract) into
+   ``strategy_indicators.csv`` + per-contract pkls.
+5. Intraday calculations use session-based context (``SESSION_PHASE``,
+   ``VOLATILITY_STATE``).
 """
 import os
 import pandas as pd
@@ -851,12 +854,12 @@ def _compute_indicators_for_contract(
     results: Dict[str, np.ndarray] = {}
 
     for indicator_name, param_spec in indicator_list.items():
-        # Phase G: registry-driven dispatch for registered classifiers.
-        # If the indicator name matches a registered RegimeClassifier, use
-        # its fit_classify() instead of the indicator_mapping lookup. This
-        # is the extension path for paradigm-specific machinery — TRS, HMM,
-        # Carry. Echolon ships zero built-in classifiers; consumers register
-        # via ``echolon.indicators.registry.register_regime_classifier``.
+        # Registry-driven dispatch for registered classifiers. If the
+        # indicator name matches a registered ``RegimeClassifier``, use its
+        # ``fit_classify()`` instead of the indicator_mapping lookup. This
+        # is the extension path for paradigm-specific machinery (TRS, HMM,
+        # Carry, etc.). Echolon ships zero built-in classifiers; host code
+        # registers via ``echolon.indicators.registry.register_regime_classifier``.
         if is_registered_classifier(indicator_name):
             classifier = get_regime_classifier(indicator_name.lower())
             # Build merged params (auto + caller spec). For classifiers,

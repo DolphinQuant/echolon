@@ -203,7 +203,7 @@ def log_workflow_failure(
 ) -> None:
     """
     Log workflow failure. Accepts either an exception (preferred — traceback
-    is captured automatically via exc_info) or a plain string for legacy callers.
+    is captured automatically via exc_info) or a plain string.
 
     Format: "[CONTEXT] Workflow | FAILURE | <type: msg or string>"
 

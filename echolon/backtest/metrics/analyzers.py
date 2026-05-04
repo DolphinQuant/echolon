@@ -50,8 +50,8 @@ import datetime
 import logging
 from typing import Optional, Dict, Any, List, TYPE_CHECKING
 
-# Phase G: classifier labels come from the registered classifier's label_map.
-# The trade analyzer stratifies trades by segmentation column (typically the
+# Classifier labels come from the registered classifier's label_map. The
+# trade analyzer stratifies trades by segmentation column (typically the
 # TRS-paradigm 'market_regime' indicator). Conversion happens via the
 # registered classifier; if no classifier is registered, the analyzer returns
 # the raw value (numeric or string) without normalization.
@@ -861,9 +861,9 @@ def add_analyzers(
     cerebro.addanalyzer(bt.analyzers.PositionsValue, _name='positions')
     cerebro.addanalyzer(bt.analyzers.Transactions, _name='transactions')
 
-    # Trade analyzers — pass segmentation_data via the analyzer's params dict
-    # under the legacy key 'regime_data' (Backtrader analyzers reference params
-    # by name; the analyzer body itself uses self.p.regime_data internally).
+    # Trade analyzers — pass segmentation_data via the analyzer's params dict.
+    # The analyzer's internal param name is ``regime_data`` (Backtrader
+    # references params by attribute name on ``self.p``).
     if use_contract_aware_trades:
         cerebro.addanalyzer(
             ContractAwareTradeAnalyzer,

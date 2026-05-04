@@ -396,7 +396,7 @@ class ContractIndicatorManager:
 
 
 # =============================================================================
-# Main-contract resolution helpers (formerly contract_utils.py)
+# Main-contract resolution helpers
 # =============================================================================
 
 from datetime import datetime as _datetime  # noqa: E402  (local import for clarity)

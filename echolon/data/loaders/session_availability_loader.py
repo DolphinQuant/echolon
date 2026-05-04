@@ -125,7 +125,7 @@ class SessionAvailabilityLoader:
             self._expected_full_day_bars - self._expected_bars.get(night_phase, 0)
         )
 
-        # Backward compatibility properties for granular phases
+        # Per-phase expected bar counts (granular + aggregated schemas).
         self._expected_night_bars = self._expected_bars.get('night', 0) or \
                                      self._expected_bars.get('night_session', 0)
         self._expected_morning_bars = self._expected_bars.get('morning', 0)

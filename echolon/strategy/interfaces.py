@@ -4,10 +4,6 @@ Trading Interfaces
 
 Core trading interfaces that define contracts between strategy and platform.
 
-IMPORTANT: These interfaces are BACKWARD-COMPATIBLE with the original
-modules/backtest/backtrader_strategy/core/trading_interfaces.py to ensure
-existing platform-agnostic strategy code works without modification.
-
 Interfaces defined:
 - ITradingEngine: Main engine interface combining all components
 - IMarketData: Market data access (OHLCV, indicators, current bar)
@@ -17,8 +13,6 @@ Interfaces defined:
 - IStrategyLogger: Systematic strategy logging (Excel/CSV output)
 - IEventBus: Event publishing for order fills and trade closures
 - IStrategyCallbacks: Strategy lifecycle callbacks
-
-New additions (backward-compatible):
 - IMarketAdapter: Market-specific rules (SHFE, crypto, etc.)
 - IFrequencyContext: Time scaling for different bar sizes
 
@@ -117,21 +111,10 @@ class Bar:
         if self.low > self.open or self.low > self.close:
             raise ValueError(f"Low ({self.low}) must be <= open ({self.open}) and close ({self.close})")
 
-    def to_dict(self) -> Dict[str, float]:
-        """Convert to dictionary format for backward compatibility."""
-        return {
-            'open': self.open,
-            'high': self.high,
-            'low': self.low,
-            'close': self.close,
-            'volume': self.volume,
-            'datetime': self.datetime,
-        }
-
 
 @dataclass
 class OrderResult:
-    """Result of an order submission (backward compatibility with old interface)."""
+    """Result of an order submission."""
     order_id: str
     status: OrderStatus
     message: Optional[str] = None
@@ -162,25 +145,10 @@ class Order:
     filled_at: Optional[datetime] = None
     metadata: Dict[str, Any] = field(default_factory=dict)
 
-    def to_result(self) -> OrderResult:
-        """Convert to OrderResult for backward compatibility."""
-        return OrderResult(
-            order_id=self.order_id,
-            status=self.status,
-            message=None,
-            intent=self.intent
-        )
-
 
 @dataclass
 class Position:
-    """
-    Current position information.
-
-    BACKWARD COMPATIBLE: Supports both old and new field names.
-    - Old: direction (str), avg_price, market_value
-    - New: side (PositionSide), entry_price, current_price
-    """
+    """Current position information."""
     symbol: str
     size: float
     avg_price: float
@@ -189,38 +157,14 @@ class Position:
     realized_pnl: float
     direction: str  # "LONG", "SHORT", or "FLAT"
 
-    # Extended fields (optional, for new code)
     entry_datetime: Optional[datetime] = None
     bars_held: int = 0
     current_price: float = 0.0
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     @property
-    def entry_price(self) -> float:
-        """Alias for avg_price (new naming convention)."""
-        return self.avg_price
-
-    @property
-    def side(self) -> PositionSide:
-        """Convert direction string to PositionSide enum."""
-        if self.direction == "LONG":
-            return PositionSide.LONG
-        elif self.direction == "SHORT":
-            return PositionSide.SHORT
-        else:
-            return PositionSide.FLAT
-
-    @property
     def is_long(self) -> bool:
         return self.direction == "LONG"
-
-    @property
-    def is_short(self) -> bool:
-        return self.direction == "SHORT"
-
-    @property
-    def is_flat(self) -> bool:
-        return self.direction == "FLAT" or self.size == 0
 
 
 @dataclass
@@ -251,15 +195,11 @@ class AccountInfo:
 
 
 # ============================================================================
-# Core Interfaces (BACKWARD COMPATIBLE with old architecture)
+# Core Interfaces
 # ============================================================================
 
 class IMarketData(ABC):
-    """
-    Interface for accessing market data.
-
-    BACKWARD COMPATIBLE: Maintains all methods from old interface.
-    """
+    """Interface for accessing market data."""
 
     @abstractmethod
     def get_current_price(self) -> float:
@@ -362,11 +302,7 @@ class IMarketData(ABC):
 
 
 class IPortfolio(ABC):
-    """
-    Interface for portfolio and account information.
-
-    BACKWARD COMPATIBLE: Maintains all methods from old interface.
-    """
+    """Interface for portfolio and account information."""
 
     @abstractmethod
     def get_total_value(self) -> float:
@@ -465,10 +401,10 @@ class IPortfolio(ABC):
 
 
 class IOrderManager(ABC):
-    """
-    Interface for order management.
+    """Interface for order management.
 
-    BACKWARD COMPATIBLE: Maintains submit_entry_order/submit_exit_order pattern.
+    Strategies submit entry/exit intent via ``submit_entry_order`` /
+    ``submit_exit_order``.
     """
 
     @abstractmethod
@@ -585,11 +521,7 @@ class IOrderManager(ABC):
 
 
 class ILogger(ABC):
-    """
-    Interface for basic logging.
-
-    BACKWARD COMPATIBLE: Uses info/warning/error/debug pattern.
-    """
+    """Interface for basic logging (info / warning / error / debug)."""
 
     @abstractmethod
     def info(self, message: str) -> None:
@@ -697,11 +629,7 @@ class IStrategyLogger(ABC):
 
 
 class IEventBus(ABC):
-    """
-    Interface for event handling.
-
-    BACKWARD COMPATIBLE: Uses callback registration pattern.
-    """
+    """Interface for event handling via callback registration."""
 
     @abstractmethod
     def on_order_filled(self, callback: Callable) -> None:
@@ -781,9 +709,6 @@ class IStrategyCallbacks(ABC):
 class ITradingEngine(ABC):
     """
     Main trading engine interface that combines all components.
-
-    BACKWARD COMPATIBLE: Maintains get_strategy_logger().
-    NEW: Adds get_market_adapter() and get_frequency_context().
     """
 
     @abstractmethod
@@ -816,7 +741,7 @@ class ITradingEngine(ABC):
         """Get event bus interface."""
         pass
 
-    # New methods for modular architecture (with default None returns for backward compat)
+    # Default-None getters — concrete engines may not provide every component.
     def get_market_adapter(self) -> Optional['IMarketAdapter']:
         """Get market-specific adapter (SHFE, crypto, etc.). May be None."""
         return None
@@ -843,7 +768,7 @@ class ITradingEngine(ABC):
         - Session-aware indicators (VWAP, Opening Range, Session Levels)
         - Gap context and trading constraints
 
-        May be None for daily-only strategies or backward compatibility.
+        May be None for daily-only strategies that don't need session context.
         """
         return None
 
@@ -858,8 +783,7 @@ class ITradingEngine(ABC):
         - Market-specific methods (encode_phase, decode_phase, etc.)
 
         This is the preferred way to access market-specific functionality
-        in a market-agnostic manner.
-
-        May be None for backward compatibility.
+        in a market-agnostic manner. May be None when an engine implementation
+        does not supply a TradingContext.
         """
         return None

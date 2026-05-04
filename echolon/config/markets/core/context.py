@@ -45,8 +45,7 @@ class TradingContext:
     frequency: str  # 'intraday' | 'interday'
     bar_size: str   # '1m', '5m', '15m', '30m', '1h', '1d'
 
-    # Starting capital — was previously on TradingTarget; promoted to
-    # first-class field at E2 when TradingTarget was deleted.
+    # Starting capital for backtests (and as the live-deploy capital base).
     initial_capital: float = 200000.0
 
     # Encoding functions (set by factory based on market)

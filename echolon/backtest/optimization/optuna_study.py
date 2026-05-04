@@ -285,7 +285,6 @@ class OptunaOptimizer:
         OptimizationRunner.setup_shared_data(
             ctx=self.ctx,
             indicators=indicators,
-            strategy_class=self.strategy_class,
             market_adapter=self.market_adapter,
             indicators_dir=self.indicators_dir,
             segmentation_data=segmentation_data,

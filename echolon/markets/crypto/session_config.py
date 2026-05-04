@@ -34,7 +34,6 @@ from echolon.config.markets.crypto.perpetuals import (
     get_bars_per_day,
 )
 
-# Re-export for backward compatibility
 __all__ = [
     'CONTINUOUS_SESSION',
     'ALL_SESSIONS',

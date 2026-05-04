@@ -102,21 +102,20 @@ class BacktestResults:
 
 
 class BacktraderMarketData(IMarketData):
-    """
-    IMarketData implementation for Backtrader.
+    """IMarketData implementation for Backtrader.
 
-    BACKWARD COMPATIBLE: Implements all methods from old interface.
-    - get_current_price(): Returns current close price
-    - get_current_bar(): Returns Dict[str, float] (not Bar object)
-    - get_indicator(name, index): Uses 'index' param (0=current, 1=previous)
-    - get_contract_indicator(): For contract-specific indicator access
-    - get_bar_data(bars_back): Get historical bar as dict
-    - is_market_open(): Always True in backtest
+    Methods:
+    - ``get_current_price()``: current close price
+    - ``get_current_bar()``: Dict[str, float] (not a Bar object)
+    - ``get_indicator(name, index)``: indicator value at offset (0=current, 1=previous)
+    - ``get_contract_indicator()``: contract-specific indicator access
+    - ``get_bar_data(bars_back)``: historical bar as dict
+    - ``is_market_open()``: always True in backtest
 
-    NEW INTRADAY METHODS:
-    - get_session_context(): Get complete session context for current bar
-    - get_vwap(): Get session VWAP
-    - get_opening_range(): Get opening range high/low
+    Intraday helpers:
+    - ``get_session_context()``: complete session context for current bar
+    - ``get_vwap()``: session VWAP
+    - ``get_opening_range()``: opening range high/low
     """
 
     def __init__(
@@ -157,7 +156,7 @@ class BacktraderMarketData(IMarketData):
         self._session_context_provider = provider
 
     # ========================================================================
-    # BACKWARD COMPATIBLE METHODS (from old interface)
+    # IMarketData methods
     # ========================================================================
 
     def get_current_price(self) -> float:
@@ -241,7 +240,7 @@ class BacktraderMarketData(IMarketData):
         return True
 
     # ========================================================================
-    # EXTENDED METHODS (from new interface, also backward compatible)
+    # OHLC accessors (index = bars back; 0 = current)
     # ========================================================================
 
     def get_open(self, index: int = 0) -> float:
@@ -446,16 +445,15 @@ class BacktraderMarketData(IMarketData):
 
 
 class BacktraderPortfolio(IPortfolio):
-    """
-    IPortfolio implementation for Backtrader.
+    """IPortfolio implementation for Backtrader.
 
-    BACKWARD COMPATIBLE: Implements all methods from old interface.
-    - get_total_value(): Get total portfolio value (not get_equity)
-    - get_cash(): Get available cash
-    - get_position(): Returns Position with old fields (direction, avg_price)
-    - get_all_positions(): List of positions
-    - get_realized_pnl(): Total realized PnL
-    - get_unrealized_pnl(): Total unrealized PnL
+    Methods:
+    - ``get_total_value()``: total portfolio value
+    - ``get_cash()``: available cash
+    - ``get_position()``: Position with ``direction`` ("LONG"/"SHORT"/"FLAT")
+    - ``get_all_positions()``: list of positions
+    - ``get_realized_pnl()``: total realized PnL
+    - ``get_unrealized_pnl()``: total unrealized PnL
     """
 
     def __init__(
@@ -495,7 +493,7 @@ class BacktraderPortfolio(IPortfolio):
         self._realized_pnl += pnl
 
     # ========================================================================
-    # BACKWARD COMPATIBLE METHODS (from old interface)
+    # IMarketData methods
     # ========================================================================
 
     def get_total_value(self) -> float:
@@ -629,14 +627,13 @@ class BacktraderPortfolio(IPortfolio):
 
 
 class BacktraderOrderManager(IOrderManager):
-    """
-    IOrderManager implementation for Backtrader.
+    """IOrderManager implementation for Backtrader.
 
-    BACKWARD COMPATIBLE: Implements all methods from old interface.
-    - submit_entry_order(direction, size, price): Enter new position
-    - submit_exit_order(size, price): Exit/reduce position
-    - cancel_order(order_id): Cancel an order
-    - get_order_status(order_id): Get order status
+    Methods:
+    - ``submit_entry_order(direction, size, price)``: enter new position
+    - ``submit_exit_order(size, price)``: exit/reduce position
+    - ``cancel_order(order_id)``: cancel an order
+    - ``get_order_status(order_id)``: get order status
     """
 
     def __init__(
@@ -678,7 +675,7 @@ class BacktraderOrderManager(IOrderManager):
         return f"BT-{self._order_counter:06d}"
 
     # ========================================================================
-    # BACKWARD COMPATIBLE METHODS (from old interface)
+    # IMarketData methods
     # ========================================================================
 
     def submit_entry_order(self, direction: str, size: float,
@@ -943,11 +940,9 @@ class BacktraderOrderManager(IOrderManager):
 
 
 class BacktraderLogger(ILogger):
-    """
-    ILogger implementation for Backtrader.
+    """ILogger implementation for Backtrader.
 
-    BACKWARD COMPATIBLE: Uses old method names (info, warning, error, debug).
-    Routes logging to Python's logging system.
+    Routes ``info``/``warning``/``error``/``debug`` to Python's logging system.
     """
 
     def __init__(self, name: str = "BacktraderStrategy"):
@@ -955,7 +950,7 @@ class BacktraderLogger(ILogger):
         self._logger = logging.getLogger(name)
 
     # ========================================================================
-    # BACKWARD COMPATIBLE METHODS (from old interface)
+    # IMarketData methods
     # ========================================================================
 
     def info(self, message: str) -> None:
@@ -1032,8 +1027,8 @@ class BacktraderEventBus(IEventBus):
     """
     IEventBus implementation for Backtrader.
 
-    BACKWARD COMPATIBLE: Uses callback registration pattern from old interface.
-    Simple in-process event bus for order fills and trade closures.
+    Simple in-process event bus for order fills and trade closures, using
+    callback registration.
     """
 
     def __init__(self):
@@ -1045,7 +1040,7 @@ class BacktraderEventBus(IEventBus):
         }
 
     # ========================================================================
-    # BACKWARD COMPATIBLE METHODS (from old interface)
+    # IMarketData methods
     # ========================================================================
 
     def on_order_filled(self, callback: Callable) -> None:
@@ -1448,7 +1443,7 @@ class BacktraderEngine(ITradingEngine):
         - Bar position within session (bar_of_session, bars_remaining)
         - Session-aware indicators (VWAP, Opening Range, Session Levels)
 
-        Returns None for daily strategies or backward compatibility.
+        Returns None for daily strategies that don't need session context.
         """
         return self._session_context_provider
 

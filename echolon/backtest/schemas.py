@@ -1,19 +1,13 @@
-"""Backtest schemas - contracts between backtest engine and downstream consumers.
+"""Backtest schemas — contracts between backtest engine and downstream consumers.
 
-Consolidates four legacy schema files:
-    - backtest_results.py : BacktestResultsSchemaV4 (main backtest_results.json)
-    - trade_log.py        : TradeRecordSchema (backtest_trades.csv)
-    - strategy_log.py     : StrategyLogRecordSchema (Bridge_default.csv)
-    - selected_trial.py   : SelectedTrialSchema (selected_robust_trial.json)
+Schemas defined here:
+    - BacktestResultsSchemaV4   (backtest_results.json)
+    - TradeRecordSchema         (backtest_trades.csv)
+    - StrategyLogRecordSchema   (Bridge_default.csv)
+    - SelectedTrialSchema       (selected_robust_trial.json)
 
-Producer: echolon/backtest/engine/* + optimization/trial_selector.py
-Consumer: backtest_metrics/utils/backtest_loader.py
-
-Schema versions:
-    backtest_results: v4.0 (Updated 2026-01-15)
-    trade_log:        v1.1 (Updated 2026-01-31 - frequency-adaptive)
-    strategy_log:     v1.0 (Created 2026-01-15)
-    selected_trial:   v1.0 (Created 2026-01-15)
+Producer: echolon/backtest/engine/* + optimization/trial_selector.py.
+Consumer: backtest_metrics/utils/backtest_loader.py.
 """
 
 import math
@@ -402,8 +396,7 @@ class TradeRecordSchema(BaseModel):
         None,
         description=(
             "TRS-paradigm: market regime label at entry execution date. Other "
-            "paradigms (TSMOM, etc.) typically leave None. Field name retained "
-            "for backward compatibility with existing trade logs."
+            "paradigms (TSMOM, etc.) typically leave None."
         )
     )
     decision_regime: Optional[str] = Field(

@@ -11,16 +11,12 @@ Hydration happens at import time via `_load_from_registry()`, which walks
 INDICATOR_MAPPING (interday) + INTRADAY_INDICATOR_MAPPING (intraday) and extracts
 param defaults via ``inspect.signature`` on the calculator modules.
 
-Phase F-5: ``cluster`` categorization removed. The previous 4-way split
-(indicators_with_lookback / _without_lookback / _with_special_params /
-intraday_context_indicators) is replaced by a single derived boolean
-``IndicatorInfo.has_lookback`` — True when the indicator's signature has a
-period-like parameter (``timeperiod`` / ``period`` / ``time_period``). This
-collapses an artificial three-way distinction that was treating "no params"
-and "multi params" identically at the runtime layer.
+Indicator categorization is captured by a single derived boolean
+``IndicatorInfo.has_lookback`` — True when the indicator's signature has
+a period-like parameter (``timeperiod`` / ``period`` / ``time_period``).
 
-Merge rule: interday wins on name collision. The CTX passed at dispatch time
-governs which calculator actually runs; catalog is frequency-agnostic.
+Merge rule: interday wins on name collision. The CTX passed at dispatch
+time governs which calculator actually runs; catalog is frequency-agnostic.
 """
 from __future__ import annotations
 
@@ -57,9 +53,6 @@ class IndicatorInfo:
         ``_PERIOD_PARAM_NAMES`` (``timeperiod`` / ``period`` / ``time_period``),
         the indicator follows lookback semantics — runtime emits column names
         templated as ``{name}_{period_value}`` for single-period sweeps.
-
-        Phase F-5 replacement for the previous ``cluster ==
-        "indicators_with_lookback"`` check.
         """
         return any(p["name"] in _PERIOD_PARAM_NAMES for p in self.params)
 
@@ -124,10 +117,10 @@ def _load_from_registry() -> dict[str, IndicatorInfo]:
     intraday entry. Intraday-only names (VWAP, session indicators, etc.)
     are added as new entries.
 
-    Phase F-5: ``output_columns`` removed from IndicatorInfo (the static
-    template lied for multi-param sweeps). Runtime column-naming via
-    ``processor._build_suffix`` is the single source of truth — it correctly
-    emits ``{name}_{period}`` for single-period sweeps and
+    ``output_columns`` is not stored on IndicatorInfo (the static template
+    can't represent multi-param sweeps). Runtime column-naming via
+    ``processor._build_suffix`` is the single source of truth — it emits
+    ``{name}_{period}`` for single-period sweeps and
     ``{name}_{key1}{val1}_{key2}{val2}`` for multi-param sweeps.
     """
     from echolon.indicators.calculators.interday.indicator_mapping import (
@@ -172,11 +165,6 @@ def list_all(has_lookback: bool | None = None) -> list[str]:
             ``False`` → only indicators without a period parameter (no-param,
                        multi-param scalar, or special-config indicators).
             ``None``  → return all (default).
-
-    Phase F-5: replaces the previous ``cluster=...`` keyword. The 4-way
-    cluster split collapsed to a binary ``has_lookback`` because two of the
-    three previous "non-lookback" categories were treated identically by
-    every consumer.
     """
     if has_lookback is None:
         return sorted(_CATALOG.keys())
@@ -211,11 +199,11 @@ def validate(flat_dict: dict) -> list[dict]:
     Returns:
         List of error dicts with keys: ``code``, ``field``, ``message``, ``suggestion``.
     """
-    # Phase G follow-up: Names registered as regime classifiers are valid
-    # entries in indicator_list even though they aren't in the static
-    # catalog. The processor (engine/processor.py) dispatches them via
-    # `is_registered_classifier`; the validator must agree. Lazy-import to
-    # match the `_load_from_registry` boundary already established here.
+    # Names registered as regime classifiers are valid entries in
+    # indicator_list even though they aren't in the static catalog. The
+    # processor (engine/processor.py) dispatches them via
+    # ``is_registered_classifier``; the validator must agree. Lazy-import to
+    # match the ``_load_from_registry`` boundary already established here.
     from echolon.indicators.registry import is_registered_classifier
 
     errors: list[dict] = []
@@ -259,12 +247,9 @@ def validate(flat_dict: dict) -> list[dict]:
                         "suggestion": close,
                     })
 
-        # Phase F-5: range validation now applies to ANY indicator's params
-        # (was previously gated on cluster == "indicators_with_lookback",
-        # which meant multi-param sweeps like {"bbands_upper": {"timeperiod":
-        # [20, 10]}} silently skipped validation). The check is param-scoped
-        # — any [min, max] integer list with min > max is an error regardless
-        # of which indicator owns it.
+        # Range validation applies to any indicator's params: any
+        # ``[min, max]`` integer list with ``min > max`` is an error
+        # regardless of which indicator owns it.
         if isinstance(params, dict):
             for param_key, param_val in params.items():
                 if (

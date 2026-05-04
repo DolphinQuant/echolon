@@ -79,10 +79,10 @@ class BaseComponent(ABC):
     - Parameter storage and access
     """
 
-    # ------ Phase 1 declarative surface (Task 23) ------
-    # Subclasses may override these class attributes.
-    # - Params: a @dataclass type defining this component's parameters; if set,
-    #   dict/missing `params` are auto-promoted to this dataclass.
+    # ------ Declarative class attributes ------
+    # Subclasses may override:
+    # - Params: a ``@dataclass`` type defining this component's parameters; if
+    #   set, dict/missing ``params`` are auto-promoted to this dataclass.
     # - hooks: declarative list of hook names for the engine to auto-install.
     # - indicators: declarative list of indicator names (per indicator_list schema).
     Params = None
@@ -106,21 +106,21 @@ class BaseComponent(ABC):
                 declarative-surface-only construction in unit tests).
             frequency_context: Frequency context for scaling (optional, uses engine's)
             market_adapter: Market adapter (optional, uses engine's)
-            params: Optional Params dataclass instance / dict for the Phase 1
-                typed-params surface. If None and ``self.Params`` is set, a
-                default ``self.Params()`` instance is constructed.
-            **kwargs: Legacy component parameters (collected into ``self._params``
-                to preserve the existing dict-based access pattern).
+            params: Optional Params dataclass instance / dict for the typed
+                params surface. If None and ``self.Params`` is set, a default
+                ``self.Params()`` instance is constructed.
+            **kwargs: Component parameters in dict form (collected into
+                ``self._params`` and accessible via ``params.get(...)``).
         """
-        # Phase 1 Params/dict promotion:
+        # Params/dict promotion:
         # - params=None + self.Params set → construct default self.Params()
         # - dict + self.Params set → promote dict to self.Params(**dict)
         # - instance + self.Params set → store as-is
-        # - None or dict or instance + self.Params unset → store as-is (legacy dict path)
+        # - None or dict or instance + self.Params unset → store as-is (kwargs-dict path)
         #
-        # The typed params (or raw ``params`` arg) are stored in ``self._typed_params``;
-        # the ``params`` property below returns this when set, falling back to the
-        # legacy kwargs-dict (``self._params``) otherwise.
+        # ``self._typed_params`` carries whichever shape was provided; the
+        # ``params`` property below returns it when set, otherwise falls back
+        # to the kwargs-dict in ``self._params``.
         if params is None and self.Params is not None:
             self._typed_params = self.Params()
         elif self.Params is not None and isinstance(params, dict):
@@ -128,10 +128,9 @@ class BaseComponent(ABC):
         else:
             self._typed_params = params
 
-        # Legacy param storage (kwargs-based, used by existing concrete components).
-        # Existing entry/exit/risk/sizer subclasses pass `printlog=...`, etc. as kwargs;
-        # collect them into self._params to preserve the existing `params.get(...)`
-        # access pattern elsewhere in the codebase.
+        # kwargs-dict surface: components like entry/exit/risk/sizer pass
+        # ``printlog=...`` etc. as kwargs; collect them so ``self.params.get(...)``
+        # works.
         self._params = kwargs
 
         # Engine wiring — only if an engine was provided (skipped for unit tests
@@ -237,9 +236,9 @@ class BaseComponent(ABC):
     def params(self) -> Dict[str, Any]:
         """Get component parameters.
 
-        Returns the Phase 1 typed Params instance when one was supplied or
-        auto-constructed (via the ``Params`` class attribute); otherwise falls
-        back to the legacy kwargs-dict collected at ``__init__`` time.
+        Returns the typed ``Params`` instance when one was supplied or
+        auto-constructed (via the ``Params`` class attribute); otherwise
+        falls back to the kwargs-dict collected at ``__init__`` time.
         """
         typed = getattr(self, "_typed_params", None)
         if typed is not None:

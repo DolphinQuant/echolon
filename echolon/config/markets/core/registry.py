@@ -1,22 +1,18 @@
 """
-Market Registry - Central aggregation point for all market configurations.
+Market Registry — central aggregation point for market configurations.
 
-This module provides a singleton registry that collects configurations from
-all market-specific modules. Each market module registers itself on import.
+Singleton registry collecting configurations from all market-specific
+modules. Each market module registers itself on import.
 
-Usage:
+Usage::
+
     from echolon.config.markets.core.registry import MarketRegistry
 
-    # Get specific configurations
     al_spec = MarketRegistry.get_instrument('SHFE', 'al')
     shfe_config = MarketRegistry.get_market('SHFE')
-
-    # Get all data (for backward compatibility)
-    all_markets = MarketRegistry.get_all_markets()
-    all_instruments = MarketRegistry.get_all_instruments()
 """
 
-from typing import Dict, List, Optional, Any
+from typing import Dict, List, Optional
 
 from ..core.types import (
     MarketConfig,
@@ -110,47 +106,6 @@ class MarketRegistry:
         if market_config:
             return market_config.phases
         return {}
-
-    @classmethod
-    def get_all_markets(cls) -> Dict[str, Dict[str, Any]]:
-        """
-        Get all markets as dict (legacy compatibility).
-
-        Returns:
-            Dict matching old MARKETS structure
-        """
-        result = {}
-        for code, config in cls._markets.items():
-            result[code] = {
-                'code': config.code,
-                'name': config.name,
-                'full_name': config.full_name,
-                'chinese_name': config.chinese_name,
-                'xuntou_code': config.xuntou_code,
-                'timezone': config.timezone,
-                'currency': config.currency,
-                'instruments': list(config.instruments.keys()),
-                'sessions': config.sessions,
-                'all_sessions': config.all_sessions,
-                'day_sessions': [s for s in config.all_sessions
-                                 if not s.crosses_midnight],
-                'supports_overnight': config.supports_overnight,
-                'has_contract_expiry': config.has_contract_expiry,
-            }
-        return result
-
-    @classmethod
-    def get_all_instruments(cls) -> Dict[str, Dict[str, InstrumentSpec]]:
-        """
-        Get all instruments grouped by market (legacy compatibility).
-
-        Returns:
-            Dict of market_code -> {instrument_code -> InstrumentSpec}
-        """
-        return {
-            code: config.instruments
-            for code, config in cls._markets.items()
-        }
 
     @classmethod
     def get_instrument_list(cls, market: Optional[str] = None) -> List[str]:

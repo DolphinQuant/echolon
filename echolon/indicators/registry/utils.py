@@ -126,8 +126,3 @@ def indicator_exists(indicator_key: str, frequency: str = "day") -> bool:
     return info is not None
 
 
-# Phase F-5: get_cluster_name removed. The cluster categorization was replaced
-# with IndicatorInfo.has_lookback (computed from function signature). Callers
-# that need the lookback property use:
-#     from echolon.indicators import catalog
-#     catalog.info(name).has_lookback

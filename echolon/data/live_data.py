@@ -3,8 +3,7 @@ Live Data-Update Orchestrator
 ==============================
 
 Incremental bar downloads and live-source calendar updates via a
-caller-injected client.  This module handles the ``source="qmt"`` use-case
-that was previously handled inside ``run_data_pipeline`` (now file-only).
+caller-injected client.
 
 Typical call from a live-deploy runner::
 
@@ -47,8 +46,7 @@ def run_live_data_update(
 ) -> bool:
     """Incremental bar download + transform for a running live deploy.
 
-    Replaces the ``source="qmt"`` branches that were previously in
-    ``run_data_pipeline``.  The two key live-specific steps are:
+    The two key live-specific steps:
 
     * Step 1  — ``extractor.extract_raw(output_dir=…)``  (incremental update,
       uses the injected *client* internally)

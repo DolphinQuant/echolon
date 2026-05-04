@@ -17,10 +17,6 @@ Key SHFE-specific rules:
 4. Commission: Fixed per contract (e.g., 3.01 CNY for aluminum)
 
 Contract naming: al2403 = Aluminum, March 2024
-
-This consolidates logic previously in:
-- contract_aware_broker.py (backtest)
-- contract_expiry_observer.py (both backtest and deploy)
 """
 
 from datetime import date, datetime

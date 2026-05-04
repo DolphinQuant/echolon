@@ -1,11 +1,8 @@
 """Echolon patterns — parse the patterns SKILL.md, expose programmatic access.
 
-Phase F-9b: source moved from ``docs/PATTERNS.md`` (repo root, invisible to
-pip-installed users) to ``echolon/native/skills/echolon_api/patterns/SKILL.md``
-(package data, ships in wheel via the existing ``echolon/native/**/*.md``
-artifact pattern in pyproject.toml). The parser handles the YAML frontmatter
-that skill files carry (block delimited by ``---`` lines) by skipping it
-before the section walker starts.
+Source: ``echolon/native/skills/echolon_api/patterns/SKILL.md`` (package
+data, ships in the wheel). The parser handles YAML frontmatter (block
+delimited by ``---`` lines) by skipping it before the section walker starts.
 """
 import re
 from dataclasses import dataclass

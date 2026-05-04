@@ -413,14 +413,10 @@ def validate_position_size(size: Union[int, float], component_name: str = "posit
     return validated_size
 
 
-# StrategyIndicatorList is a thin alias over the canonical flat-dict schema.
-# Callers that still import ``from echolon.strategy.schemas import StrategyIndicatorList``
-# get the same Pydantic model they'd get importing IndicatorList directly.
-from echolon.indicators.schema import IndicatorList as StrategyIndicatorList
+from echolon.indicators.schema import IndicatorList
 
 
-
-def validate_indicator_list_json(file_path: str) -> tuple[bool, str, StrategyIndicatorList]:
+def validate_indicator_list_json(file_path: str) -> tuple[bool, str, IndicatorList]:
     """
     Validate strategy_indicator_list.json file format using Pydantic.
 
@@ -431,7 +427,7 @@ def validate_indicator_list_json(file_path: str) -> tuple[bool, str, StrategyInd
         Tuple of (is_valid, error_message, parsed_model)
         - is_valid: True if valid, False otherwise
         - error_message: Empty string if valid, detailed error message if invalid
-        - parsed_model: StrategyIndicatorList instance if valid, None if invalid
+        - parsed_model: IndicatorList instance if valid, None if invalid
 
     Example:
         >>> is_valid, error, model = validate_indicator_list_json("strategy_indicator_list.json")
@@ -449,7 +445,7 @@ def validate_indicator_list_json(file_path: str) -> tuple[bool, str, StrategyInd
         data = json.load(f)
 
     # Validate with Pydantic
-    validated_model = StrategyIndicatorList(**data)
+    validated_model = IndicatorList(**data)
     return True, "", validated_model
 
 
@@ -459,6 +455,6 @@ __all__ = [
     'SizerOutput',
     'RiskOutput',
     'validate_position_size',
-    'StrategyIndicatorList',
+    'IndicatorList',
     'validate_indicator_list_json',
 ]
