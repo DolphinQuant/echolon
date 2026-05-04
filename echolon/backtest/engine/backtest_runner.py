@@ -166,7 +166,14 @@ class BacktestRunner:
             self.config.market_data_dir = str(paths.market_data_dir)
         if self.config.backtest_results_dir is None:
             self.config.backtest_results_dir = str(paths.backtest_results_dir)
-        self.strategy_code_dir = strategy_code_dir
+        # Default strategy_code_dir to paths.strategy_code_dir when caller
+        # didn't specify a slot — avoids the bridge's PathsConfig.from_env()
+        # fallback (which would silently resolve to OSS defaults relative to
+        # cwd / ECHOLON_PROJECT_ROOT, not the host app's overridden layout).
+        self.strategy_code_dir = (
+            strategy_code_dir if strategy_code_dir is not None
+            else str(paths.strategy_code_dir)
+        )
 
         # State
         self._indicators: Optional[pd.DataFrame] = None
