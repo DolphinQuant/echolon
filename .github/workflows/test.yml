@@ -9,6 +9,13 @@ on:
 jobs:
   test:
     runs-on: ${{ matrix.os }}
+    env:
+      # Force Python's UTF-8 mode globally on every runner. Eliminates a
+      # whole class of cp1252 / charmap codec errors on Windows for any
+      # library code that prints Unicode glyphs (`→`, `✓`, em-dashes)
+      # or reads source/markdown files. Has been a stable Python feature
+      # since 3.7. Equivalent to passing `-X utf8`.
+      PYTHONUTF8: "1"
     strategy:
       fail-fast: false
       matrix:

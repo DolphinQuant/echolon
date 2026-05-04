@@ -31,7 +31,10 @@ def test_backtest_recovers_ctx_from_workspace_marker(tmp_path):
         cwd=str(tmp_path), env=env,
         capture_output=True, text=True, timeout=120,
     )
-    out = bt.stdout + bt.stderr
+    # Defensive: on Windows, subprocess.run sometimes returns None for
+    # stdout/stderr when text=True + capture_output=True encounters a
+    # hard process crash before any output. Guard with `or ""`.
+    out = (bt.stdout or "") + (bt.stderr or "")
     # Stub data is minimal — backtest may fail downstream. What we DON'T accept
     # is a "Missing context fields" error, which would prove marker recovery
     # didn't happen.

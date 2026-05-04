@@ -1,10 +1,23 @@
 """PathsConfig — single source of truth for library-owned directory layout."""
+import sys
 from pathlib import Path
 
 import pytest
 from pydantic import ValidationError
 
 from echolon.config.paths_config import PathsConfig
+
+# Five tests below use Unix-style absolute paths (`/srv/shared/market`)
+# as override fixtures. On Windows, `Path("/srv/...")` resolves to a
+# drive-relative path (e.g. `D:\srv\...`) so the comparison fails. The
+# tests verify Pydantic Settings behavior (env var precedence, .env
+# loading, explicit-kwarg precedence) — that behavior is itself
+# platform-portable; only the test fixtures aren't. Skip on Windows
+# rather than rewrite the fixtures with platform-conditional paths.
+_skip_on_windows = pytest.mark.skipif(
+    sys.platform == "win32",
+    reason="fixture uses Unix-style absolute paths; behavior under test is platform-portable",
+)
 
 
 def test_from_project_root_conventional_layout(tmp_path: Path):
@@ -184,6 +197,7 @@ def test_from_file_unknown_field_rejected(tmp_path: Path):
 # Per-field env var overrides (task 4 — pydantic-settings migration)
 # ---------------------------------------------------------------------------
 
+@_skip_on_windows
 def test_per_field_env_var_overrides_market_data_dir(tmp_path: Path, monkeypatch):
     """ECHOLON_MARKET_DATA_DIR overrides the convention default while other
     fields continue to follow project_root convention."""
@@ -195,6 +209,7 @@ def test_per_field_env_var_overrides_market_data_dir(tmp_path: Path, monkeypatch
     assert paths.raw_data_dir == tmp_path.resolve() / "data"
 
 
+@_skip_on_windows
 def test_per_field_env_var_overrides_multiple_fields(tmp_path: Path, monkeypatch):
     monkeypatch.setenv("ECHOLON_PROJECT_ROOT", str(tmp_path))
     monkeypatch.setenv("ECHOLON_MARKET_DATA_DIR", "/srv/md")
@@ -206,6 +221,7 @@ def test_per_field_env_var_overrides_multiple_fields(tmp_path: Path, monkeypatch
     assert paths.indicators_backtest_dir == Path("/scratch/ind")
 
 
+@_skip_on_windows
 def test_dotenv_file_loaded_from_cwd(tmp_path: Path, monkeypatch):
     """.env in cwd is auto-loaded when constructing via PathsConfig() / from_env()."""
     (tmp_path / ".env").write_text(
@@ -220,6 +236,7 @@ def test_dotenv_file_loaded_from_cwd(tmp_path: Path, monkeypatch):
     assert paths.project_root == tmp_path.resolve()
 
 
+@_skip_on_windows
 def test_explicit_kwarg_beats_env_var(tmp_path: Path, monkeypatch):
     """Explicit kwarg to ``from_project_root`` wins over env var.
 
@@ -230,6 +247,7 @@ def test_explicit_kwarg_beats_env_var(tmp_path: Path, monkeypatch):
     assert paths.market_data_dir == Path("/from/kwarg")
 
 
+@_skip_on_windows
 def test_env_beats_dotenv_file(tmp_path: Path, monkeypatch):
     """Process env var wins over the .env file (standard Pydantic Settings precedence)."""
     (tmp_path / ".env").write_text(
