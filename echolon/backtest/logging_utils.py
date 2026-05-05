@@ -13,8 +13,13 @@ This module provides:
 
 Logging Modes:
 - optimization: Minimal logging (WARNING+) - only progress and errors
-- debug: Full visibility (DEBUG+) - bar-by-bar decisions visible
-- best_trial: Balanced logging (INFO+) - milestones and results
+- summary: User-facing summary (INFO+ at top-level loggers, bar-loop loggers
+  demoted to WARNING). No per-bar trace. Default for ``echolon hello`` and
+  the non-verbose ``echolon backtest single`` path.
+- debug: Full visibility - per-bar Risk/Entry/Exit/Sizer trace visible.
+  Opt in via ``--verbose``.
+- best_trial: Balanced logging (INFO+, per-bar trace ON) - used by deploy
+  daily best-trial replay.
 
 Message Format:
     [CONTEXT] Component | STATUS | key1=value1, key2=value2
@@ -31,9 +36,12 @@ RESULT = 35
 logging.addLevelName(RESULT, "RESULT")
 
 # Type for execution contexts
-RunContext = Literal["optimization", "debug", "best_trial"]
+RunContext = Literal["optimization", "summary", "debug", "best_trial"]
 
-_current_context: ContextVar[RunContext] = ContextVar("echolon_run_context", default="debug")
+# Default is "summary" — safer than "debug" because callers that forget to
+# set the context (e.g. tests that hit logger paths directly) won't flood
+# stdout with per-bar trace lines.
+_current_context: ContextVar[RunContext] = ContextVar("echolon_run_context", default="summary")
 
 
 def set_run_context(context: RunContext) -> None:
@@ -92,6 +100,27 @@ def setup_backtest_logging(run_context: RunContext) -> None:
         logging.getLogger("backtrader.broker").setLevel(logging.ERROR)
         logging.getLogger("backtrader.cerebro").setLevel(logging.ERROR)
         logging.getLogger("matplotlib").setLevel(logging.ERROR)
+
+    elif run_context == "summary":
+        # User-facing default. Root at INFO so workflow milestones
+        # ([BACKTEST_RUNNER] Complete, [STRATEGY_BRIDGE] Indicators, …)
+        # remain visible, but bar-loop loggers demoted to WARNING so the
+        # per-bar Risk/Entry/Sizer trace doesn't drown the summary line.
+        root_logger = logging.getLogger()
+        root_logger.setLevel(logging.INFO)
+
+        for logger_name in [
+            "echolon.backtest.engine.backtrader_strategy",
+            "echolon.strategy.component",
+            "echolon.backtest.engine.hooks.contract_aware.broker",
+            "echolon.backtest.engine.hooks.contract_aware.hook",
+            "echolon.backtest.engine.hooks.session_aware",
+        ]:
+            logging.getLogger(logger_name).setLevel(logging.WARNING)
+
+        # Backtrader internals are noisy at INFO; user doesn't need them.
+        logging.getLogger("backtrader").setLevel(logging.WARNING)
+        logging.getLogger("matplotlib").setLevel(logging.WARNING)
 
     elif run_context == "debug":
         root_logger = logging.getLogger()
@@ -331,20 +360,25 @@ def log_zero_trades_warning(
 
 def should_log_details(run_context: RunContext) -> bool:
     """
-    Determine if detailed logging should be enabled based on context.
+    Determine if detailed (per-bar) logging should be enabled based on context.
 
-    Use this to conditionally log verbose information:
-    - optimization: False (suppress details)
-    - debug: True (show all details)
-    - best_trial: True (show details for production runs)
+    Gates the per-bar Risk/Entry/Exit/Sizer trace and the per-bar
+    ``[CONTEXT] Bar N | START/END`` lines. The other "verbose" logger
+    levels (workflow_start, workflow_complete, indicator-bridge counts)
+    are controlled by ``setup_backtest_logging``, not by this gate.
+
+    - optimization: False (silent — high-throughput Optuna trials)
+    - summary: False (user-facing summary — no per-bar trace)
+    - debug: True (per-bar trace, opt in via ``--verbose``)
+    - best_trial: True (per-bar trace for daily deploy replay)
 
     Args:
         run_context: Execution context
 
     Returns:
-        True if details should be logged
+        True if per-bar trace should be logged
     """
-    return run_context != "optimization"
+    return run_context in ("debug", "best_trial")
 
 
 def format_time_seconds(seconds: float) -> str:

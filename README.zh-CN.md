@@ -92,7 +92,7 @@ Echolon **不会**从原始 OHLCV 自动推导 `main_contract.csv` — 这份文
 
 ## 项目信息
 
-Apache 2.0 — 见 [LICENSE](LICENSE)。可自由使用,商用非商用都行。活跃开发中,v0.1.2 beta。由 [DolphinQuant](https://dolphinquant.com) 开发并维护 — 同一支团队在 SHFE 上运营 Qorka。欢迎到 [github.com/dolphinquant/echolon](https://github.com/dolphinquant/echolon) 提 issue 和 pull request。
+Apache 2.0 — 见 [LICENSE](LICENSE)。可自由使用,商用非商用都行。活跃开发中,v0.1.3 beta。由 [DolphinQuant](https://dolphinquant.com) 开发并维护 — 同一支团队在 SHFE 上运营 Qorka。欢迎到 [github.com/dolphinquant/echolon](https://github.com/dolphinquant/echolon) 提 issue 和 pull request。
 
 ```bibtex
 @software{echolon,

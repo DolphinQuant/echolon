@@ -4,6 +4,43 @@ All notable changes to echolon are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/). Pre-1.0 minor and patch
 versions may carry breaking changes — they are clearly flagged below.
 
+## 0.1.3 — 2026-05-05
+
+User-facing logging cleanup. ``echolon hello`` and the default
+``echolon backtest single`` path no longer flood stdout with per-bar
+``[DEBUG] Bar N | START/END`` and ``[DEBUG] Risk | TRADING_ALLOWED``
+trace lines. Pass ``--verbose`` (or ``-v``) to restore that trace.
+
+### New
+
+- New ``summary`` run_context (``echolon.backtest.logging_utils``).
+  Root INFO so workflow milestones remain visible
+  (``[BACKTEST_RUNNER] Complete``, ``[STRATEGY_BRIDGE] Indicators``);
+  bar-loop loggers (``backtrader_strategy``, ``strategy.component``,
+  contract-aware/session-aware hooks) demoted to WARNING so per-bar
+  trace is suppressed. ``echolon hello`` and non-verbose
+  ``echolon backtest single`` now use this context by default.
+
+### Fixed
+
+- ``should_log_details`` now correctly gates only ``debug`` and
+  ``best_trial`` (was: every non-``optimization`` context). The new
+  ``summary`` context returns False, matching user expectation that
+  the default invocation prints a one-line Sharpe summary, not 1500
+  lines of per-bar trace.
+- ``BacktestRunner.run`` no longer silently coerces unknown contexts to
+  ``best_trial``. Canonical contexts (``optimization``/``summary``/
+  ``debug``/``best_trial``) pass through verbatim; non-canonical
+  legacy values (``custom``/``manual``/``backtest``) still fall back to
+  ``best_trial`` for back-compat.
+- ``echolon.backtest.logging_utils._current_context`` ContextVar default
+  changed from ``"debug"`` to ``"summary"``. Test paths and library
+  callers that hit the logger without first calling
+  ``setup_backtest_logging`` no longer flood stdout.
+- ``echolon backtest single --verbose`` help text corrected — previously
+  claimed it surfaced a DEBUG-level trace, but the trace was always on
+  regardless of the flag. Now the flag actually controls the trace.
+
 ## 0.1.2 — 2026-05-04
 
 Second public release. Hardens the dependency-injection contract, trims the

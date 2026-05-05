@@ -84,6 +84,41 @@ def test_run_context_isolated_across_asyncio_tasks():
 import importlib
 
 
+def test_should_log_details_only_true_for_debug_and_best_trial():
+    """Per-bar trace must be off for ``optimization`` and ``summary``,
+    on for ``debug`` and ``best_trial``. Regression for v0.1.3 — the
+    previous semantic ("on for everything except optimization") flooded
+    ``echolon hello`` stdout with thousands of per-bar lines."""
+    assert logging_utils.should_log_details("optimization") is False
+    assert logging_utils.should_log_details("summary") is False
+    assert logging_utils.should_log_details("debug") is True
+    assert logging_utils.should_log_details("best_trial") is True
+
+
+def test_setup_backtest_logging_summary_demotes_bar_loop_loggers():
+    """``summary`` context must keep root at INFO but demote the bar-loop
+    loggers (backtrader_strategy, strategy.component) to WARNING so that
+    per-bar ``logger.info(...)`` calls are filtered out."""
+    logging_utils.setup_backtest_logging("summary")
+
+    # Root at INFO so workflow milestones show through.
+    assert logging.getLogger().level == logging.INFO
+    # Bar-loop loggers demoted to WARNING — per-bar info() calls suppressed.
+    assert logging.getLogger("echolon.backtest.engine.backtrader_strategy").level == logging.WARNING
+    assert logging.getLogger("echolon.strategy.component").level == logging.WARNING
+
+
+def test_default_run_context_is_summary():
+    """Default ContextVar value is ``summary`` — callers that hit logger
+    paths without first calling setup_backtest_logging won't flood stdout."""
+    # Reset to default by creating a fresh ContextVar via the module-level
+    # default. We can't easily reset; but we can verify by reading the
+    # default declared in the source.
+    import inspect
+    src = inspect.getsource(logging_utils)
+    assert 'default="summary"' in src, "ContextVar default must be 'summary'"
+
+
 def test_setup_backtest_logging_references_real_loggers():
     """setup_backtest_logging must not reference logger names that
     correspond to non-existent modules (regression: previously referenced

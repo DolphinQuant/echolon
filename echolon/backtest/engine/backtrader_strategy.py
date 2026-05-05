@@ -300,8 +300,12 @@ class BacktraderStrategyBridge(bt.Strategy):
 
         if order.status == order.Completed:
             action = 'BUY' if order.isbuy() else 'SELL'
-            self.log(f'{action} EXECUTED: Price={order.executed.price:.2f}, '
-                     f'Size={order.executed.size}, Comm={order.executed.comm:.2f}')
+            # Per-trade prints gated by run_context (debug/best_trial only).
+            # In summary/optimization mode this would drown the one-line
+            # Sharpe summary; rejection paths below stay unconditional.
+            if should_log_details(get_run_context()):
+                self.log(f'{action} EXECUTED: Price={order.executed.price:.2f}, '
+                         f'Size={order.executed.size}, Comm={order.executed.comm:.2f}')
 
             # Log to strategy logger
             if self._strategy_logger is not None:
@@ -335,8 +339,10 @@ class BacktraderStrategyBridge(bt.Strategy):
             return
 
         self._trade_count += 1
-        self.log(f'TRADE #{self._trade_count} CLOSED: '
-                 f'PnL Gross={trade.pnl:.2f}, Net={trade.pnlcomm:.2f}')
+        # Per-trade prints gated by run_context (debug/best_trial only).
+        if should_log_details(get_run_context()):
+            self.log(f'TRADE #{self._trade_count} CLOSED: '
+                     f'PnL Gross={trade.pnl:.2f}, Net={trade.pnlcomm:.2f}')
 
         # Add realized PnL to portfolio tracker
         self._engine._portfolio.add_realized_pnl(trade.pnlcomm)

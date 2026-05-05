@@ -321,8 +321,13 @@ class BacktestRunner:
         if not self._data_loaded:
             self.load_data()
 
-        # Setup context-aware logging
-        run_context = "debug" if context == "debug" else "best_trial"
+        # Setup context-aware logging. Pass canonical RunContext values
+        # straight through; fall back to "best_trial" for non-canonical
+        # callers (legacy 'custom', 'manual', 'backtest' from public API).
+        if context in ("optimization", "summary", "debug", "best_trial"):
+            run_context = context
+        else:
+            run_context = "best_trial"
         setup_backtest_logging(run_context)
 
         # Log workflow start

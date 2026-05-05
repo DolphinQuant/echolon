@@ -39,7 +39,11 @@ def _run_backtest(
     typer ``OptionInfo`` defaults so it's callable from other CLI commands
     (e.g. ``hello``).
 
-    ``verbose=True`` raises the echolon namespace logger to DEBUG.
+    ``verbose=True`` raises the echolon namespace logger to DEBUG and
+    selects the ``debug`` run_context (per-bar Risk/Entry/Exit/Sizer
+    trace). ``verbose=False`` selects the ``summary`` run_context — root
+    INFO with bar-loop loggers demoted to WARNING, so the user gets the
+    one-line Sharpe summary without thousands of per-bar lines.
     """
     import logging
     logging.basicConfig(
@@ -209,7 +213,7 @@ def _run_backtest(
     loader = StrategyLoader(strategy_dir.resolve())
     default_params = loader.load_attr("strategy_params", "DEFAULT_PARAMS")
     try:
-        result = runner.run(default_params, context='debug')
+        result = runner.run(default_params, context='debug' if verbose else 'summary')
     except Exception as exc:
         # Emit informative output on backtest failure. In --json mode, this is
         # what an LLM agent reads to decide whether to retry / change params.
@@ -278,7 +282,7 @@ def backtest_single(
     bar_size: Optional[str] = typer.Option(None, "--bar-size"),
     unsafe: bool = typer.Option(False, "--unsafe", help="Skip pre-validation"),
     json_output: bool = typer.Option(False, "--json", help="Emit machine-readable JSON metrics (for LLM agents)"),
-    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show per-bar Risk/Entry/Exit/Sizer trace (DEBUG level)"),
+    verbose: bool = typer.Option(False, "--verbose", "-v", help="Show per-bar Risk/Entry/Exit/Sizer trace. Default emits a one-line summary only."),
     paths_config: Optional[Path] = typer.Option(
         None, "--paths-config",
         help="JSON file with PathsConfig overrides (must include 'project_root'). "
