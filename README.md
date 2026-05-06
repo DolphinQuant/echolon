@@ -8,7 +8,7 @@
 
 > 📖 [English](README.md) · [简体中文](README.zh-CN.md)
 
-> **An LLM-agent-native backtest framework for futures research.** Ships an MCP server, 22 in-package skills, 32 catalogued error codes, and typed Pydantic configs — agents call structured tools instead of guessing API shapes from prose docs. End-to-end on SHFE daily futures.
+> **An LLM-agent-native backtest framework for futures research.** LLM agents driving quantitative research is becoming routine, and the trajectory looks inevitable. For agents to drive strategy creation reliably, they need backtest tooling designed for them — typed tools they call directly, structured error codes they can resolve, an indicator catalog they can query. Without that, agents writing trading code from prose documentation hallucinate: wrong indicator names, made-up function signatures, params that don't exist. Echolon makes the framework itself the agent's API: 23 MCP tools, 22 in-package skills, 32 catalogued error codes, 214 indicators with typed metadata. End-to-end today: SHFE daily futures.
 
 Production engine inside [Qorka](https://dolphinquant.com), [DolphinQuant](https://dolphinquant.com)'s AI-native strategy generation product. Exercised by real money on SHFE every trading day. 
 
@@ -46,7 +46,16 @@ Then ask:
 
 > "Build a trend-following strategy on copper, backtest 2018–2024."
 
-Behind the scenes the agent calls `list_skills` → picks `patterns` and `quick_start` → `load_template("momentum_breakout")` → `list_indicators(has_lookback=True)` → edits `entry.py` and `exit.py` → loops `validate_strategy_full(strategy_dir)` until everything passes → runs the backtest. If anything breaks, it parses `[CODE-NNN]` from the traceback and calls `get_error_doc(code)`. There's no point where it has to guess.
+Behind the scenes:
+
+1. `list_skills` → picks `patterns` + `quick_start`
+2. `load_template("momentum_breakout")` → 4-file scaffold
+3. `list_indicators(has_lookback=True)` → picks an indicator
+4. edits `entry.py` and `exit.py`
+5. loops `validate_strategy_full(strategy_dir)` until clean
+6. runs the backtest
+
+On any error, parses `[CODE-NNN]` from the traceback → `get_error_doc(code)`. No step in the chain requires the agent to guess.
 
 | Runtime | Setup |
 |---|---|
@@ -57,7 +66,7 @@ Behind the scenes the agent calls `list_skills` → picks `patterns` and `quick_
 | LangChain / LangGraph | [`langchain-mcp-adapters`](https://pypi.org/project/langchain-mcp-adapters/): `MultiServerMCPClient({"echolon": {"transport": "stdio", "command": "echolon-mcp", "args": []}})` |
 | Any other [MCP-compatible](https://modelcontextprotocol.io/) client (CrewAI, AutoGen, …) | Configure it as a stdio server with `command="echolon-mcp"`, no args. See your client's MCP docs for the call shape. |
 
-For Claude Code: `-s user` makes the registration apply across all your projects (drop it for current-project-only); `--` separates the registration name from the launch command. After running once, `claude mcp list` should show `echolon` as a connected stdio server. The agent's orientation guide is [`llms.txt`](./echolon/llms.txt) — also dropped at the workspace root by `echolon init` / `hello` so an agent walking into the project finds it without needing the package.
+`-s user` registers Echolon for all your projects (drop it for current-project only); `--` separates the registration name from the launch command. After running once, `claude mcp list` should show `echolon` as connected. The agent's orientation guide is [`llms.txt`](./echolon/llms.txt) — also dropped at the workspace root by `echolon init` / `hello`, so any agent walking into the project finds it without needing the package.
 
 ## What's in scope today
 
@@ -92,13 +101,13 @@ Echolon does **not** auto-derive `main_contract.csv` from raw OHLCV — it's a U
 
 ## Project info
 
-Apache 2.0 — see [LICENSE](LICENSE). Use freely, commercially or otherwise. Active development, v0.1.3 beta. Built and maintained by [DolphinQuant](https://dolphinquant.com) — the same team running Qorka on SHFE. Issues and pull requests welcome at [github.com/dolphinquant/echolon](https://github.com/dolphinquant/echolon).
+Apache 2.0 — see [LICENSE](LICENSE). Use freely, commercially or otherwise. Active development, v0.1.3 beta. Built and maintained by [DolphinQuant](https://dolphinquant.com) — the same team running Qorka on SHFE. Issues and pull requests welcome at [github.com/DolphinQuant/echolon](https://github.com/DolphinQuant/echolon).
 
 ```bibtex
 @software{echolon,
   title = {Echolon: AI-native quantitative trading engine},
   author = {DolphinQuant},
   year = {2026},
-  url = {https://github.com/dolphinquant/echolon},
+  url = {https://github.com/DolphinQuant/echolon},
 }
 ```
