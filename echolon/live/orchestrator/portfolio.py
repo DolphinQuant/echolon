@@ -1353,8 +1353,8 @@ class PortfolioTradingRunner:
         """Generate trading calendar for each unique instrument if missing.
 
         Called before is_trading_day() to ensure the calendar CSV is
-        available. Mirrors TradingRunner._ensure_trading_calendar() but
-        iterates all unique (market, instrument) pairs from enabled slots.
+        available. Iterates all unique (market, instrument) pairs from
+        enabled slots and asks the SHFE day extractor to materialize each.
         """
         from echolon.data.extractors.shfe.api_day_extractor import SHFEApiDayExtractor
         from echolon.config.paths_config import PathsConfig

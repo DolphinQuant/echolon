@@ -8,10 +8,8 @@ from echolon.live.io.kpi_aggregator import (
  save_portfolio_dashboard,
 )
 from echolon.live.orchestrator.portfolio import PortfolioTradingRunner
-from echolon.live.orchestrator.single import TradingRunner
 
 __all__ = [
- "TradingRunner",
  "PortfolioTradingRunner",
  # Dashboard public API
  "aggregate_portfolio",

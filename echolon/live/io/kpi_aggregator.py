@@ -1,24 +1,22 @@
 """
-Dashboard (data generator + portfolio aggregator)
-==================================================
+Portfolio dashboard aggregator
+==============================
 
-Two responsibilities:
+Reads per-slot trading data from workspace CSV files and strategy state,
+computes per-slot KPIs (via ``generate_dashboard_data``), enriches each
+slot with config metadata + capital state, computes portfolio-level
+aggregates (equity curve, KPIs, backtest comparison), and produces the
+full PortfolioDashboardPayload.
 
-1. Generator: Reads trading data from workspace CSV files and strategy state,
-   computes per-slot KPIs.
-   Data sources:
-     - trading_data_{symbol}.csv     -> equity curve, current position
-     - trade_executions_{symbol}.csv -> win rate, profit factor, avg hold days
-     - strategy_state.json           -> bars in position (hold days)
+Data sources (per slot):
+  - trading_data_{symbol}.csv     -> equity curve, current position
+  - trade_executions_{symbol}.csv -> win rate, profit factor, avg hold days
+  - strategy_state.json           -> bars in position (hold days)
 
-2. Aggregator: Generates per-slot dashboards using generate_dashboard_data(),
-   enriches them with config metadata and capital state, computes
-   portfolio-level aggregates (equity curve, KPIs, backtest comparison),
-   and produces the full PortfolioDashboardPayload.
-   Output: deploy_data/dashboard_portfolio.json
+Output: deploy_data/portfolio/dashboard_portfolio.json
 
-HTTP posting to a specific backend is a consumer concern and has been moved
-to the goingmerry portal_client module.
+HTTP posting to a specific backend is a consumer concern and lives in the
+goingmerry portal_client module.
 """
 
 import json
@@ -94,14 +92,6 @@ def generate_dashboard_data(
         f"last_trade={last_trade['action'] if last_trade else 'none'}"
     )
     return dashboard_data
-
-
-def save_dashboard_data(dashboard_data: Dict[str, Any], output_path: str) -> None:
-    """Save dashboard data to JSON file."""
-    os.makedirs(os.path.dirname(output_path), exist_ok=True)
-    with open(output_path, 'w') as f:
-        json.dump(dashboard_data, f, indent=2)
-    logger.info(f"Dashboard data saved to {output_path}")
 
 
 # -----------------------------------------------------------------------------

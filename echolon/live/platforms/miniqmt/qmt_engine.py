@@ -1051,7 +1051,7 @@ class QMTEngine(ITradingEngine):
         """
         Set the specific contract code for order placement.
 
-        TradingRunner resolves the main contract (e.g. 'al2508') each day
+        The slot resolves the main contract (e.g. 'al2508') each day
         and calls this so orders go to the correct contract, not just
         the product code ('al').
 

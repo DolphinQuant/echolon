@@ -76,8 +76,7 @@ class DeploySettings:
 class AccountConfig:
     """Account configuration section from portfolio config.
 
-    Supports trade_account + test_account with a use_test_account toggle,
-    matching DeployConfig's dual-account pattern for single-instrument trading.
+    Supports trade_account + test_account with a use_test_account toggle.
     """
     trade_account: Optional[QMTAccountConfig] = None
     test_account: Optional[QMTAccountConfig] = None

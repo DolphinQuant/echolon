@@ -50,7 +50,6 @@ IMPORT_MIGRATIONS: dict[str, str] = {
     "echolon.quant_engine.data_loader.contract_data": "echolon.data.loaders.contract_loader",
     "echolon.quant_engine.data_loader": "echolon.data.loaders",
     # ---- deploy → live ----
-    "echolon.quant_engine.deploy.engine.trading_runner": "echolon.live.orchestrator.single",
     "echolon.quant_engine.deploy.engine.portfolio_trading_runner": "echolon.live.orchestrator.portfolio",
     "echolon.quant_engine.deploy.engine.capital_slot": "echolon.live.slot.capital_slot",
     "echolon.quant_engine.deploy.engine.trading_slot": "echolon.live.slot.trading_slot",

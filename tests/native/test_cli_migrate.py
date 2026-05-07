@@ -21,11 +21,11 @@ def test_migrate_rewrites_simple_import(tmp_path):
 
 def test_migrate_rewrites_nested_import(tmp_path):
     (tmp_path / "a.py").write_text(
-        "from echolon.quant_engine.deploy.engine.trading_runner import TradingRunner\n"
+        "from echolon.quant_engine.deploy.engine.portfolio_trading_runner import PortfolioTradingRunner\n"
     )
     result = runner.invoke(app, ["migrate", str(tmp_path)])
     assert result.exit_code == 0
-    assert "from echolon.live.orchestrator.single import TradingRunner" in (tmp_path / "a.py").read_text(encoding="utf-8")
+    assert "from echolon.live.orchestrator.portfolio import PortfolioTradingRunner" in (tmp_path / "a.py").read_text(encoding="utf-8")
 
 
 def test_migrate_dry_run_does_not_write(tmp_path):

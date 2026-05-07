@@ -10,7 +10,7 @@ origin_module: echolon_audit_phase0
 
 # echolon.engine.factory.EngineFactory
 
-> Note on import path: pre-v0.3 docs listed this as `echolon.backtest.engine_factory.EngineFactory` or `echolon.quant_engine.engine_factory.EngineFactory`. Both module paths are gone — `echolon/native/cli/migrate.py` rewrites the old paths to `echolon.engine.factory`, and every live caller (`wfa/runner.py`, `engine/backtest_runner.py`, `engine/optimization_runner.py`, `live/slot/trading_slot.py`, `live/orchestrator/single.py`) imports from `echolon.engine.factory`. Use `from echolon.engine.factory import EngineFactory`.
+> Note on import path: pre-v0.3 docs listed this as `echolon.backtest.engine_factory.EngineFactory` or `echolon.quant_engine.engine_factory.EngineFactory`. Both module paths are gone — `echolon/native/cli/migrate.py` rewrites the old paths to `echolon.engine.factory`, and every live caller (`wfa/runner.py`, `engine/backtest_runner.py`, `engine/optimization_runner.py`, `live/slot/trading_slot.py`) imports from `echolon.engine.factory`. Use `from echolon.engine.factory import EngineFactory`.
 
 ## Purpose
 
@@ -50,7 +50,7 @@ EngineFactory.get_available_bar_sizes()     # ['1m', '5m', '15m', ...]
 ## When to use
 
 - At the top of any backtest orchestration — `BacktestRunner`, `OptimizationRunner`, `WFARunner` all call `EngineFactory.create_backtest_engine(ctx=…)` or `create_market_adapter(ctx=…)` to share a single market adapter across trials/windows.
-- At the top of any live deployment — `echolon.live.orchestrator.single.SingleInstrumentOrchestrator` and `echolon.live.slot.trading_slot.TradingSlot` call `EngineFactory.create_deploy_engine(ctx, client=…, deferred_execution=True)` to obtain a `QMTEngine`.
+- At the top of any live deployment — `echolon.live.slot.trading_slot.TradingSlot` calls `EngineFactory.create_deploy_engine(ctx, client=…, deferred_execution=True)` to obtain a `QMTEngine`.
 - When adding a new market: call `EngineFactory.register_market_adapter("CME", CMEAdapter)` before any engine creation. The `MARKET_ADAPTERS` registry is class-level, so registration persists for the process.
 - Do *not* construct `BacktraderEngine`, `SHFEAdapter`, `IntradayContext`, etc. by hand for a backtest run. Hook composition (interday-futures → `ContractAwareHook`; intraday → `SessionAwareHook`) is centralised here and must stay consistent.
 
