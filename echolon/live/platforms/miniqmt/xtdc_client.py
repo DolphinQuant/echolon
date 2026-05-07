@@ -18,10 +18,30 @@ so they can be used interchangeably as the `client` parameter in run_data_pipeli
 Additionally provides download_main_contract_history() which requires the
 token-based API (historymaincontract is not available via miniQMT).
 
+Configuration
+-------------
+
+Credentials are NEVER hardcoded in this open-source module. They MUST be
+supplied at instantiation time via either:
+
+1. Constructor kwargs: ``XtdcClient(token=..., addr_list=[...])``
+2. Environment variables: ``XUNTOU_TOKEN``, ``XUNTOU_ADDR_LIST`` (comma-
+   separated ``host:port`` items), and optionally ``XUNTOU_PORT``.
+
+If neither source provides a token, ``connect()`` raises ``XtdcCredentialsMissing``.
+
+Downstream private deployments (e.g. the ``goingmerry`` repo) are responsible
+for materialising these values at runtime — typically by reading a local
+credentials file that's excluded from version control. See
+``goingmerry/credentials.py`` for the canonical loader pattern.
+
 Usage:
-    client = XtdcClient()
+    # In a private deployment (e.g. goingmerry):
+    from goingmerry.credentials import load_xtdc_credentials
+    creds = load_xtdc_credentials()
+    client = XtdcClient(**creds)
     client.connect()
-    # Use as drop-in replacement for MiniQMTClient in run_data_pipeline()
+    # ...
     client.disconnect()
 """
 
@@ -29,14 +49,20 @@ import datetime
 import logging
 import os
 from pathlib import Path
-from typing import Dict, List, Optional, Union
+from typing import Dict, List, Optional, Sequence, Union
 
 import pandas as pd
 
 logger = logging.getLogger(__name__)
 
-# Default port for xtdatacenter listener
+# Default port for xtdatacenter listener (the port itself isn't a secret;
+# the token + addr_list are what need to be supplied externally).
 XTDC_DEFAULT_PORT = 58615
+
+
+class XtdcCredentialsMissing(RuntimeError):
+    """Raised when XtdcClient is constructed without credentials and no
+    XUNTOU_TOKEN / XUNTOU_ADDR_LIST env vars are set either."""
 
 
 class XtdcClient:
@@ -57,44 +83,85 @@ class XtdcClient:
     # Class-level flag: xtdc listener initialized once per process
     _listener_ready = False
 
-    def __init__(self, port: int = XTDC_DEFAULT_PORT):
-        self._port = port
+    def __init__(
+        self,
+        token: Optional[str] = None,
+        addr_list: Optional[Sequence[str]] = None,
+        port: Optional[int] = None,
+    ):
+        """Construct a token-authenticated xtdc data client.
+
+        Credentials may come from constructor kwargs (preferred) or from
+        environment variables. See module docstring for details.
+
+        Args:
+            token: Xuntou authentication token. Falls back to
+                ``$XUNTOU_TOKEN``. If neither is set, ``connect()`` raises.
+            addr_list: List of ``host:port`` Xuntou data server addresses.
+                Falls back to ``$XUNTOU_ADDR_LIST`` (comma-separated).
+                Empty / unset means "let xtdc pick its default" — typical
+                production deployments must specify these.
+            port: Local listener port. Falls back to ``$XUNTOU_PORT``,
+                then to ``XTDC_DEFAULT_PORT`` (58615).
+        """
+        self._token = token if token is not None else os.environ.get("XUNTOU_TOKEN", "")
+        if addr_list is not None:
+            self._addr_list = list(addr_list)
+        else:
+            env_addrs = os.environ.get("XUNTOU_ADDR_LIST", "")
+            self._addr_list = [a.strip() for a in env_addrs.split(",") if a.strip()]
+        if port is not None:
+            self._port = int(port)
+        else:
+            env_port = os.environ.get("XUNTOU_PORT", "")
+            self._port = int(env_port) if env_port else XTDC_DEFAULT_PORT
         self._connected = False
 
     # ------------------------------------------------------------------
     # Connection lifecycle
     # ------------------------------------------------------------------
 
-    @classmethod
-    def _ensure_listener(cls, port: int) -> None:
+    def _ensure_listener(self) -> None:
         """Initialize xtdc listener once per process.
 
         Subsequent calls are no-ops. The listener stays alive for the
         lifetime of the process so that daily xtdata reconnections can
         reuse the same port without conflict.
+
+        Raises:
+            XtdcCredentialsMissing: when no token has been supplied via
+                constructor kwargs or ``$XUNTOU_TOKEN`` env var.
         """
-        if cls._listener_ready:
+        if XtdcClient._listener_ready:
             return
+
+        if not self._token:
+            raise XtdcCredentialsMissing(
+                "XtdcClient: no token supplied. Pass token= to the "
+                "constructor or set $XUNTOU_TOKEN before connecting. "
+                "Tokens MUST NOT be hardcoded in this open-source module."
+            )
 
         from xtquant import xtdatacenter as xtdc
 
-        token = os.environ.get(
-            "XUNTOU_TOKEN",
-            "322da8d9be7984b62a76249e8cf0e71067fb0612",
-        )
-
-        xtdc.set_token(token)
+        xtdc.set_token(self._token)
         xtdc.set_quote_time_mode_v2(True)
 
-        addr_list = ['115.231.218.73:55310', '115.231.218.79:55310']
-        xtdc.set_allow_optmize_address(addr_list)
+        if self._addr_list:
+            xtdc.set_allow_optmize_address(list(self._addr_list))
+        else:
+            logger.warning(
+                "[XTDC] No addr_list supplied (constructor or "
+                "$XUNTOU_ADDR_LIST); xtdc will use its built-in defaults."
+            )
+
         xtdc.set_index_mirror_enabled(True)
         xtdc.set_future_realtime_mode(True)
         xtdc.init(False)
-        xtdc.listen(port=port)
+        xtdc.listen(port=self._port)
 
-        cls._listener_ready = True
-        logger.info("[XTDC] Listener initialized on port %d", port)
+        XtdcClient._listener_ready = True
+        logger.info("[XTDC] Listener initialized on port %d", self._port)
 
     def connect(self) -> bool:
         """Connect to xuntou data service via xtdatacenter token.
@@ -106,7 +173,7 @@ class XtdcClient:
             return True
 
         try:
-            self._ensure_listener(self._port)
+            self._ensure_listener()
 
             from xtquant import xtdata
             xtdata.connect(port=self._port)
@@ -115,6 +182,10 @@ class XtdcClient:
             logger.info("[XTDC] Connected on port %d", self._port)
             return True
 
+        except XtdcCredentialsMissing:
+            # Re-raise — calling code must handle missing-credentials
+            # explicitly so it's never silently skipped.
+            raise
         except ImportError:
             logger.error("[XTDC] xtquant library not installed")
             raise
