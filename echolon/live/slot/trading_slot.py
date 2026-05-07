@@ -336,35 +336,21 @@ class TradingSlot:
     def _get_indicators_path(self) -> str:
         """Get path to the strategy indicators CSV.
 
-        Resolution order:
-          1. Per-slot path ``{indicators_backtest_dir}/{slot_id}/`` — written
-             when portfolio mode computes per-slot (slots with divergent
-             regime_params).
-          2. Per-group path ``{indicators_backtest_dir}/{instrument_code}_{bar_size}/``
-             — written when portfolio mode merges slots on the same
-             (instrument, bar_size) and computes the union once.
-          3. Per-instrument path ``{indicators_backtest_dir}/{instrument}/`` —
-             single-instrument (TradingRunner) mode.
+        Portfolio mode writes the merged-per-group output to
+        ``{indicators_backtest_dir}/{instrument_code}_{bar_size}/`` (one
+        compute per (instrument, bar_size) group, shared by every slot in
+        that group). The slot reads from there.
         """
         from echolon.config.paths_config import PathsConfig
         indicators_backtest_dir = str(
             PathsConfig.from_env().indicators_backtest_dir
         )
         sc = self.slot_config
-
-        slot_path = os.path.join(indicators_backtest_dir, sc.slot_id, "strategy_indicators.csv")
-        if os.path.exists(slot_path):
-            return slot_path
-
-        group_path = os.path.join(
+        return os.path.join(
             indicators_backtest_dir,
             f"{sc.instrument_code}_{sc.bar_size}",
             "strategy_indicators.csv",
         )
-        if os.path.exists(group_path):
-            return group_path
-
-        return os.path.join(indicators_backtest_dir, sc.instrument, "strategy_indicators.csv")
 
     def _validate_indicators(self) -> None:
         """Validate that required indicators exist in the CSV.
@@ -402,16 +388,6 @@ class TradingSlot:
 
         if missing:
             logger.warning(f"[{self.slot_id}] Missing indicators in CSV: {missing}")
-
-
-def _collect_declared_names(indicator_list: object) -> set:
-    """Derive the set of lowercase indicator names declared by a flat-dict config.
-
-    Non-dict input returns an empty set (defensive guard for malformed configs).
-    """
-    if not isinstance(indicator_list, dict):
-        return set()
-    return {str(name).lower() for name in indicator_list.keys()}
 
     def _load_state_file(self) -> Dict[str, Any]:
         """Load state file, return empty dict for cold start.
@@ -500,3 +476,13 @@ def _collect_declared_names(indicator_list: object) -> set:
             **strategy_params,
         )
         logger.info(f"[{self.slot_id}] Strategy created from {strategy_code_dir}")
+
+
+def _collect_declared_names(indicator_list: object) -> set:
+    """Derive the set of lowercase indicator names declared by a flat-dict config.
+
+    Non-dict input returns an empty set (defensive guard for malformed configs).
+    """
+    if not isinstance(indicator_list, dict):
+        return set()
+    return {str(name).lower() for name in indicator_list.keys()}

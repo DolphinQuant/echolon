@@ -180,7 +180,15 @@ class DeployConfig:
 
     @property
     def calendar_path(self) -> str:
-        """Path to the static deploy trading calendar CSV."""
-        return str(
-            Path(__file__).parent / "trading_calendar.csv"
+        """Resolve trading-calendar CSV from config.
+
+        The CSV is supplied by the operator (e.g. via goingmerry/session/),
+        not bundled with echolon. Set ``trading_calendar_path`` in the
+        JSON config to point at it.
+        """
+        if self.trading_calendar_path:
+            return self.trading_calendar_path
+        raise FileNotFoundError(
+            "trading_calendar_path is not set in DeployConfig; supply it via "
+            "the JSON config (e.g. goingmerry/session/deploy_config.json)."
         )

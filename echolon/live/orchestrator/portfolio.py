@@ -1435,11 +1435,19 @@ class PortfolioTradingRunner:
         return None
 
     def _get_calendar_path(self) -> Optional[str]:
-        """Get path to the deploy trading calendar."""
-        from ..config.deploy_config import DeployConfig
-        return str(
-            Path(__file__).parent.parent / "config" / "trading_calendar.csv"
-        )
+        """Get path to the deploy trading calendar.
+
+        The CSV is supplied by the operator via the JSON config
+        (``deploy.trading_calendar_path``), not bundled with echolon.
+        """
+        path = self.config.deploy.trading_calendar_path
+        if not path:
+            raise FileNotFoundError(
+                "deploy.trading_calendar_path is not set in PortfolioDeployConfig; "
+                "supply it via the JSON config (e.g. "
+                "goingmerry/session/portfolio_deploy_config.json)."
+            )
+        return path
 
     def _get_schedule_time(self, date: datetime, market: str, instrument: str) -> Tuple[int, int]:
         """Determine schedule time based on night market status."""
