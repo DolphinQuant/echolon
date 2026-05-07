@@ -454,7 +454,10 @@ class QMTOrderManager(IOrderManager):
     """
     IOrderManager implementation for MiniQMT.
 
-    Submits orders through QMT API.
+    Records strategy-side order intents in deferred mode — the
+    portfolio runner picks pending orders up via
+    ``self.client.submit_order_async`` for burst-fire at market open.
+    This class does not place orders directly.
     """
 
     def __init__(
@@ -462,23 +465,18 @@ class QMTOrderManager(IOrderManager):
         client: 'MiniQMTClient' = None,
         symbol: str = "al",
         portfolio: Optional[QMTPortfolio] = None,
-        deferred_execution: bool = False,
     ):
         """
-        Initialize with QMT client.
-
         Args:
-            client: MiniQMT client for API calls
-            symbol: Trading symbol (product code, e.g. 'al')
-            portfolio: Portfolio reference for position queries
-            deferred_execution: If True, record orders but don't place them
-                via client. PortfolioTradingRunner fires them centrally.
+            client: MiniQMT client (held only so the runner can reach it
+                via the engine; not used by this class).
+            symbol: Trading symbol (product code, e.g. 'al').
+            portfolio: Portfolio reference for exit-direction queries.
         """
         self._client = client
         self._symbol = symbol
         self._trading_contract = symbol  # Specific contract code for orders (e.g. 'al2508')
         self._portfolio = portfolio
-        self._deferred_execution = deferred_execution
         self._orders: Dict[str, Order] = {}
         self._order_counter = 0
 
@@ -491,13 +489,7 @@ class QMTOrderManager(IOrderManager):
         self._portfolio = portfolio
 
     def set_trading_contract(self, contract_code: str) -> None:
-        """
-        Set the specific contract code used for order placement.
-
-        Args:
-            contract_code: Full contract code (e.g. 'al2508') that will be
-                          sent to MiniQMTClient.place_order().
-        """
+        """Set the specific contract code used for order placement."""
         self._trading_contract = contract_code
         logger.info(f"Order manager trading contract set to: {contract_code}")
 
@@ -513,21 +505,18 @@ class QMTOrderManager(IOrderManager):
         price: Optional[float] = None
     ) -> OrderResult:
         """
-        Submit an order to enter a new position.
+        Record an entry-order intent. The portfolio runner reads
+        ``get_pending_orders()`` and fires the actual broker call.
 
         Args:
             direction: "LONG" or "SHORT"
             size: Position size (contracts)
             price: Limit price (None for market order)
-
-        Returns:
-            OrderResult with order_id and status
         """
         order_id = self._generate_order_id()
         intent = OrderIntent.ENTRY_LONG if direction == "LONG" else OrderIntent.ENTRY_SHORT
         order_type = OrderType.LIMIT if price is not None else OrderType.MARKET
 
-        # Create order record
         order = Order(
             order_id=order_id,
             symbol=self._trading_contract,
@@ -539,36 +528,11 @@ class QMTOrderManager(IOrderManager):
             status=OrderStatus.PENDING,
             created_at=datetime.now(),
         )
-
-        if self._deferred_execution:
-            # Deferred: record order but don't place via client.
-            # PortfolioTradingRunner will fire it centrally.
-            order.status = OrderStatus.PENDING
-            logger.info(f"Entry order deferred: {order_id} {direction} {size}@{price} contract={self._trading_contract}")
-        elif self._client is not None:
-            try:
-                qmt_order_id = self._client.place_order(
-                    symbol=self._trading_contract,
-                    volume=int(size),
-                    price=price,
-                    order_type=order_type.value,
-                    intent=intent.value,
-                )
-                if qmt_order_id is not None:
-                    order.status = OrderStatus.SUBMITTED
-                    order.metadata['qmt_order_id'] = qmt_order_id
-                    logger.info(f"Entry order submitted: {order_id} {direction} {size}@{price} contract={self._trading_contract} qmt_id={qmt_order_id}")
-                else:
-                    order.status = OrderStatus.REJECTED
-                    logger.error(f"Entry order rejected by QMT: {order_id} {direction} {size}@{price} contract={self._trading_contract}")
-            except Exception as e:
-                order.status = OrderStatus.REJECTED
-                logger.error(f"Entry order exception: {e}")
-        else:
-            logger.warning("No client - entry order simulated")
-            order.status = OrderStatus.SUBMITTED
-
         self._orders[order_id] = order
+        logger.info(
+            f"Entry order deferred: {order_id} {direction} {size}@{price} "
+            f"contract={self._trading_contract}"
+        )
         return OrderResult(
             order_id=order_id,
             status=order.status,
@@ -582,21 +546,17 @@ class QMTOrderManager(IOrderManager):
         price: Optional[float] = None
     ) -> OrderResult:
         """
-        Submit an order to exit/reduce current position.
-
-        Queries current position from portfolio to determine exit direction.
+        Record an exit-order intent. Direction is derived from the
+        current portfolio position. The portfolio runner reads
+        ``get_pending_orders()`` and fires the actual broker call.
 
         Args:
             size: Size to exit (contracts)
             price: Limit price (None for market order)
-
-        Returns:
-            OrderResult with order_id and status
         """
         order_id = self._generate_order_id()
         order_type = OrderType.LIMIT if price is not None else OrderType.MARKET
 
-        # Determine exit direction from current position
         intent = OrderIntent.EXIT_LONG  # default
         side = OrderSide.SELL  # default
         if self._portfolio is not None:
@@ -616,34 +576,11 @@ class QMTOrderManager(IOrderManager):
             status=OrderStatus.PENDING,
             created_at=datetime.now(),
         )
-
-        if self._deferred_execution:
-            order.status = OrderStatus.PENDING
-            logger.info(f"Exit order deferred: {order_id} {intent.value} {size}@{price} contract={self._trading_contract}")
-        elif self._client is not None:
-            try:
-                qmt_order_id = self._client.place_order(
-                    symbol=self._trading_contract,
-                    volume=int(size),
-                    price=price,
-                    order_type=order_type.value,
-                    intent=intent.value,
-                )
-                if qmt_order_id is not None:
-                    order.status = OrderStatus.SUBMITTED
-                    order.metadata['qmt_order_id'] = qmt_order_id
-                    logger.info(f"Exit order submitted: {order_id} {intent.value} {size}@{price} contract={self._trading_contract} qmt_id={qmt_order_id}")
-                else:
-                    order.status = OrderStatus.REJECTED
-                    logger.error(f"Exit order rejected by QMT: {order_id} {intent.value} {size}@{price} contract={self._trading_contract}")
-            except Exception as e:
-                order.status = OrderStatus.REJECTED
-                logger.error(f"Exit order exception: {e}")
-        else:
-            logger.warning("No client - exit order simulated")
-            order.status = OrderStatus.SUBMITTED
-
         self._orders[order_id] = order
+        logger.info(
+            f"Exit order deferred: {order_id} {intent.value} {size}@{price} "
+            f"contract={self._trading_contract}"
+        )
         return OrderResult(
             order_id=order_id,
             status=order.status,

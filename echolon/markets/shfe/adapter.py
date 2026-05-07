@@ -111,9 +111,10 @@ class SHFEAdapter(BaseMarketAdapter):
                     backtest interday: hook fires T-1, submits exit, skips
                         strategy.next on T-1, backtrader fills T's open.
                     deploy night-market interday: hook fires 20:30 calendar
-                        T-1, place_order blocks until 21:00, fills 21:00
-                        calendar T-1 = night-session open of trading day T
-                        (per SHFE convention).
+                        T-1, runner waits until 21:00 then burst-fires the
+                        order via submit_order_async, fills 21:00 calendar
+                        T-1 = night-session open of trading day T (per SHFE
+                        convention).
                     deploy day-only interday: hook fires 14:55 calendar T-1,
                         order fills before 15:00 calendar T-1 (= same trading
                         day T-1, one day earlier than night-market — accepted

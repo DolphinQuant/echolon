@@ -89,7 +89,7 @@ class TradingSlot:
 
         Steps:
         1. Create TradingContext from SlotConfig
-        2. Create QMTEngine via EngineFactory (deferred_execution=True)
+        2. Create QMTEngine via EngineFactory (orders are recorded by the engine and burst-fired by the portfolio runner)
         3. Resolve main contract, set_trading_contract
         4. Load indicators, set_current_bar(today)
         5. Validate required indicators exist
@@ -119,9 +119,6 @@ class TradingSlot:
             client=None,  # Client set later by runner
             platform="miniqmt",
         )
-        # Enable deferred execution on the order manager
-        order_mgr = self.engine.get_order_manager()
-        order_mgr._deferred_execution = True
         logger.info(f"[{slot_id}] QMTEngine created (deferred execution)")
 
         # Step 3: Resolve main contract
@@ -204,10 +201,128 @@ class TradingSlot:
     # =========================================================================
 
     def execute_bar(self) -> None:
-        """Execute one bar: mark-to-market then strategy.on_bar()."""
+        """Execute one bar: mark-to-market, recover any pending EXIT, then on_bar.
+
+        If the slot has an unresolved EXIT-class order from a prior cycle
+        (Amendment B — ABANDONED-EXIT recovery), re-fire the exit BEFORE
+        the strategy gets to derive new signals. This prevents a trapped
+        position from accumulating new entries.
+        """
         current_price = self.engine.get_market_data().get_current_price()
         self.portfolio.update_mark_to_market(current_price)
+
+        if self._has_pending_exit_intent():
+            self._resume_pending_exit()
+            return
+
         self.strategy.on_bar()
+
+    def _has_pending_exit_intent(self) -> bool:
+        if self._state_path is None:
+            return False
+        from echolon.strategy.state_manager import StateManager
+        sm = StateManager(state_path=self._state_path)
+        sm.load_state()
+        return sm.get_pending_exit_intent() is not None
+
+    def _resume_pending_exit(self) -> None:
+        """Re-fire an unresolved EXIT from a prior cycle.
+
+        Cycle 2: standard EXIT recovery via order manager.
+        Cycle 3+: kill at band edge (Amendment B).
+
+        When cycles_pending >= 2, also writes/refreshes a structured
+        operator alert to ``workspace/deploy/portfolio/pending_exit_alerts.json``
+        so the dashboard / portal banner surfaces the trapped EXIT.
+        """
+        from echolon.strategy.state_manager import StateManager
+        sm = StateManager(state_path=self._state_path)
+        sm.load_state()
+        pending = sm.get_pending_exit_intent()
+        if pending is None:
+            return
+
+        pending.cycles_pending += 1
+        pending.last_attempt_time = datetime.now().isoformat()
+        sm.set_pending_exit_intent(pending)
+        sm.save_state()
+
+        slot_id = self.slot_id
+        logger.warning(
+            f"[{slot_id}] Resuming pending EXIT: intent={pending.intent} "
+            f"remaining={pending.remaining_size} cycles_pending={pending.cycles_pending}"
+        )
+
+        # Amendment B operator alert — write/upsert pending_exit_alerts.json
+        if pending.cycles_pending >= 2:
+            try:
+                self._write_pending_exit_alert(pending)
+            except Exception as exc:
+                logger.error(f"[{slot_id}] pending_exit_alerts write failed: {exc}")
+
+        order_manager = self.engine.get_order_manager()
+
+        if pending.cycles_pending >= 3:
+            from echolon.live.platforms.miniqmt.order_router import (  # noqa: E402
+                kill_at_band_edge_price,
+            )
+            client = getattr(self.engine, "_client", None) or getattr(self.engine, "client", None)
+            kill_price = kill_at_band_edge_price(
+                self.trading_contract, pending.intent, client=client,
+            )
+            logger.critical(
+                f"[{slot_id}] KILL-AT-BAND-EDGE: intent={pending.intent} "
+                f"price={kill_price:.2f} remaining={pending.remaining_size}"
+            )
+            order_manager.submit_exit_order(
+                size=pending.remaining_size,
+                price=kill_price,
+            )
+        else:
+            order_manager.submit_exit_order(
+                size=pending.remaining_size,
+                price=None,
+            )
+
+    def _write_pending_exit_alert(self, pending) -> None:
+        """Upsert this slot's entry in workspace/deploy/portfolio/pending_exit_alerts.json.
+
+        Each call replaces the slot's row (matched by slot_id) with the
+        current pending state. The dashboard reader picks this file up.
+        """
+        slot_id = self.slot_id
+        # workspace/deploy/slots/{slot_id}/strategy_state.json
+        # → workspace/deploy/portfolio/pending_exit_alerts.json
+        slot_dir = Path(self._state_path).parent
+        portfolio_dir = slot_dir.parent.parent / "portfolio"
+        portfolio_dir.mkdir(parents=True, exist_ok=True)
+        alert_path = portfolio_dir / "pending_exit_alerts.json"
+
+        existing: List[Dict[str, Any]] = []
+        if alert_path.exists():
+            try:
+                with open(alert_path, "r") as f:
+                    existing = json.load(f)
+                if not isinstance(existing, list):
+                    existing = []
+            except (OSError, json.JSONDecodeError):
+                existing = []
+
+        # Upsert by slot_id.
+        existing = [a for a in existing if a.get("slot_id") != slot_id]
+        existing.append({
+            "slot_id": slot_id,
+            "intent": pending.intent,
+            "remaining_size": pending.remaining_size,
+            "cycles_pending": pending.cycles_pending,
+            "original_decision_time": pending.original_decision_time,
+            "last_attempt_time": pending.last_attempt_time,
+        })
+
+        tmp_path = alert_path.with_suffix(".json.tmp")
+        with open(tmp_path, "w") as f:
+            json.dump(existing, f, indent=2)
+        os.replace(tmp_path, alert_path)
 
     # =========================================================================
     # Pending orders

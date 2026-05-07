@@ -47,8 +47,15 @@ from ..config.portfolio_deploy_config import PortfolioDeployConfig, SlotConfig
 from ..config.logging_config import get_deploy_logger, init_logging, shutdown_logging
 try:
     from ..platforms.miniqmt.qmt_client import MiniQMTClient
+    from ..platforms.miniqmt.order_router import (
+        OrderRouter, RouterCallbacks, OrderHandle, OrderState,
+    )
 except ImportError:
-    MiniQMTClient = None  # Available only on QMT-enabled machines
+    MiniQMTClient = None
+    OrderRouter = None
+    RouterCallbacks = None
+    OrderHandle = None
+    OrderState = None
 
 from ..config.qmt_constants import QMT_STATUS_MAP
 
@@ -94,6 +101,8 @@ class PortfolioTradingRunner:
 
         # Shared QMT client
         self.client: Optional[MiniQMTClient] = None
+        # OrderRouter — drives all order lifecycle (Phase 2+).
+        self.order_router: Optional["OrderRouter"] = None
 
         # Slots — each gets workspace/deploy/slots/{slot_id}/
         self.slots: List[TradingSlot] = []
@@ -112,16 +121,18 @@ class PortfolioTradingRunner:
         self.shutdown_event = threading.Event()
         self.present_date = datetime.now()
 
-        # Callback routing: real_order_id -> {slot_id, order, event, ...}
-        self._order_events: Dict[int, Dict[str, Any]] = {}
-        self._unmapped_callbacks: List[Dict[str, Any]] = []
+        # OrderRouter-driven state. Replaces the legacy _order_events /
+        # _seq_to_order_id / _unmapped_callbacks plumbing. All order
+        # lifecycle is now owned by OrderRouter; the runner observes via
+        # RouterCallbacks and queues bookkeeping records here for the
+        # main thread to drain in _process_fills.
         self._callback_lock = threading.Lock()
-
-        # seq_id -> real order_id mapping (from on_order_stock_async_response)
-        self._seq_to_order_id: Dict[int, int] = {}
-
-        # Per-slot order mapping: slot_id -> [(Order, qmt_order_id)]
-        self._slot_order_map: Dict[str, List[Tuple[Order, Optional[int]]]] = {}
+        # Per-slot list of (Order, OrderHandle) — handle holds the chain.
+        self._slot_handle_map: Dict[str, List[Tuple[Order, "OrderHandle"]]] = {}
+        # Terminal-event records produced by router callbacks (watchdog
+        # thread); _process_fills drains and books these on the main
+        # thread to avoid concurrent VP mutations.
+        self._slot_terminal_records: Dict[str, List[Dict[str, Any]]] = defaultdict(list)
 
         # Logging
         init_logging(self.logs_dir)
@@ -149,19 +160,38 @@ class PortfolioTradingRunner:
         original_sigterm = signal.getsignal(signal.SIGTERM)
         signal.signal(signal.SIGINT, self._signal_handler)
         signal.signal(signal.SIGTERM, self._signal_handler)
+        # Windows-only — NSSM's stop sequence escalates from Ctrl+C
+        # (SIGINT) to Ctrl+Break (SIGBREAK) after a 1.5s grace period.
+        # Without this handler the second event would terminate the
+        # process abruptly, skipping our cleanup.
+        original_sigbreak = None
+        if hasattr(signal, "SIGBREAK"):
+            original_sigbreak = signal.getsignal(signal.SIGBREAK)
+            signal.signal(signal.SIGBREAK, self._signal_handler)
 
         try:
+            # Disable Windows CMD QuickEdit Mode — accidental clicks must
+            # not pause the trader by blocking stdout. No-op on non-Windows.
+            from echolon._internal.console_utils import disable_quickedit_mode
+            disable_quickedit_mode()
+
             self._connect_client()
             self.risk_overlay.load(active_slot_ids=[s.slot_id for s in self.slots])
             self._schedule_daily_trading()
 
             while self.running and not self.shutdown_event.is_set():
                 self.shutdown_event.wait(timeout=60)
+                # Heartbeat: write a timestamp file every minute so the
+                # operator can verify liveness via `type scheduler_heartbeat.txt`
+                # without depending on console output (which can block).
+                self._write_scheduler_heartbeat()
         except Exception as e:
             self.log.error(f"Fatal error: {e}\n{traceback.format_exc()}")
         finally:
             signal.signal(signal.SIGINT, original_sigint)
             signal.signal(signal.SIGTERM, original_sigterm)
+            if original_sigbreak is not None:
+                signal.signal(signal.SIGBREAK, original_sigbreak)
             self.stop()
 
     def run_single_cycle(self) -> Dict[str, Any]:
@@ -198,6 +228,13 @@ class PortfolioTradingRunner:
                 except Exception as e:
                     self.log.error(f"[{slot.slot_id}] Logger finalize error: {e}")
 
+        if self.order_router:
+            try:
+                self.order_router.shutdown()
+            except Exception:
+                pass
+            self.order_router = None
+
         if self.client:
             try:
                 self.client.disconnect()
@@ -220,7 +257,7 @@ class PortfolioTradingRunner:
     # =========================================================================
 
     def _connect_client(self) -> None:
-        """Create and connect shared MiniQMTClient."""
+        """Create and connect shared MiniQMTClient + OrderRouter."""
         account_cfg = self.config.get_active_account()
         # Use first slot's instrument for the MiniQMTClient init
         first_slot = self.slots[0].slot_config if self.slots else None
@@ -235,11 +272,28 @@ class PortfolioTradingRunner:
         connected = self.client.connect()
         if connected:
             self.log.info("QMT connection established")
-            self.client.set_callbacks(
-                order_callback=self._on_order_update,
-                trade_callback=self._on_trade_update,
-                async_response_callback=self._on_async_response,
+            # Construct OrderRouter — it registers its own callbacks on
+            # the client. The router fans out to our handlers below.
+            callbacks = RouterCallbacks(
+                on_filled=self._on_router_filled,
+                on_partial=self._on_router_partial,
+                on_abandoned=self._on_router_abandoned,
+                on_rejected=self._on_router_rejected,
+                on_circuit_tripped=self._on_router_circuit_tripped,
             )
+            self.order_router = OrderRouter(
+                client=self.client,
+                callbacks=callbacks,
+                state_dir=Path(self.portfolio_dir),
+            )
+            self.order_router.start()
+            self.log.info("OrderRouter started")
+            if self.order_router.is_tripped:
+                self.log.critical(
+                    f"OrderRouter started TRIPPED from persisted state: "
+                    f"{self.order_router.tripped_reason}. Run "
+                    f"`goingmerry order-router-reset` after investigating."
+                )
         else:
             self.log.warning("QMT connection failed (may be outside trading hours)")
 
@@ -285,8 +339,11 @@ class PortfolioTradingRunner:
         self.scheduler.add_job(
             self._market_open_job,
             trigger=DateTrigger(run_date=run_date),
+            id="portfolio_daily_job",
             name="PortfolioDailyJob",
+            replace_existing=True,
             misfire_grace_time=self.config.deploy.misfire_grace_time,
+            coalesce=True,
         )
         self.scheduler.start()
         self.log.info(f"Scheduled: {target_date.strftime('%Y-%m-%d')} at {hour:02d}:{minute:02d}")
@@ -323,9 +380,12 @@ class PortfolioTradingRunner:
         results: Dict[str, Any] = {"status": "success", "timestamp": cycle_start.isoformat()}
 
         # Clear stale state
-        self._order_events.clear()
-        self._unmapped_callbacks.clear()
-        self._slot_order_map.clear()
+        self._slot_handle_map.clear()
+        self._slot_terminal_records.clear()
+        # Reset OrderRouter per-cycle health metrics so that
+        # abandon/reject rates aren't diluted by all-time totals.
+        if self.order_router is not None:
+            self.order_router.reset_cycle_metrics()
         for slot in self.slots:
             slot.reset_daily_state()
 
@@ -744,108 +804,154 @@ class PortfolioTradingRunner:
         for slot, order in all_pending:
             slot_id = slot.slot_id
             try:
-                # Use async API for parallel burst-fire — all orders hit
-                # QMT within ~50ms instead of sequential blocking.
-                # Night market timing is handled centrally by
-                # _central_wait_if_night_market() above.
                 intent_str = order.intent.value if order.intent else "ENTRY_LONG"
-                qmt_order_id = self.client.submit_order_async(
-                    symbol=order.symbol,
-                    volume=int(order.size),
-                    price=order.price,
-                    order_type="MARKET",
-                    intent=intent_str,
-                    strategy_name=slot_id,
-                )
 
-                if qmt_order_id is not None and qmt_order_id > 0:
-                    order.status = OrderStatus.SUBMITTED
-                    order.metadata['qmt_order_id'] = qmt_order_id
+                # Phase 2: route through OrderRouter. The router runs the
+                # state machine, watchdog cancel-and-resubmit, splitter,
+                # BandGuard, and circuit breaker. We only see terminal
+                # outcomes via the callbacks wired in _connect_client.
+                if self.order_router is None:
+                    order.status = OrderStatus.REJECTED
+                    self.log.error(f"[{slot_id}] No OrderRouter — cannot submit")
+                    continue
 
-                    # Register for callback routing
-                    with self._callback_lock:
-                        self._order_events[qmt_order_id] = {
-                            'slot_id': slot_id,
-                            'order': order,
-                            'event': threading.Event(),
-                            'status': 0,
-                            'traded_price': 0.0,
-                            'traded_volume': 0,
-                        }
+                # If this is an EXIT-class order, set pending_exit_intent
+                # BEFORE the first attempt — Amendment B. This way even
+                # an immediate-rejection abandons can be recovered next cycle.
+                if intent_str in ("EXIT_LONG", "EXIT_SHORT", "ROLLOVER_CLOSE", "FORCED_EXIT"):
+                    self._set_pending_exit_intent(
+                        slot=slot, intent=intent_str,
+                        original_size=int(order.size),
+                    )
 
-                    if slot_id not in self._slot_order_map:
-                        self._slot_order_map[slot_id] = []
-                    self._slot_order_map[slot_id].append((order, qmt_order_id))
-
-                    self.log.info(
-                        f"[{slot_id}] Order fired: {order.intent.value} "
-                        f"{order.size}@{order.price} -> qmt_id={qmt_order_id}"
+                # If the caller specified an explicit price (e.g. the
+                # kill-at-band-edge recovery in TradingSlot._resume_pending_exit),
+                # honor it as a LIMIT — bypass router's aggressive pricing.
+                # Strategies that want MARKET-equivalent behaviour leave
+                # order.price=None.
+                if order.price is not None and float(order.price) > 0:
+                    handle = self.order_router.submit_order(
+                        intent=intent_str,
+                        symbol=order.symbol,
+                        volume=int(order.size),
+                        slot_id=slot_id,
+                        intended_price=float(order.price),
+                        force_price=float(order.price),
                     )
                 else:
+                    handle = self.order_router.submit_order(
+                        intent=intent_str,
+                        symbol=order.symbol,
+                        volume=int(order.size),
+                        slot_id=slot_id,
+                        intended_price=order.price,
+                    )
+
+                if handle.state == OrderState.SUBMITTED:
+                    order.status = OrderStatus.SUBMITTED
+                    order.metadata['qmt_seq_id'] = handle.seq_id
+                    self._slot_handle_map.setdefault(slot_id, []).append((order, handle))
+                    self.log.info(
+                        f"[{slot_id}] Routed: {intent_str} "
+                        f"{order.size}@{order.price} -> seq={handle.seq_id} "
+                        f"submitted_price={handle.submitted_price:.2f}"
+                    )
+                else:
+                    # Immediate rejection (e.g. submit_order_async returned no seq_id).
                     order.status = OrderStatus.REJECTED
-                    self.log.error(f"[{slot_id}] Order rejected by QMT: {order.intent.value}")
+                    self.log.error(
+                        f"[{slot_id}] OrderRouter rejected immediately: {intent_str} "
+                        f"state={handle.state.value} msg={handle.last_status_msg}"
+                    )
 
             except Exception as e:
                 order.status = OrderStatus.REJECTED
-                self.log.error(f"[{slot_id}] Order fire error: {e}")
-
-        # Flush any callbacks that arrived before mapping was set up
-        self._flush_unmapped_callbacks()
+                self.log.error(f"[{slot_id}] Order fire error: {e}\n{traceback.format_exc()}")
 
     # =========================================================================
     # Phase 3: Process fills
     # =========================================================================
 
     def _process_fills(self, timeout: float = 600.0) -> None:
-        """
-        Wait for fill callbacks and update VP for each slot.
+        """Wait for OrderRouter chain resolution per submitted intent,
+        then book all terminal events on the main thread.
 
-        For each submitted order, waits up to timeout for callback,
-        then updates SlotAwarePortfolio.
+        Router callbacks fire on the watchdog thread and append to
+        self._slot_terminal_records. We block per intent's chain_resolved
+        event until the full retry+split chain is done, then drain the
+        recorded terminal events for that slot's intents.
         """
-        for slot_id, order_list in self._slot_order_map.items():
+        # Phase A — block until every submitted intent's chain has fully resolved.
+        for slot_id, order_list in self._slot_handle_map.items():
+            slot = self._get_slot_by_id(slot_id)
+            if slot is None or slot.is_errored:
+                continue
+            for order, handle in order_list:
+                if handle.chain_resolved is None:
+                    continue
+                self.log.info(
+                    f"[{slot_id}] Waiting for chain seq={handle.seq_id} "
+                    f"({order.intent.value if order.intent else '?'} "
+                    f"{order.size}@{order.price})..."
+                )
+                resolved = handle.chain_resolved.wait(timeout=timeout)
+                if not resolved:
+                    self.log.warning(
+                        f"[{slot_id}] Chain timeout seq={handle.seq_id} "
+                        f"after {timeout}s — booking partial state"
+                    )
+
+        # Phase B — book the recorded terminal events on the main thread.
+        for slot_id, order_list in self._slot_handle_map.items():
             slot = self._get_slot_by_id(slot_id)
             if slot is None or slot.is_errored:
                 continue
 
-            for order, seq_id in order_list:
-                if seq_id is None:
-                    continue
+            with self._callback_lock:
+                records = list(self._slot_terminal_records.get(slot_id, []))
 
-                # Translate seq_id to real order_id (mapped by _on_async_response)
-                real_id = self._seq_to_order_id.get(seq_id, seq_id)
-                entry = self._order_events.get(real_id)
-                if entry is None:
-                    self.log.warning(f"[{slot_id}] No entry for seq={seq_id}/order={real_id}")
-                    continue
-
-                self.log.info(f"[{slot_id}] Waiting for fill on order_id={real_id} (seq={seq_id})...")
-                filled = entry['event'].wait(timeout=timeout)
-
-                # Grace period: on_stock_trade callback with price/volume may
-                # arrive slightly after on_stock_order sets status=56.
-                # Wait up to 2s for the trade callback to populate price.
-                if filled and entry['status'] == 56 and entry['traded_price'] == 0.0:
-                    for _ in range(20):  # 20 x 0.1s = 2s max
-                        time.sleep(0.1)
-                        if entry['traded_price'] > 0:
-                            break
-
-                status = entry['status']
-                traded_price = entry['traded_price']
-                traded_volume = entry['traded_volume']
-                exec_status = QMT_STATUS_MAP.get(status, f'UNKNOWN_{status}')
-
-                if not filled:
-                    self.log.warning(
-                        f"[{slot_id}] Timeout waiting for order_id={real_id}"
+            for record in records:
+                kind = record["kind"]
+                handle = record["handle"]
+                # Find the originating Order — match by chain root seq_id.
+                chain_root = handle.original_handle_id or handle.seq_id
+                order = self._find_order_for_chain(order_list, chain_root)
+                if order is None:
+                    # Most commonly: an immediately-rejected handle whose
+                    # fake-negative seq_id never made it into the slot's
+                    # handle_map. The on_rejected callback already logged
+                    # the rejection at submit time; nothing else to book.
+                    self.log.debug(
+                        f"[{slot_id}] Skipping record kind={kind} "
+                        f"seq={handle.seq_id}: no matching order in handle_map"
                     )
                     continue
 
+                # Coerce kind → status code for legacy bookkeeping branches.
+                if kind == "filled":
+                    status = 56
+                elif kind == "partial":
+                    status = 55
+                elif kind == "rejected":
+                    status = 57
+                else:                       # abandoned (treated like cancel)
+                    status = 54
+
+                traded_price = handle.filled_avg_price
+                traded_volume = handle.filled_volume
+                real_id = handle.qmt_order_id or handle.seq_id
+                exec_status = QMT_STATUS_MAP.get(status, f'UNKNOWN_{status}')
+
                 self.log.info(
-                    f"[{slot_id}] Fill: status={exec_status}, "
-                    f"price={traded_price}, volume={traded_volume}"
+                    f"[{slot_id}] Terminal: kind={kind} "
+                    f"status={exec_status} price={traded_price} "
+                    f"volume={traded_volume} seq={handle.seq_id} "
+                    f"reason={record.get('reason', '')}"
                 )
+
+                # The bookkeeping branches below mirror the legacy code
+                # (FILLED / CANCELED / REJECTED); they apply VP updates,
+                # write per-slot CSVs, and update strategy loggers.
 
                 if status == 56 and traded_volume > 0:  # FILLED
                     # Safety: resolve traded_price if still 0.0
@@ -961,9 +1067,9 @@ class PortfolioTradingRunner:
                     except Exception as e:
                         self.log.error(f"[{slot_id}] VP update/logging failed: {e}")
 
-                elif status in (53, 54):  # CANCELED
+                elif status in (53, 54):  # CANCELED / ABANDONED
                     order.status = OrderStatus.CANCELLED
-                    msg = entry.get('status_msg', '')
+                    msg = handle.last_status_msg or record.get('reason', '')
                     self.log.warning(f"[{slot_id}] Order canceled: order_id={real_id}, msg={msg}")
 
                     # Update strategy logger with cancel
@@ -1018,7 +1124,7 @@ class PortfolioTradingRunner:
 
                 elif status == 57:  # REJECTED
                     order.status = OrderStatus.REJECTED
-                    msg = entry.get('status_msg', '')
+                    msg = handle.last_status_msg or record.get('reason', '')
                     self.log.error(f"[{slot_id}] Order rejected: order_id={real_id}, msg={msg}")
 
                     # Update strategy logger with rejection
@@ -1061,22 +1167,47 @@ class PortfolioTradingRunner:
                         symbol=sc.instrument,
                     )
 
+        # Phase C — chain-aware pending_exit_intent reconciliation
+        # (Amendment B). Process AFTER per-record bookkeeping so split chains
+        # are accounted in aggregate. For each EXIT-class submitted intent,
+        # sum filled_volume across the entire chain (parent + retries +
+        # split chunks) and decide whether to clear or update the intent.
+        for slot_id, order_list in self._slot_handle_map.items():
+            slot = self._get_slot_by_id(slot_id)
+            if slot is None or slot.is_errored:
+                continue
+            with self._callback_lock:
+                records = list(self._slot_terminal_records.get(slot_id, []))
+            for order, parent_handle in order_list:
+                intent_str = order.intent.value if order.intent else ""
+                if intent_str not in (
+                    "EXIT_LONG", "EXIT_SHORT", "ROLLOVER_CLOSE", "FORCED_EXIT"
+                ):
+                    continue
+                chain_root = parent_handle.seq_id
+                chain_records = [
+                    r for r in records
+                    if (r["handle"].original_handle_id or r["handle"].seq_id)
+                    == chain_root
+                ]
+                # Sum filled across all chain handles. Each handle's
+                # filled_volume is the deduped sum of its trade callbacks.
+                # Per-handle filled is independent so summing is safe.
+                seen_handles: Dict[int, int] = {}
+                for r in chain_records:
+                    seen_handles[r["handle"].seq_id] = r["handle"].filled_volume
+                total_filled = sum(seen_handles.values())
+                original = int(order.size)
+                remaining = max(0, original - total_filled)
+                if remaining <= 0:
+                    self._clear_pending_exit_intent(slot)
+                else:
+                    self._update_pending_exit_remaining(slot, remaining)
+
     def _resolve_fill_price(self, order_id: int, slot_id: str) -> float:
-        """Attempt to resolve a fill price when the trade callback didn't provide one.
-
-        Fallback chain:
-        1. Re-check _order_events (trade callback may have arrived late)
-        2. Query QMT trade history for the order_id
-        3. Return 0.0 if all fail (caller must handle)
+        """Attempt to resolve a fill price when the trade callback didn't
+        provide one. Fallback queries QMT trade history.
         """
-        # Tier 1: re-check entry (callback thread may have updated it)
-        entry = self._order_events.get(order_id)
-        if entry and entry.get('traded_price', 0) > 0:
-            price = entry['traded_price']
-            self.log.info(f"[{slot_id}] Price resolved (re-check): {price}")
-            return price
-
-        # Tier 2: query QMT trade history
         if self.client:
             try:
                 trades = self.client.query_stock_trades()
@@ -1126,121 +1257,158 @@ class PortfolioTradingRunner:
             portfolio.close_position(size=volume, price=price)
 
     # =========================================================================
-    # Callbacks (from QMT callback thread)
+    # OrderRouter callbacks (from watchdog thread — append-only here)
     # =========================================================================
 
-    def _on_async_response(self, seq_id: int, order_id: int) -> None:
-        """Handle order_stock_async response — maps seq_id to real order_id.
+    def _on_router_filled(self, handle: "OrderHandle") -> None:
+        """Router-side notification that a handle reached TERMINAL_FILLED."""
+        with self._callback_lock:
+            self._slot_terminal_records[handle.slot_id].append({
+                "kind": "filled", "handle": handle,
+            })
 
-        order_stock_async returns a seq_id immediately. The real exchange
-        order_id arrives later via this callback. We re-key _order_events
-        from seq_id to real order_id so that subsequent _on_order_update
-        and _on_trade_update callbacks (which use real order_id) can find
-        the entry.
+    def _on_router_partial(self, handle: "OrderHandle") -> None:
+        """A handle's chain has accumulated some fill but isn't complete yet."""
+        with self._callback_lock:
+            self._slot_terminal_records[handle.slot_id].append({
+                "kind": "partial", "handle": handle,
+            })
+
+    def _on_router_abandoned(
+        self, handle: "OrderHandle", remaining: int, reason: str,
+    ) -> None:
+        """Chain exhausted retries / hit slippage cap / etc."""
+        with self._callback_lock:
+            self._slot_terminal_records[handle.slot_id].append({
+                "kind": "abandoned", "handle": handle,
+                "remaining": remaining, "reason": reason,
+            })
+
+    def _on_router_rejected(self, handle: "OrderHandle") -> None:
+        """Broker rejected the order."""
+        with self._callback_lock:
+            self._slot_terminal_records[handle.slot_id].append({
+                "kind": "rejected", "handle": handle,
+            })
+
+    def _on_router_circuit_tripped(self, reason: str) -> None:
+        """Circuit broke — log critical alert. The router itself refuses
+        further submits via OrderRouterTripped; nothing for us to gate."""
+        self.log.critical(
+            f"OrderRouter circuit TRIPPED: {reason}. "
+            f"Cycle continues to drain in-flight orders. "
+            f"Run `goingmerry order-router-reset` after investigating."
+        )
+
+    # ---- Pending-exit-intent helpers (Amendment B) ------------------------
+
+    def _set_pending_exit_intent(
+        self, slot: TradingSlot, intent: str, original_size: int,
+    ) -> None:
+        """Record an EXIT-class submission so the next cycle can recover."""
+        if not slot._state_path:
+            return
+        try:
+            from echolon.strategy.state_manager import StateManager, PendingExitIntent
+            sm = StateManager(state_path=slot._state_path)
+            sm.load_state()
+            now = datetime.now().isoformat()
+            existing = sm.get_pending_exit_intent()
+            if existing is not None and existing.intent == intent:
+                # Already pending from a prior cycle — bump and re-save.
+                existing.last_attempt_time = now
+                sm.set_pending_exit_intent(existing)
+            else:
+                sm.set_pending_exit_intent(PendingExitIntent(
+                    intent=intent,
+                    original_size=int(original_size),
+                    remaining_size=int(original_size),
+                    attempts_so_far=0,
+                    original_decision_time=now,
+                    last_attempt_time=now,
+                    cycles_pending=1,
+                ))
+            sm.save_state()
+        except Exception as exc:
+            self.log.error(f"[{slot.slot_id}] set_pending_exit_intent failed: {exc}")
+
+    def _clear_pending_exit_intent(self, slot: TradingSlot) -> None:
+        if not slot._state_path:
+            return
+        try:
+            from echolon.strategy.state_manager import StateManager
+            sm = StateManager(state_path=slot._state_path)
+            sm.load_state()
+            sm.clear_pending_exit_intent()
+            sm.save_state()
+        except Exception as exc:
+            self.log.error(f"[{slot.slot_id}] clear_pending_exit_intent failed: {exc}")
+        # Also remove operator alert row for this slot, if any.
+        try:
+            self._remove_pending_exit_alert(slot.slot_id)
+        except Exception as exc:
+            self.log.error(f"[{slot.slot_id}] remove_pending_exit_alert failed: {exc}")
+
+    def _remove_pending_exit_alert(self, slot_id: str) -> None:
+        """Remove a slot's entry from pending_exit_alerts.json."""
+        alert_path = Path(self.portfolio_dir) / "pending_exit_alerts.json"
+        if not alert_path.exists():
+            return
+        try:
+            with open(alert_path, "r") as f:
+                existing = json.load(f)
+            if not isinstance(existing, list):
+                return
+        except (OSError, json.JSONDecodeError):
+            return
+        new = [a for a in existing if a.get("slot_id") != slot_id]
+        if len(new) == len(existing):
+            return
+        tmp = alert_path.with_suffix(".json.tmp")
+        with open(tmp, "w") as f:
+            json.dump(new, f, indent=2)
+        os.replace(tmp, alert_path)
+
+    def _update_pending_exit_remaining(
+        self, slot: TradingSlot, remaining: int,
+    ) -> None:
+        if not slot._state_path:
+            return
+        try:
+            from echolon.strategy.state_manager import StateManager
+            sm = StateManager(state_path=slot._state_path)
+            sm.load_state()
+            pending = sm.get_pending_exit_intent()
+            if pending is None:
+                return
+            pending.remaining_size = max(0, int(remaining))
+            pending.attempts_so_far += 1
+            pending.last_attempt_time = datetime.now().isoformat()
+            sm.set_pending_exit_intent(pending)
+            sm.save_state()
+        except Exception as exc:
+            self.log.error(f"[{slot.slot_id}] update_pending_exit_remaining failed: {exc}")
+
+    # ---- Lookup helpers ---------------------------------------------------
+
+    def _find_order_for_chain(
+        self,
+        order_list: List[Tuple[Order, "OrderHandle"]],
+        chain_root_seq: int,
+    ) -> Optional[Order]:
+        """Locate the originating Order for a handle in a retry/split chain.
+
+        Returns ``None`` when no order in the slot's tracked list matches
+        the chain root (e.g. an immediately-rejected handle whose fake
+        seq_id never made it into ``_slot_handle_map``). Callers MUST
+        handle ``None`` and skip the record — using a wrong order would
+        write the rejected status to a different order's CSV and corrupt
+        the audit trail.
         """
-        with self._callback_lock:
-            self._seq_to_order_id[seq_id] = order_id
-            # Re-key _order_events from seq_id to real order_id
-            entry = self._order_events.pop(seq_id, None)
-            if entry is not None:
-                self._order_events[order_id] = entry
-                # Also update the Order metadata
-                entry['order'].metadata['qmt_order_id'] = order_id
-                self.log.info(
-                    f"Async response: seq={seq_id} -> order_id={order_id} "
-                    f"(slot={entry['slot_id']})"
-                )
-            else:
-                self.log.warning(
-                    f"Async response: seq={seq_id} -> order_id={order_id} "
-                    f"(no pending entry found)"
-                )
-
-            # Flush any unmapped callbacks that arrived before this mapping
-            remaining = []
-            for cb in self._unmapped_callbacks:
-                cb_entry = self._order_events.get(cb['order_id'])
-                if cb_entry is not None:
-                    if cb['type'] == 'order':
-                        cb_entry['status'] = cb['status']
-                        cb_entry['traded_price'] = cb['traded_price']
-                        cb_entry['traded_volume'] = cb['traded_volume']
-                        if cb['status'] not in (48, 49, 50):
-                            cb_entry['event'].set()
-                    elif cb['type'] == 'trade' and cb['traded_price'] > 0:
-                        cb_entry['traded_price'] = cb['traded_price']
-                        cb_entry['traded_volume'] = cb['traded_volume']
-                else:
-                    remaining.append(cb)
-            self._unmapped_callbacks = remaining
-
-    def _on_order_update(self, order) -> None:
-        """QMT order status callback. Stores data, signals event on terminal."""
-        order_id = getattr(order, 'order_id', 0)
-        order_status = getattr(order, 'order_status', 0)
-        traded_price = getattr(order, 'traded_price', 0.0)
-        traded_volume = getattr(order, 'traded_volume', 0)
-        status_msg = getattr(order, 'status_msg', '')
-
-        with self._callback_lock:
-            entry = self._order_events.get(order_id)
-            if entry is not None:
-                entry['status'] = order_status
-                entry['traded_price'] = traded_price
-                entry['traded_volume'] = traded_volume
-                entry['status_msg'] = status_msg
-                if order_status not in (48, 49, 50):
-                    entry['event'].set()
-            else:
-                # Unmapped — buffer for later
-                self._unmapped_callbacks.append({
-                    'type': 'order',
-                    'order_id': order_id,
-                    'status': order_status,
-                    'traded_price': traded_price,
-                    'traded_volume': traded_volume,
-                    'status_msg': status_msg,
-                })
-
-    def _on_trade_update(self, trade) -> None:
-        """QMT trade execution callback."""
-        trade_id = getattr(trade, 'order_id', 0)
-        traded_price = getattr(trade, 'traded_price', 0.0)
-        traded_volume = getattr(trade, 'traded_volume', 0)
-
-        with self._callback_lock:
-            entry = self._order_events.get(trade_id)
-            if entry is not None and traded_price > 0:
-                entry['traded_price'] = traded_price
-                entry['traded_volume'] = traded_volume
-            else:
-                self._unmapped_callbacks.append({
-                    'type': 'trade',
-                    'order_id': trade_id,
-                    'traded_price': traded_price,
-                    'traded_volume': traded_volume,
-                })
-
-    def _flush_unmapped_callbacks(self) -> None:
-        """Re-process callbacks that arrived before mapping was registered."""
-        with self._callback_lock:
-            remaining = []
-            for cb in self._unmapped_callbacks:
-                order_id = cb['order_id']
-                entry = self._order_events.get(order_id)
-                if entry is not None:
-                    if cb['type'] == 'order':
-                        entry['status'] = cb['status']
-                        entry['traded_price'] = cb['traded_price']
-                        entry['traded_volume'] = cb['traded_volume']
-                        if cb['status'] not in (48, 49, 50):
-                            entry['event'].set()
-                    elif cb['type'] == 'trade' and cb['traded_price'] > 0:
-                        entry['traded_price'] = cb['traded_price']
-                        entry['traded_volume'] = cb['traded_volume']
-                else:
-                    remaining.append(cb)
-            self._unmapped_callbacks = remaining
+        for order, parent_handle in order_list:
+            if parent_handle.seq_id == chain_root_seq:
+                return order
+        return None
 
     # =========================================================================
     # Intent mapping
@@ -1495,8 +1663,11 @@ class PortfolioTradingRunner:
             self.scheduler.add_job(
                 self._market_open_job,
                 trigger=DateTrigger(run_date=run_date),
+                id="portfolio_daily_job",
                 name="PortfolioDailyJob",
+                replace_existing=True,
                 misfire_grace_time=self.config.deploy.misfire_grace_time,
+                coalesce=True,
             )
             self.log.info(f"Rescheduled: {next_day.strftime('%Y-%m-%d')} at {hour:02d}:{minute:02d}")
         except Exception as e:
@@ -1506,3 +1677,39 @@ class PortfolioTradingRunner:
         """Handle SIGINT/SIGTERM."""
         self.log.info(f"Received signal {signum} — shutting down")
         self.stop()
+
+    def _write_scheduler_heartbeat(self) -> None:
+        """Write a heartbeat file with current time + next-job time.
+
+        The operator monitors this file (`type scheduler_heartbeat.txt`)
+        to verify the runner is still ticking — without depending on
+        console output, which can block under Windows CMD QuickEdit
+        Mode. Atomic write via temp+rename so partial reads can't see
+        a corrupted file.
+        """
+        if not self.scheduler:
+            return
+        try:
+            jobs = self.scheduler.get_jobs() if self.scheduler else []
+            next_job_run = None
+            for j in jobs:
+                if j.name == "PortfolioDailyJob" and j.next_run_time is not None:
+                    next_job_run = j.next_run_time.isoformat()
+                    break
+
+            heartbeat_path = Path(self.portfolio_dir) / "scheduler_heartbeat.txt"
+            heartbeat_path.parent.mkdir(parents=True, exist_ok=True)
+            tmp_path = heartbeat_path.with_suffix(".txt.tmp")
+            content = (
+                f"now={datetime.now(self.TIMEZONE).isoformat()}\n"
+                f"next_daily_job={next_job_run or 'NONE'}\n"
+                f"running={self.running}\n"
+                f"slots={len(self.slots)}\n"
+                f"order_router_tripped="
+                f"{self.order_router.is_tripped if self.order_router else 'no_router'}\n"
+            )
+            tmp_path.write_text(content, encoding="utf-8")
+            os.replace(tmp_path, heartbeat_path)
+        except Exception:
+            # Heartbeat is best-effort; never raise from here.
+            pass

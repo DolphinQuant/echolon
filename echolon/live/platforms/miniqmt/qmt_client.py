@@ -32,18 +32,35 @@ from dataclasses import dataclass
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import pandas as pd
-import pytz
-# APScheduler disabled — dedicated threads used instead (GIL starvation fix)
-# from apscheduler.schedulers.background import BackgroundScheduler
-# from apscheduler.triggers.date import DateTrigger
 
 from xtquant import xtconstant, xtdata
 from xtquant.xttrader import XtQuantTrader, XtQuantTraderCallback
 from xtquant.xttype import StockAccount
 
 from ...config.deploy_config import QMTAccountConfig
-from echolon.data.loaders.calendar_loader import is_night_market_open
+from ...config.order_policy import (
+    BUFFER_TICKS_BY_ATTEMPT,
+    DEFAULT_BUFFER_TICKS,
+    TICK_SNAPSHOT_MAX_AGE_S,
+)
 from echolon.errors import raise_error
+
+
+def _is_tick_fresh(tick: Optional[Dict[str, Any]]) -> bool:
+    """Return True if the tick snapshot's `time` field is within
+    TICK_SNAPSHOT_MAX_AGE_S of now. Stale or missing time → False.
+    """
+    if tick is None:
+        return False
+    ts_ms = tick.get("time", 0)
+    try:
+        ts_ms = float(ts_ms)
+    except (TypeError, ValueError):
+        return False
+    if ts_ms <= 0:
+        return False
+    age_s = (datetime.datetime.now().timestamp() * 1000 - ts_ms) / 1000.0
+    return age_s <= TICK_SNAPSHOT_MAX_AGE_S
 
 logger = logging.getLogger(__name__)
 
@@ -202,56 +219,11 @@ class MiniQMTClient:
         self.orders: Dict[int, OrderInfo] = {}
         self.positions: Dict[str, PositionInfo] = {}
 
-        # Scheduled order management
-        self.scheduled_orders: Dict[str, Any] = {}
-        # self.order_scheduler: Optional[BackgroundScheduler] = None  # APScheduler disabled
-        self.temp_order_counter: int = 0
-
-        # Thread safety
+        # Thread safety — locks for the live paths only
         self.data_lock = threading.Lock()
-        self.order_lock = threading.Lock()
         self.subscription_lock = threading.Lock()
-        self.scheduler_lock = threading.Lock()
-
-        # Reconnection settings
-        self.max_reconnect_attempts: int = 5
-        self.reconnect_delay: int = 30  # seconds
 
         logger.info("MiniQMT Client initialized for account: %s", config.account_id)
-
-        # APScheduler disabled — dedicated threads used instead
-        # self._initialize_order_scheduler()
-
-    # ------------------------------------------------------------------
-    # Scheduler
-    # ------------------------------------------------------------------
-
-    # def _initialize_order_scheduler(self):
-    #     """Initialize the APScheduler for delayed order execution."""
-    #     try:
-    #         tz = pytz.timezone("Asia/Shanghai")
-    #         self.order_scheduler = BackgroundScheduler(timezone=tz)
-    #         self.order_scheduler.start()
-    #         logger.info("APScheduler initialized successfully for order scheduling")
-    #     except Exception as exc:
-    #         logger.error("Failed to initialize order scheduler: %s", exc)
-    #         self.order_scheduler = None
-
-    def _should_execute_immediately(self, scheduled_time: datetime.datetime) -> bool:
-        """Check if order should be executed immediately based on current time."""
-        try:
-            shanghai_tz = pytz.timezone("Asia/Shanghai")
-            now = datetime.datetime.now(shanghai_tz)
-
-            # If scheduled_time is naive, assume Shanghai timezone
-            if scheduled_time.tzinfo is None:
-                scheduled_time = shanghai_tz.localize(scheduled_time)
-
-            return now >= scheduled_time
-
-        except Exception as exc:
-            logger.error("Error checking execution time: %s", exc)
-            return True  # Default to immediate execution on error
 
     # ------------------------------------------------------------------
     # Connection
@@ -434,20 +406,32 @@ class MiniQMTClient:
             return None
 
     def resolve_aggressive_price(
-        self, symbol: str, intent: str,
+        self, symbol: str, intent: str, attempt: int = 1, atr_ticks: int = 0,
     ) -> Tuple[int, float]:
         """Resolve price_type and price for aggressive (market-like) order.
 
         Returns FIX_PRICE with a price derived from live market data,
         or falls back to LATEST_PRICE as last resort.
 
-        Tier 1: Counterparty price (ask1 for buy, bid1 for sell)
-        Tier 2: Last traded price + 2-tick buffer
+        Tier 1: Counterparty price (ask1 for buy, bid1 for sell) +/- buffer
+        Tier 2: Last traded price +/- buffer
         Tier 3: LATEST_PRICE (let QMT resolve internally)
+
+        Both Tier 1 and Tier 2 apply ``(BUFFER_TICKS_BY_ATTEMPT[attempt] +
+        atr_ticks) * price_tick`` — past the touch on Tier 1, around
+        lastPrice on Tier 2. Yesterday's al_s1 bug submitted FIX_PRICE
+        @ bid1=24645 with zero buffer; the market moved through 24645
+        within seconds and never returned. The buffer keeps the order
+        marketable.
 
         Args:
             symbol: Contract code with suffix (e.g. 'al2605.SF').
             intent: Order intent ('ENTRY_LONG', 'EXIT_LONG', etc.).
+            attempt: Submission attempt number (1=first, 2+=resubmit).
+            atr_ticks: Layer 3 ATR-aware additive buffer (in ticks). The
+                caller computes ``ceil(ATR / price_tick * factor)`` from
+                the slot's indicator data and passes it; default 0 keeps
+                Layer 1 behavior.
 
         Returns:
             Tuple of (price_type constant, resolved price).
@@ -455,19 +439,38 @@ class MiniQMTClient:
         is_buy = intent in (
             "ENTRY_LONG", "EXIT_SHORT", "ROLLOVER_OPEN",
         )
+        base_ticks = BUFFER_TICKS_BY_ATTEMPT.get(attempt, DEFAULT_BUFFER_TICKS)
+        buffer_ticks = base_ticks + max(0, int(atr_ticks))
 
-        # Tier 1: counterparty price from order book
+        # Look up tick size once — needed by both Tier 1 and Tier 2.
+        detail = xtdata.get_instrument_detail(symbol)
+        price_tick = float(detail.get("PriceTick", 5)) if detail else 5.0
+        buffer = buffer_ticks * price_tick
+
+        # Tier 1: counterparty price + buffer past the touch.
+        # Skip Tier 1 if tick is stale (TICK_SNAPSHOT_MAX_AGE_S=2.0s).
+        # The tick snapshot's `time` field is checked: a stale tick is a
+        # symptom of broken subscription / outage and using it would risk
+        # filling at a price that no longer reflects the live market.
         tick = self._get_tick_snapshot(symbol)
+        if tick is not None and not _is_tick_fresh(tick):
+            logger.warning(
+                "Tick stale for %s (age > %ss) — skipping Tier 1, falling through",
+                symbol, TICK_SNAPSHOT_MAX_AGE_S,
+            )
+            tick = None
         if tick is not None:
             if is_buy:
                 ask_prices = tick.get("askPrice")
                 if ask_prices is not None:
                     ask1 = ask_prices[0] if hasattr(ask_prices, '__getitem__') else 0
                     if ask1 and float(ask1) > 0:
-                        price = float(ask1)
+                        ask1 = float(ask1)
+                        price = ask1 + buffer
                         logger.info(
-                            "Price resolved [Tier1 ask1]: %s %.2f",
-                            symbol, price,
+                            "Price resolved [Tier1 ask1+buf]: %s %.2f "
+                            "(ask1=%.2f, buf=%.2f, attempt=%d)",
+                            symbol, price, ask1, buffer, attempt,
                         )
                         return xtconstant.FIX_PRICE, price
             else:
@@ -475,25 +478,24 @@ class MiniQMTClient:
                 if bid_prices is not None:
                     bid1 = bid_prices[0] if hasattr(bid_prices, '__getitem__') else 0
                     if bid1 and float(bid1) > 0:
-                        price = float(bid1)
+                        bid1 = float(bid1)
+                        price = bid1 - buffer
                         logger.info(
-                            "Price resolved [Tier1 bid1]: %s %.2f",
-                            symbol, price,
+                            "Price resolved [Tier1 bid1-buf]: %s %.2f "
+                            "(bid1=%.2f, buf=%.2f, attempt=%d)",
+                            symbol, price, bid1, buffer, attempt,
                         )
                         return xtconstant.FIX_PRICE, price
 
-            # Tier 2: lastPrice + buffer
+            # Tier 2: lastPrice +/- buffer
             last_price = tick.get("lastPrice", 0)
             if last_price and float(last_price) > 0:
                 last_price = float(last_price)
-                detail = xtdata.get_instrument_detail(symbol)
-                price_tick = float(detail.get("PriceTick", 5)) if detail else 5.0
-                buffer = 2 * price_tick
                 price = last_price + buffer if is_buy else last_price - buffer
                 logger.info(
-                    "Price resolved [Tier2 last+buffer]: %s %.2f "
-                    "(last=%.2f, buffer=%.2f)",
-                    symbol, price, last_price, buffer,
+                    "Price resolved [Tier2 last+buf]: %s %.2f "
+                    "(last=%.2f, buf=%.2f, attempt=%d)",
+                    symbol, price, last_price, buffer, attempt,
                 )
                 return xtconstant.FIX_PRICE, price
 
@@ -556,225 +558,6 @@ class MiniQMTClient:
     # Order placement
     # ------------------------------------------------------------------
 
-    def place_order(
-        self,
-        symbol: str,
-        volume: int,
-        price: Optional[float] = None,
-        order_type: str = "LIMIT",
-        intent: Optional[str] = None,
-        scheduled_time: Optional[datetime.datetime] = None,
-    ) -> Optional[int]:
-        """
-        Place a trading order with proper MiniQMT order type mapping.
-
-        Execution timing depends on night market status:
-        - If night market open and current time < 21:00 -> block until 21:00
-          via dedicated thread + threading.Event.wait().
-        - Otherwise execute immediately.
-
-        Args:
-            symbol: Trading symbol.
-            volume: Number of contracts.
-            price: Limit price (None for market order).
-            order_type: 'LIMIT' or 'MARKET'.
-            intent: One of 'ENTRY_LONG', 'ENTRY_SHORT', 'EXIT_LONG', 'EXIT_SHORT'.
-            scheduled_time: Explicit execution time.  Auto-determined based on
-                            night market status when None.
-
-        Returns:
-            Order ID if successful, None if failed.
-        """
-        if not self.is_connected or not self.is_subscribed:
-            logger.error("Not connected to miniQMT or account not subscribed")
-            return None
-
-        try:
-            # Check night market status for today
-            shanghai_tz = pytz.timezone("Asia/Shanghai")
-            now = datetime.datetime.now(shanghai_tz)
-            night_market_open = is_night_market_open(self.market, self.asset, now)
-
-            logger.info(
-                "[place_order] Night market status: %s",
-                "Open" if night_market_open else "Closed",
-            )
-
-            if night_market_open:
-                # Night market is open - follow scheduler logic (21:00)
-                logger.info(
-                    "[place_order] Night market open - using scheduled execution"
-                )
-
-                if scheduled_time is None:
-                    # Default to 21:00 today in Shanghai time
-                    scheduled_time = now.replace(
-                        hour=21, minute=0, second=0, microsecond=0
-                    )
-
-                if self._should_execute_immediately(scheduled_time):
-                    logger.info(
-                        "[place_order] Current time >= 21:00, executing immediately"
-                    )
-                    return self._execute_order_immediately(
-                        symbol, volume, price, order_type, intent
-                    )
-                else:
-                    logger.info(
-                        "[place_order] Current time < 21:00, scheduling for %s",
-                        scheduled_time,
-                    )
-                    logger.info(
-                        "[place_order] Blocking execution: wait until scheduled time"
-                    )
-                    return self._schedule_order_blocking(
-                        symbol, volume, price, order_type, intent, scheduled_time
-                    )
-
-            else:
-                # Night market is closed - execute immediately
-                logger.info(
-                    "[place_order] Night market closed - executing immediately"
-                )
-                return self._execute_order_immediately(
-                    symbol, volume, price, order_type, intent
-                )
-
-        except Exception as exc:
-            logger.error("Error in place_order: %s", exc)
-            logger.warning("Falling back to immediate execution due to error")
-            return self._execute_order_immediately(
-                symbol, volume, price, order_type, intent
-            )
-
-    def _execute_order_immediately(
-        self,
-        symbol: str,
-        volume: int,
-        price: Optional[float],
-        order_type: str,
-        intent: str,
-    ) -> Optional[int]:
-        """
-        Execute order immediately using xtquant order_stock API.
-
-        Maps intent strings to xtconstant futures order types:
-        - ENTRY_LONG  -> xtconstant.FUTURE_OPEN_LONG
-        - ENTRY_SHORT -> xtconstant.FUTURE_OPEN_SHORT
-        - EXIT_LONG   -> xtconstant.FUTURE_CLOSE_LONG_HISTORY
-        - EXIT_SHORT  -> xtconstant.FUTURE_CLOSE_SHORT_HISTORY
-
-        Auto-appends .SF suffix for SHFE contracts when missing.
-        """
-        t_lock_wait = datetime.datetime.now()
-        logger.info(
-            "[DIAG] _execute_order_immediately: waiting for order_lock at %s",
-            t_lock_wait.strftime("%H:%M:%S.%f"),
-        )
-        with self.order_lock:
-            t_lock_acquired = datetime.datetime.now()
-            logger.info(
-                "[DIAG] _execute_order_immediately: order_lock ACQUIRED at %s "
-                "(waited %.3fs)",
-                t_lock_acquired.strftime("%H:%M:%S.%f"),
-                (t_lock_acquired - t_lock_wait).total_seconds(),
-            )
-            # Set order parameters — use 3-tier aggressive pricing
-            if order_type.upper() == "MARKET" or price is None:
-                price_type, price = self.resolve_aggressive_price(symbol, intent)
-            else:
-                price_type = xtconstant.FIX_PRICE
-
-            # Map intent to xtconstant order type
-            intent_map = {
-                "ENTRY_LONG": xtconstant.FUTURE_OPEN_LONG,
-                "ENTRY_SHORT": xtconstant.FUTURE_OPEN_SHORT,
-                "EXIT_LONG": xtconstant.FUTURE_CLOSE_LONG_HISTORY,
-                "EXIT_SHORT": xtconstant.FUTURE_CLOSE_SHORT_HISTORY,
-            }
-
-            side = intent_map.get(intent)
-            if side is None:
-                logger.error("Unknown order intent: %s", intent)
-                return None
-
-            logger.info(
-                "Placing %s order: %s x %d @ %s", intent, symbol, volume, price
-            )
-            logger.info(
-                "Debug - Symbol format check: '%s' (length: %d)",
-                symbol,
-                len(symbol),
-            )
-
-            # Ensure proper exchange suffix for SHFE futures
-            if not symbol.endswith(".SF"):
-                # Check common SHFE product codes
-                product_code = "".join(c for c in symbol if c.isalpha()).lower()
-                shfe_products = {
-                    "al", "cu", "zn", "pb", "ni", "sn", "au", "ag",
-                    "rb", "hc", "ss", "bu", "ru", "fu", "sp", "nr",
-                }
-                if product_code in shfe_products:
-                    logger.warning(
-                        "Contract %s missing .SF suffix - adding it", symbol
-                    )
-                    symbol = symbol + ".SF"
-                    logger.info("Corrected symbol: %s", symbol)
-
-            logger.info(f'order_type is {side}, price_type is {price_type}, price is {price}')
-
-            # Place order
-            t_before_api = datetime.datetime.now()
-            order_id = self.trader.order_stock(
-                account=self.account,
-                stock_code=symbol,
-                order_type=side,
-                order_volume=volume,
-                price_type=price_type,
-                price=price,
-                strategy_name="DolphinQuantStrategy",
-                order_remark=(
-                    f"{intent}_{volume}_"
-                    f"{datetime.datetime.now().strftime('%H%M%S')}"
-                ),
-            )
-            t_after_api = datetime.datetime.now()
-            logger.info(
-                "[DIAG] order_stock API call took %.3fs",
-                (t_after_api - t_before_api).total_seconds(),
-            )
-
-            if order_id > 0:
-                order_info = OrderInfo(
-                    order_id=order_id,
-                    symbol=symbol,
-                    intent=intent,
-                    price=price,
-                    volume=volume,
-                    order_type=order_type,
-                    timestamp=datetime.datetime.now(),
-                )
-                self.orders[order_id] = order_info
-                logger.info("Order placed successfully: ID %s", order_id)
-                return order_id
-            else:
-                logger.error(
-                    "Failed to place order (code=%s): "
-                    "account=%s, symbol=%s, side=%s, volume=%d, "
-                    "price_type=%s, price=%s, connected=%s, subscribed=%s",
-                    order_id,
-                    self.config.account_id,
-                    symbol,
-                    intent,
-                    volume,
-                    price_type,
-                    price,
-                    self.is_connected,
-                    self.is_subscribed,
-                )
-                return None
-
     def submit_order_async(
         self,
         symbol: str,
@@ -787,14 +570,10 @@ class MiniQMTClient:
         """
         Submit order via xtquant order_stock_async (non-blocking).
 
-        Unlike _execute_order_immediately which uses the synchronous
-        order_stock (blocks until QMT confirms receipt), this method
-        uses order_stock_async which returns a sequence ID immediately.
-        The actual order_id arrives later via the order callback.
-
-        Used by PortfolioTradingRunner for burst-fire: all orders hit
-        QMT within ~50ms instead of sequentially waiting for each
-        confirmation.
+        Returns a sequence ID immediately; the real order_id arrives later
+        via the order callback. Used by PortfolioTradingRunner for
+        burst-fire — all slots' orders hit QMT within ~50ms instead of
+        being sequenced one-by-one.
 
         Args:
             symbol: Contract code (e.g. 'al2508.SF')
@@ -867,150 +646,6 @@ class MiniQMTClient:
         except Exception as exc:
             logger.error("order_stock_async failed: %s", exc)
             return None
-
-    def _schedule_order_blocking(
-        self,
-        symbol: str,
-        volume: int,
-        price: Optional[float],
-        order_type: str,
-        intent: str,
-        scheduled_time: datetime.datetime,
-    ) -> Optional[int]:
-        """
-        Schedule order execution and wait for completion (blocking).
-
-        Uses a dedicated daemon thread with ``time.sleep()`` to wait until
-        ``scheduled_time``, then executes the order. This bypasses
-        APScheduler's ``ThreadPoolExecutor`` which suffers GIL starvation
-        when xtdc/xtdata C-extension threads hold the GIL at session open.
-
-        ``time.sleep()`` fully releases the GIL, so the waiting thread is
-        unaffected by C-extension contention. A spin-wait phase provides
-        sub-10ms precision at execution time.
-
-        Args:
-            symbol: Trading symbol.
-            volume: Number of contracts.
-            price: Limit price.
-            order_type: 'LIMIT' or 'MARKET'.
-            intent: Order intent string.
-            scheduled_time: When to execute.
-
-        Returns:
-            Order ID when the scheduled order fires, or None on failure.
-        """
-        completion_event = threading.Event()
-        order_result: Dict[str, Optional[int]] = {"order_id": None}
-
-        # Normalise to naive local timestamp for comparison with datetime.now()
-        target = (
-            scheduled_time.replace(tzinfo=None)
-            if scheduled_time.tzinfo
-            else scheduled_time
-        )
-
-        def _wait_and_execute():
-            # Coarse sleep — releases GIL, won't be blocked by C-extensions
-            while True:
-                remaining = (target - datetime.datetime.now()).total_seconds()
-                if remaining <= 1.0:
-                    break
-                time.sleep(min(remaining - 1.0, 30.0))
-
-            # Spin-wait for sub-second precision
-            while datetime.datetime.now() < target:
-                time.sleep(0.005)
-
-            # Diagnostic log
-            t0 = datetime.datetime.now()
-            delta = (t0 - target).total_seconds()
-            logger.info(
-                "[DIAG] _wait_and_execute FIRED at %s "
-                "(target=%s, delta=%.3fs)",
-                t0.strftime("%H:%M:%S.%f"),
-                scheduled_time,
-                delta,
-            )
-
-            try:
-                oid = self._execute_order_immediately(
-                    symbol, volume, price, order_type, intent
-                )
-                order_result["order_id"] = oid
-            except Exception as exc:
-                logger.error("Error in scheduled order execution: %s", exc)
-            finally:
-                completion_event.set()
-
-        thread = threading.Thread(
-            target=_wait_and_execute,
-            name=f"OrderTimer_{symbol}_{intent}",
-            daemon=True,
-        )
-        thread.start()
-
-        logger.info(
-            "Order scheduled via dedicated thread for %s (%s %s x%d)",
-            scheduled_time,
-            intent,
-            symbol,
-            volume,
-        )
-
-        # Block until the order executes
-        completion_event.wait()
-
-        logger.info(
-            "Order execution completed, Order ID: %s",
-            order_result["order_id"],
-        )
-        return order_result["order_id"]
-
-    # APScheduler non-blocking path disabled — see _schedule_order_blocking
-    # for the dedicated-thread replacement.
-    #
-    # def _schedule_order_non_blocking(
-    #     self,
-    #     symbol: str,
-    #     volume: int,
-    #     price: Optional[float],
-    #     order_type: str,
-    #     intent: str,
-    #     scheduled_time: datetime.datetime,
-    # ) -> Optional[str]:
-    #     """
-    #     Schedule order execution using APScheduler (non-blocking).
-    #
-    #     Returns the APScheduler job ID rather than an order ID.
-    #     """
-    #     if self.order_scheduler:
-    #         job_id = (
-    #             f"order_{symbol}_{intent}_"
-    #             f"{datetime.datetime.now().strftime('%H%M%S%f')[:-3]}"
-    #         )
-    #
-    #         self.order_scheduler.add_job(
-    #             func=lambda: self._execute_order_immediately(
-    #                 symbol, volume, price, order_type, intent
-    #             ),
-    #             trigger=DateTrigger(run_date=scheduled_time),
-    #             id=job_id,
-    #             name=f"Order_{symbol}_{intent}_{volume}",
-    #             misfire_grace_time=60,
-    #         )
-    #
-    #         logger.info(
-    #             "Order scheduled for execution at %s, Job ID: %s",
-    #             scheduled_time,
-    #             job_id,
-    #         )
-    #         return job_id
-    #     else:
-    #         logger.error("Order scheduler not available, executing immediately")
-    #         return self._execute_order_immediately(
-    #             symbol, volume, price, order_type, intent
-    #         )
 
     # ------------------------------------------------------------------
     # Order management

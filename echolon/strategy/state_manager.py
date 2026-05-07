@@ -36,6 +36,27 @@ from dataclasses import dataclass, asdict, field
 
 
 @dataclass
+class PendingExitIntent:
+    """An EXIT-class order intent that hasn't fully resolved.
+
+    Set by the runner when an EXIT-class order is first submitted and
+    cleared when the corresponding handle reaches TERMINAL_FILLED with
+    full fill. Persists across cycles via strategy_state.json — the
+    recovery hook in TradingSlot.execute_bar reads this on next bar and
+    re-fires the exit before the strategy's normal on_bar runs.
+
+    Reference: design doc Amendment B (sections 20.4 + 21.10).
+    """
+    intent: str                          # 'EXIT_LONG' | 'EXIT_SHORT' | 'ROLLOVER_CLOSE' | 'FORCED_EXIT'
+    original_size: int
+    remaining_size: int
+    attempts_so_far: int
+    original_decision_time: str          # ISO datetime of the original deciding bar
+    last_attempt_time: str               # ISO datetime of most recent attempt
+    cycles_pending: int = 1
+
+
+@dataclass
 class StrategyState:
     """
     Strategy state for persistence.
@@ -43,7 +64,7 @@ class StrategyState:
     Contains all state that needs to survive restarts.
     """
     # Version for state migration
-    version: str = "1.0"
+    version: str = "1.1"
 
     # Position state
     position_symbol: Optional[str] = None
@@ -68,6 +89,9 @@ class StrategyState:
     last_processed_datetime: Optional[str] = None
     last_trading_date: Optional[str] = None
 
+    # Pending EXIT intent — survives across cycles for ABANDONED-EXIT recovery (Amendment B).
+    pending_exit_intent: Optional[PendingExitIntent] = None
+
     # Custom state (for strategy-specific data)
     custom: Dict[str, Any] = field(default_factory=dict)
 
@@ -80,12 +104,17 @@ class StrategyState:
         """Create from dictionary."""
         # Handle version migration if needed
         version = data.get("version", "1.0")
-        if version != "1.0":
+        if version not in ("1.0", "1.1"):
             data = cls._migrate_state(data, version)
 
         # Filter to only known fields
         known_fields = {f.name for f in cls.__dataclass_fields__.values()}
         filtered_data = {k: v for k, v in data.items() if k in known_fields}
+
+        # Rehydrate nested PendingExitIntent if present.
+        pending = filtered_data.get("pending_exit_intent")
+        if isinstance(pending, dict):
+            filtered_data["pending_exit_intent"] = PendingExitIntent(**pending)
 
         return cls(**filtered_data)
 
@@ -281,3 +310,26 @@ class StateManager:
         """Get custom state value."""
         state = self.get_state()
         return state.custom.get(key, default)
+
+    # ------------------------------------------------------------------
+    # ABANDONED-EXIT recovery (Amendment B)
+    # ------------------------------------------------------------------
+
+    def set_pending_exit_intent(self, pending: PendingExitIntent) -> None:
+        """Record an unresolved EXIT-class order intent.
+
+        Called by the runner when an EXIT-class order is first submitted
+        and again when it's still unfilled at end-of-cycle (incrementing
+        ``cycles_pending``). Persisted on next save_state().
+        """
+        state = self.get_state()
+        state.pending_exit_intent = pending
+
+    def clear_pending_exit_intent(self) -> None:
+        """Mark the pending exit fully resolved (e.g. TERMINAL_FILLED)."""
+        state = self.get_state()
+        state.pending_exit_intent = None
+
+    def get_pending_exit_intent(self) -> Optional[PendingExitIntent]:
+        state = self.get_state()
+        return state.pending_exit_intent
