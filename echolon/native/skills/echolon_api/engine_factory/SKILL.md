@@ -32,8 +32,8 @@ engine = EngineFactory.create_backtest_engine(
     strategy_logger_dir="/path/to/logs",
 )
 
-# 2. Deploy engine (live trading). Currently only miniqmt is implemented;
-#    "ccxt" is a skeleton and will raise.
+# 2. Deploy engine (live trading). Only the "miniqmt" platform is
+#    implemented today; any other platform name raises ValueError.
 deploy_engine = EngineFactory.create_deploy_engine(ctx, client=my_qmt_client)
 
 # 3. Building blocks alone (used internally by create_backtest_engine
@@ -61,7 +61,7 @@ EngineFactory.get_available_bar_sizes()     # ['1m', '5m', '15m', ...]
 | `create_market_adapter(ctx, calendar_path=None)` | `TradingContext`; optional SHFE calendar CSV path | `IMarketAdapter` | Instantiates `SHFEAdapter(symbol, trading_calendar_path=…)` or `CryptoAdapter(symbol=…)` from `ctx.market_code` and `ctx.instrument_code`. |
 | `create_frequency_context(ctx, market_adapter=None)` | `TradingContext`; optional adapter for bars-per-day | `IFrequencyContext` | `InterdayContext()` for `frequency=="interday"` / `bar_size in ("1d","daily")`; else `IntradayContext(bar_size=<BarSize enum>, bars_per_day=<derived>, flatten_before_close=True, flatten_bars_before_close=0)`. |
 | `create_backtest_engine(ctx, calendar_path=None, indicators_dir=None, strategy_logger_enabled=True, strategy_logger_dir=None)` | as above | `BacktraderEngine` | Backtest engine. `ContractAwareHook` added when `ctx.has_contract_expiry and is_interday and indicators_dir` is set (needs `ContractIndicatorManager`). `SessionAwareHook` added for any intraday ctx. |
-| `create_deploy_engine(ctx, calendar_path=None, client=None, platform=None)` | as above + QMT/CCXT client, platform name (`"miniqmt"` default) | `ITradingEngine` (`QMTEngine`) | Live deploy engine. Raises `ValueError` for any platform other than `"miniqmt"`. |
+| `create_deploy_engine(ctx, calendar_path=None, client=None, platform=None)` | as above + a `MiniQMTClient`, platform name (`"miniqmt"` default and only supported value) | `ITradingEngine` (`QMTEngine`) | Live deploy engine. Raises `ValueError` for any platform other than `"miniqmt"`. |
 | `register_market_adapter(market_code, adapter_class)` | `str`, `Type[IMarketAdapter]` | `None` | Extend the factory. Writes to `MARKET_ADAPTERS` (class-level dict). |
 | `get_available_markets()` | — | `list[str]` | Keys of `MARKET_ADAPTERS`. |
 | `get_available_bar_sizes()` | — | `list[str]` | Keys of `BAR_SIZE_MAP` (`1m`, `5m`, `15m`, `30m`, `1h`, `4h`, `1d`, `1w`, plus `*min` aliases). |
@@ -71,7 +71,7 @@ EngineFactory.get_available_bar_sizes()     # ['1m', '5m', '15m', ...]
 ## Common errors
 
 - **`ValueError: Unknown market: 'X'. Available: SHFE, CRYPTO`** — `create_market_adapter` called with a market code that isn't in `MARKET_ADAPTERS`. Register via `EngineFactory.register_market_adapter` or add the loader.
-- **`ValueError: Unknown or unimplemented platform: 'ccxt'`** — `create_deploy_engine(platform="ccxt")` — the CCXT engine is a skeleton in `echolon/live/platforms/ccxt/`. Only `"miniqmt"` is wired today.
+- **`ValueError: Unknown or unimplemented platform: '<name>'`** — `create_deploy_engine(platform="<anything-but-miniqmt>")`. Only `"miniqmt"` is implemented today; there is no `live/platforms/ccxt/` (or any other broker) module. Drop the `platform=` kwarg or pass `"miniqmt"`.
 - **Silent hook omission on interday futures backtests** — if `indicators_dir` is `None`, `ContractAwareHook` is not added even when `ctx.has_contract_expiry and is_interday`. Symptoms: no contract rollover, wrong PnL. Always pass `indicators_dir` for futures backtests. No Echolon error code.
 - **Downstream `BT-001`** — any hook or the underlying `BacktraderEngine` may raise `BT-001` during `next()`. See `echolon/native/errors/codes/BT-001.md` and the `get_strategy_class` skill.
 

@@ -34,10 +34,9 @@ to backtest, with QMT handling actual execution.
 
 from typing import Dict, Any, Optional, List, Callable, TYPE_CHECKING
 from datetime import datetime, date
-from dataclasses import dataclass
 from pathlib import Path
 import logging
-import pickle
+import pickle  # nosec — used by get_contract_indicator to read pre-validated indicator pickles
 import pandas as pd
 
 from echolon.strategy.interfaces import (
@@ -48,16 +47,13 @@ from echolon.strategy.interfaces import (
     ILogger,
     IStrategyLogger,
     IEventBus,
-    Bar,
     Order,
     OrderResult,
     Position,
-    AccountInfo,
     OrderSide,
     OrderType,
     OrderIntent,
     OrderStatus,
-    PositionSide,
 )
 from echolon.markets.interface import IMarketAdapter
 from echolon.strategy.frequency.interface import IFrequencyContext
@@ -96,11 +92,6 @@ class QMTMarketData(IMarketData):
         self._current_idx = -1  # Points to current bar
         self._contract_indicators_dir: Optional[str] = None
         self._contract_indicator_cache: Dict[str, pd.DataFrame] = {}
-
-    def set_contract_indicators_dir(self, path: str) -> None:
-        """Set the directory containing per-contract indicator pickle files."""
-        self._contract_indicators_dir = path
-        self._contract_indicator_cache.clear()
 
     def load_indicators(self, csv_path: str) -> None:
         """
@@ -147,13 +138,6 @@ class QMTMarketData(IMarketData):
                 f"Latest available: {available}. "
                 f"Data pipeline may have failed — refusing to trade on stale data."
             )
-
-    def advance_bar(self) -> bool:
-        """Advance to next bar. Returns False if no more bars."""
-        if self._df is None or self._current_idx >= len(self._df) - 1:
-            return False
-        self._current_idx += 1
-        return True
 
     def get_current_bar(self) -> Dict[str, float]:
         """Get current OHLCV bar as dict (matches IMarketData interface)."""
@@ -309,28 +293,6 @@ class QMTMarketData(IMarketData):
             return False
         return name.lower() in self._df.columns
 
-    def get_bars(self, length: int) -> List[Bar]:
-        """Get historical bars."""
-        if self._df is None:
-            raise RuntimeError("No data loaded")
-
-        start_idx = max(0, self._current_idx - length + 1)
-        end_idx = self._current_idx + 1
-
-        bars = []
-        for i in range(start_idx, end_idx):
-            row = self._df.iloc[i]
-            dt = self._df.index[i]
-            bars.append(Bar(
-                datetime=dt if isinstance(dt, datetime) else datetime.combine(dt, datetime.min.time()),
-                open=float(row['open']),
-                high=float(row['high']),
-                low=float(row['low']),
-                close=float(row['close']),
-                volume=float(row.get('volume', 0)),
-            ))
-        return bars
-
 
 class QMTPortfolio(IPortfolio):
     """
@@ -432,18 +394,6 @@ class QMTPortfolio(IPortfolio):
             return pos.unrealized_pnl
         return 0.0
 
-    def get_account_info(self) -> AccountInfo:
-        """Get account information."""
-        return AccountInfo(
-            equity=self.get_total_value(),
-            cash=self.get_cash(),
-            margin_used=0.0,
-            margin_available=self.get_cash(),
-            unrealized_pnl=self.get_unrealized_pnl(),
-            realized_pnl=self.get_realized_pnl(),
-            currency="CNY"
-        )
-
     def get_equity(self) -> float:
         """Get current equity."""
         return self.get_total_value()
@@ -498,13 +448,6 @@ class QMTPortfolio(IPortfolio):
         if pos is None:
             return 0.0
         return pos.size if pos.is_long else -pos.size
-
-    def get_position_value(self, symbol: Optional[str] = None) -> float:
-        """Get position value."""
-        pos = self.get_position(symbol)
-        if pos is None:
-            return 0.0
-        return pos.size * pos.current_price
 
 
 class QMTOrderManager(IOrderManager):
@@ -714,52 +657,6 @@ class QMTOrderManager(IOrderManager):
             return self._orders[order_id].status
         return OrderStatus.REJECTED
 
-    def submit_order(
-        self,
-        symbol: str,
-        side: OrderSide,
-        size: float,
-        order_type: OrderType = OrderType.MARKET,
-        price: Optional[float] = None,
-        stop_price: Optional[float] = None,
-        intent: Optional[OrderIntent] = None,
-        metadata: Optional[Dict[str, Any]] = None
-    ) -> Order:
-        """Submit an order through QMT."""
-        order_id = self._generate_order_id()
-
-        # Create order record
-        order = Order(
-            order_id=order_id,
-            symbol=symbol or self._trading_contract,
-            side=side,
-            order_type=order_type,
-            size=size,
-            price=price,
-            stop_price=stop_price,
-            intent=intent,
-            status=OrderStatus.PENDING,
-            created_at=datetime.now(),
-            metadata=metadata or {}
-        )
-
-        # Submit to QMT
-        if self._client is not None:
-            try:
-                # This would call actual QMT API
-                # qmt_order_id = self._client.submit_order(...)
-                order.status = OrderStatus.SUBMITTED
-                logger.info(f"Order submitted: {order}")
-            except Exception as e:
-                order.status = OrderStatus.REJECTED
-                logger.error(f"Order rejected: {e}")
-        else:
-            logger.warning("No client - order simulated")
-            order.status = OrderStatus.SUBMITTED
-
-        self._orders[order_id] = order
-        return order
-
     def cancel_order(self, order_id: str) -> bool:
         """Cancel an order."""
         if order_id not in self._orders:
@@ -781,10 +678,6 @@ class QMTOrderManager(IOrderManager):
         order.status = OrderStatus.CANCELLED
         return True
 
-    def get_order(self, order_id: str) -> Optional[Order]:
-        """Get order by ID."""
-        return self._orders.get(order_id)
-
     def get_pending_orders(self, symbol: Optional[str] = None) -> List[Order]:
         """Get pending orders."""
         return [
@@ -792,16 +685,6 @@ class QMTOrderManager(IOrderManager):
             if order.status in (OrderStatus.PENDING, OrderStatus.SUBMITTED)
             and (symbol is None or order.symbol == symbol)
         ]
-
-    def cancel_all_orders(self, symbol: Optional[str] = None) -> int:
-        """Cancel all pending orders."""
-        cancelled = 0
-        for order_id, order in list(self._orders.items()):
-            if order.status in (OrderStatus.PENDING, OrderStatus.SUBMITTED):
-                if symbol is None or order.symbol == symbol:
-                    if self.cancel_order(order_id):
-                        cancelled += 1
-        return cancelled
 
     def close_position(
         self,
@@ -830,24 +713,14 @@ class QMTLogger(ILogger):
     """
     ILogger implementation for MiniQMT.
 
-    Routes logging to Python's logging system and optional Excel file.
+    Routes logging to Python's standard logging system. The structured
+    ``log_trade`` / ``log_signal`` / ``log_risk_event`` aliases live on
+    the ILogger base class.
     """
 
-    def __init__(
-        self,
-        name: str = "QMTStrategy",
-        excel_path: Optional[str] = None
-    ):
-        """
-        Initialize logger.
-
-        Args:
-            name: Logger name
-            excel_path: Optional path to Excel log file
-        """
+    def __init__(self, name: str = "QMTStrategy"):
+        """Initialize logger with the given name."""
         self._logger = logging.getLogger(name)
-        self._excel_path = excel_path
-        self._log_entries: List[Dict[str, Any]] = []
 
     def info(self, message: str) -> None:
         """Log info message."""
@@ -864,76 +737,6 @@ class QMTLogger(ILogger):
     def debug(self, message: str) -> None:
         """Log debug message."""
         self._logger.debug(message)
-
-    def log_info(self, message: str, **kwargs) -> None:
-        """Log info message."""
-        self._logger.info(message, extra=kwargs)
-
-    def log_warning(self, message: str, **kwargs) -> None:
-        """Log warning message."""
-        self._logger.warning(message, extra=kwargs)
-
-    def log_error(self, message: str, **kwargs) -> None:
-        """Log error message."""
-        self._logger.error(message, extra=kwargs)
-
-    def log_trade(
-        self,
-        action: str,
-        symbol: str,
-        side: OrderSide,
-        size: float,
-        price: float,
-        reason: str,
-        **kwargs
-    ) -> None:
-        """Log trade."""
-        self._logger.info(
-            f"TRADE: {action} {side.value} {size} {symbol} @ {price:.2f} - {reason}",
-            extra=kwargs
-        )
-
-        self._log_entries.append({
-            'timestamp': datetime.now(),
-            'type': 'trade',
-            'action': action,
-            'symbol': symbol,
-            'side': side.value,
-            'size': size,
-            'price': price,
-            'reason': reason,
-            **kwargs
-        })
-
-    def log_signal(
-        self,
-        signal_type: str,
-        direction: str,
-        strength: float,
-        reason: str,
-        **kwargs
-    ) -> None:
-        """Log signal."""
-        self._logger.info(
-            f"SIGNAL: {signal_type} {direction} (strength={strength:.2f}) - {reason}",
-            extra=kwargs
-        )
-
-    def log_risk_event(
-        self,
-        event_type: str,
-        details: str,
-        **kwargs
-    ) -> None:
-        """Log risk event."""
-        self._logger.warning(f"RISK: {event_type} - {details}", extra=kwargs)
-
-    def save_to_excel(self) -> None:
-        """Save log entries to Excel file."""
-        if self._excel_path and self._log_entries:
-            df = pd.DataFrame(self._log_entries)
-            df.to_excel(self._excel_path, index=False)
-            logger.info(f"Saved {len(self._log_entries)} log entries to {self._excel_path}")
 
 
 class QMTEventBus(IEventBus):
@@ -964,20 +767,6 @@ class QMTEventBus(IEventBus):
         if event_type not in self._subscribers:
             self._subscribers[event_type] = []
         self._subscribers[event_type].append(callback)
-
-    def unsubscribe(self, event_type: str, callback: Callable) -> None:
-        """Unsubscribe from event."""
-        if event_type in self._subscribers:
-            self._subscribers[event_type].remove(callback)
-
-    def publish(self, event_type: str, data: Any) -> None:
-        """Publish event."""
-        if event_type in self._subscribers:
-            for callback in self._subscribers[event_type]:
-                try:
-                    callback(data)
-                except Exception as e:
-                    logger.error(f"Event handler error: {e}")
 
 
 class QMTEngine(ITradingEngine):
@@ -1117,15 +906,6 @@ class QMTEngine(ITradingEngine):
     def get_frequency_context(self) -> IFrequencyContext:
         """Get frequency context."""
         return self._frequency_context
-
-    def get_config(self) -> Dict[str, Any]:
-        """Get trading configuration derived from TradingContext."""
-        return {
-            "market": self._ctx.market_code,
-            "instrument": self._ctx.instrument_name,
-            "instrument_code": self._ctx.instrument_code,
-            "frequency": self._ctx.frequency,
-        }
 
     def get_current_symbol(self) -> str:
         """Get current trading symbol."""

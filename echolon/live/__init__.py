@@ -1,4 +1,4 @@
-"""Echolon live trading — MiniQMT and CCXT platform runners."""
+"""Echolon live trading — MiniQMT portfolio runner."""
 
 from echolon.live.io.kpi_aggregator import (
  aggregate_portfolio,

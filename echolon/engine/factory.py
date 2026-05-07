@@ -356,7 +356,8 @@ class EngineFactory:
             ctx: TradingContext (single source of truth)
             calendar_path: Optional path to trading calendar
             client: Platform-specific client (e.g., MiniQMTClient)
-            platform: Platform name override ('miniqmt', 'ccxt'). If None, uses 'miniqmt'.
+            platform: Platform name. Only ``'miniqmt'`` is implemented today;
+                any other value raises ``ValueError``. Defaults to ``'miniqmt'``.
 
         Returns:
             Configured deploy engine
@@ -385,8 +386,8 @@ class EngineFactory:
                 frequency_context=frequency_context,
                 client=client
             )
-        # Note: "ccxt" platform is not yet implemented. See
-        # echolon/live/platforms/ccxt/ccxt_engine.py for the skeleton TODOs.
+        # Only "miniqmt" is implemented today; other broker platforms
+        # (e.g. ccxt for crypto live trading) are not yet wired.
         raise ValueError(f"Unknown or unimplemented platform: {platform}")
 
     @classmethod

@@ -134,10 +134,6 @@ class XtdcClient:
         except Exception as e:
             logger.warning("[XTDC] Disconnect failed: %s", e)
 
-    @property
-    def is_connected(self) -> bool:
-        return self._connected
-
     # ------------------------------------------------------------------
     # Main contract history (token-only API)
     # ------------------------------------------------------------------

@@ -50,6 +50,8 @@ try:
 except ImportError:
     MiniQMTClient = None  # Available only on QMT-enabled machines
 
+from ..config.qmt_constants import QMT_STATUS_MAP
+
 from echolon.data.loaders.contract_loader import get_main_contract
 from echolon.strategy.interfaces import Order, OrderIntent, OrderStatus
 from ..slot.capital_slot import CapitalSlot
@@ -67,13 +69,6 @@ from echolon.indicators.run import run_indicator_calculation
 import logging
 
 logger = logging.getLogger(__name__)
-
-# QMT order status codes
-_STATUS_MAP = {
-    48: 'UNREPORTED', 49: 'WAIT_REPORTING', 50: 'SUBMITTED',
-    55: 'PARTIAL_FILLED', 56: 'FILLED',
-    53: 'PARTIAL_CANCELED', 54: 'CANCELED', 57: 'REJECTED',
-}
 
 
 class PortfolioTradingRunner:
@@ -839,7 +834,7 @@ class PortfolioTradingRunner:
                 status = entry['status']
                 traded_price = entry['traded_price']
                 traded_volume = entry['traded_volume']
-                exec_status = _STATUS_MAP.get(status, f'UNKNOWN_{status}')
+                exec_status = QMT_STATUS_MAP.get(status, f'UNKNOWN_{status}')
 
                 if not filled:
                     self.log.warning(
