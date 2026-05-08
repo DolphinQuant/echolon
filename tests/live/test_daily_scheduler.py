@@ -129,3 +129,35 @@ def test_daily_scheduler_writes_heartbeat_with_expected_fields(tmp_path):
     assert "running=True" in content
     assert "slots=3" in content
     assert "order_router_tripped=False" in content
+
+
+def test_daily_scheduler_skips_when_runner_not_running(tmp_path):
+    """Shutdown-race guard: when the trigger fires after runner.running
+    has been set False, _market_open_job MUST return without invoking
+    the cycle callback or the reschedule path."""
+    from echolon.live.orchestrator.scheduler import DailyScheduler
+
+    cfg, sc = _make_config(tmp_path)
+    sched = DailyScheduler(
+        config=cfg, slots=[sc], market_data_dir=tmp_path / "data",
+        portfolio_dir=str(tmp_path / "portfolio"),
+        timezone=pytz.timezone("Asia/Shanghai"),
+        log=MagicMock(),
+    )
+    sched._ensure_trading_calendars = lambda: None
+
+    cycle_calls = []
+
+    with patch("echolon.live.orchestrator.scheduler.is_trading_day", return_value=True), \
+         patch.object(sched, "_reschedule_next_job") as mock_reschedule:
+        sched._on_cycle_trigger = lambda: cycle_calls.append(True)
+        sched._on_present_date_set = lambda dt: None
+        sched._is_running = lambda: False  # simulate shutdown in progress
+
+        sched._market_open_job()
+
+    # Cycle MUST NOT fire when not running.
+    assert len(cycle_calls) == 0
+    # Reschedule MUST NOT fire either — the runner is shutting down,
+    # so re-arming the scheduler is wrong.
+    mock_reschedule.assert_not_called()
