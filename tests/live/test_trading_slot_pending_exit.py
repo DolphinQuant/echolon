@@ -3,8 +3,6 @@ PortfolioTradingRunner in 2026-05-08 refactor).
 
 Slot methods raise on error (matching original's behavior of having the
 runner-side wrapper catch + log via self.log)."""
-from __future__ import annotations
-
 import json
 from pathlib import Path
 from unittest.mock import MagicMock
@@ -53,6 +51,25 @@ def test_set_pending_exit_intent_idempotent_when_same_intent(tmp_path):
     pending = data["pending_exit_intent"]
     assert pending["original_size"] == 3
     assert pending["cycles_pending"] == 1
+
+
+def test_set_pending_exit_intent_overwrites_on_different_intent(tmp_path):
+    """When a new intent is recorded over an existing different one, the
+    counters reset (cycles_pending=1, attempts_so_far=0). Documents the
+    non-obvious replacement behavior — a trapped EXIT_LONG that transitions
+    to FORCED_EXIT must reset the escalation counter."""
+    slot = _make_slot(tmp_path)
+    slot.set_pending_exit_intent(intent="EXIT_LONG", original_size=3)
+    slot.update_pending_exit_remaining(remaining=1)  # bump attempts_so_far
+
+    slot.set_pending_exit_intent(intent="FORCED_EXIT", original_size=2)
+
+    data = json.loads(Path(slot._state_path).read_text(encoding="utf-8"))
+    pending = data["pending_exit_intent"]
+    assert pending["intent"] == "FORCED_EXIT"
+    assert pending["original_size"] == 2
+    assert pending["cycles_pending"] == 1   # reset, not inherited
+    assert pending["attempts_so_far"] == 0  # reset, not inherited
 
 
 def test_clear_pending_exit_intent_removes_state(tmp_path):
