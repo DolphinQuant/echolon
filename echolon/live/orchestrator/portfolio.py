@@ -37,11 +37,6 @@ import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
 from apscheduler.triggers.date import DateTrigger
 
-try:
-    from xtquant import xtconstant
-except ImportError:
-    xtconstant = None  # Available only on QMT-enabled machines
-
 from ..config.deploy_config import QMTAccountConfig
 from ..config.portfolio_deploy_config import PortfolioDeployConfig, SlotConfig
 from ..config.logging_config import get_deploy_logger, init_logging, shutdown_logging
@@ -1430,26 +1425,6 @@ class PortfolioTradingRunner:
         return None
 
     # =========================================================================
-    # Intent mapping
-    # =========================================================================
-
-    @staticmethod
-    def _map_intent(intent: Optional[OrderIntent]) -> int:
-        """Map OrderIntent to xtconstant direction."""
-        if intent is None:
-            return xtconstant.STOCK_BUY
-        mapping = {
-            OrderIntent.ENTRY_LONG: xtconstant.STOCK_BUY,
-            OrderIntent.EXIT_LONG: xtconstant.STOCK_SELL,
-            OrderIntent.ENTRY_SHORT: xtconstant.STOCK_SELL,
-            OrderIntent.EXIT_SHORT: xtconstant.STOCK_BUY,
-            OrderIntent.FORCED_EXIT: xtconstant.STOCK_SELL,
-            OrderIntent.ROLLOVER_CLOSE: xtconstant.STOCK_SELL,
-            OrderIntent.ROLLOVER_OPEN: xtconstant.STOCK_BUY,
-        }
-        return mapping.get(intent, xtconstant.STOCK_BUY)
-
-    # =========================================================================
     # Dashboard
     # =========================================================================
 
@@ -1469,7 +1444,7 @@ class PortfolioTradingRunner:
         portfolio_equity = sum(
             s.capital_slot.equity for s in self.slots if s.capital_slot
         )
-        portfolio_peak = self.risk_overlay._peak_portfolio_equity if hasattr(self.risk_overlay, '_peak_portfolio_equity') else portfolio_equity
+        portfolio_peak = self.risk_overlay.peak_equity
 
         dashboard = generate_portfolio_dashboard(
             deploy_config=self.config,

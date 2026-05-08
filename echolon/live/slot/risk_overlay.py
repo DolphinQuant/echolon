@@ -43,6 +43,16 @@ class PortfolioRiskOverlay:
         self._peak_slot_equities: Dict[str, float] = {}
         self._recon_log_path = os.path.join(deploy_data_dir, "reconciliation_log.csv")
 
+    @property
+    def peak_equity(self) -> float:
+        """Public accessor for the rolling peak portfolio equity.
+
+        Internal updates still go through ``_peak_portfolio_equity``;
+        external readers (e.g. dashboard generation) should use this
+        property to avoid reaching into a leading-underscore attribute.
+        """
+        return self._peak_portfolio_equity
+
     # =========================================================================
     # Portfolio drawdown circuit breaker
     # =========================================================================
