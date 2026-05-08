@@ -449,76 +449,12 @@ class PortfolioTradingRunner:
             if not slot.is_errored:
                 # Save daily trading data snapshot (equity curve source)
                 try:
+                    snap = slot.build_snapshot_data()
                     sc = slot.slot_config
                     trade_data_dir = os.path.join(self.slots_dir, sc.slot_id)
-                    md = slot.engine.get_market_data()
-                    position = slot.portfolio.get_position()
-                    # Extract signal data from strategy logger
-                    # Combines entry and exit decisions into a single signal_type
-                    sig_type = None
-                    sig_strength = 0.0
-                    sig_reason = None
-                    strat_logger = getattr(slot.strategy, 'strategy_logger', None) if slot.strategy else None
-                    if strat_logger and hasattr(strat_logger, 'current_bar_data'):
-                        cbd = strat_logger.current_bar_data
-                        if cbd.get('exit_should_exit'):
-                            sig_type = 'EXIT'
-                            sig_strength = 1.0
-                            sig_reason = cbd.get('exit_reason', '')
-                        else:
-                            sig_type = cbd.get('entry_signal')
-                            sig_strength = cbd.get('entry_strength', 0.0)
-                            sig_reason = cbd.get('entry_reason')
-
-                    # Determine last action from today's fills
-                    last_action = 'NO_ACTION'
-                    last_action_price = 0.0
-                    last_action_size = 0
-                    if slot.todays_processed_fills:
-                        last_fill = slot.todays_processed_fills[-1]
-                        last_action = last_fill.get('intent', 'NO_ACTION')
-                        last_action_price = last_fill.get('price', 0.0)
-                        last_action_size = last_fill.get('volume', 0)
-
                     save_trading_data_snapshot(
                         trading_data_dir=trade_data_dir,
-                        market_data={
-                            'current_price': md.get_current_price(),
-                            'daily_open': md.get_open(),
-                            'daily_high': md.get_high(),
-                            'daily_low': md.get_low(),
-                            'volume': md.get_volume(),
-                        },
-                        signal_data={
-                            'signal_type': sig_type,
-                            'signal_strength': sig_strength,
-                            'signal_confidence': 0.0,
-                            'signal_reason': sig_reason,
-                        },
-                        position_data={
-                            'current_position_size': int(position.size) if position else 0,
-                            'current_position_avg_price': position.avg_price if position else None,
-                            'unrealized_pnl': slot.portfolio.get_unrealized_pnl(),
-                        },
-                        account_data={
-                            'available_cash': slot.capital_slot.available_cash,
-                            'total_account_value': slot.capital_slot.equity,
-                        },
-                        performance_data={
-                            'daily_pnl': 0.0,
-                            'total_pnl': slot.capital_slot.realized_pnl,
-                            'win_rate': 0.0,
-                            'trade_count': getattr(slot.strategy, 'total_trades', 0) if slot.strategy else 0,
-                        },
-                        symbol=sc.instrument,
-                        action_contract=slot.trading_contract if last_action != 'NO_ACTION' else '',
-                        position_contract=position.symbol if position and position.size != 0 else '',
-                        position_direction=position.direction if position and position.size != 0 else '',
-                        last_trade_action={
-                            'action': last_action,
-                            'price': last_action_price,
-                            'size': last_action_size,
-                        } if last_action != 'NO_ACTION' else None,
+                        **snap,
                     )
                 except Exception as e:
                     self.log.error(f"[{slot.slot_id}] Trading data snapshot failed: {e}")
