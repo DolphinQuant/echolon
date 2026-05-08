@@ -137,13 +137,22 @@ def book_terminal_record(
             })
             return
 
-        order.status = OrderStatus.FILLED
-        order.filled_price = traded_price
-        order.filled_size = traded_volume
+        # P1.1 guard: a None intent on a FILLED record is a bug in the
+        # caller (Order should always have an intent). The pre-refactor
+        # code silently no-op'd VP and recorded a phantom fill — that
+        # masked the upstream bug. Refuse to book and log loudly.
+        if order.intent is None:
+            log.error(
+                f"[{slot.slot_id}] Refusing to book FILLED record with no "
+                f"intent (order_id={real_id}, volume={traded_volume}). "
+                f"This indicates a caller bug — investigate."
+            )
+            return
 
-        # Inner try/except matches original — wraps VP update + dict appends
-        # + strategy_logger + notify_fill + save_trade_execution. Specific
-        # error message preserved verbatim for ops triage continuity.
+        # Inner try/except wraps order-state mutation + VP update + dict
+        # appends + strategy_logger + notify_fill + save_trade_execution.
+        # If any step fails, order.status stays at PENDING (callers using
+        # status to infer VP consistency are not misled).
         try:
             prev_pos = slot.portfolio.get_position()
             prev_size = int(prev_pos.size) if prev_pos else 0
@@ -163,6 +172,13 @@ def book_terminal_record(
             elif intent in (OrderIntent.EXIT_LONG, OrderIntent.EXIT_SHORT,
                             OrderIntent.FORCED_EXIT, OrderIntent.ROLLOVER_CLOSE):
                 portfolio.close_position(size=traded_volume, price=traded_price)
+
+            # Status/filled fields mutated only AFTER the VP mutation
+            # succeeded. If VP raised, status stays at PENDING — callers
+            # using status to infer VP consistency are not misled.
+            order.status = OrderStatus.FILLED
+            order.filled_price = traded_price
+            order.filled_size = traded_volume
 
             cur_pos = slot.portfolio.get_position()
             cur_size = int(cur_pos.size) if cur_pos else 0
@@ -236,16 +252,67 @@ def book_terminal_record(
     # REJECTED branch — matches original status==57.
     # NB: rejected branch does NOT append to todays_processed_fills.
     if kind == "rejected":
-        order.status = OrderStatus.REJECTED
         msg = handle.last_status_msg or reason
         log.error(f"[{slot.slot_id}] Order rejected: order_id={real_id}, msg={msg}")
+        try:
+            order.status = OrderStatus.REJECTED
+
+            if slot.strategy and hasattr(slot.strategy, 'strategy_logger') and slot.strategy.strategy_logger:
+                slot.strategy.strategy_logger.log_order_event({
+                    'action': 'rejected',
+                    'status': 'Rejected',
+                    'ref': order.metadata.get('internal_ref', ''),
+                })
+
+            save_trade_execution(
+                trading_data_dir=trade_data_dir,
+                order_info={
+                    'order_id': str(real_id),
+                    'direction': intent_str,
+                    'order_type': 'MARKET',
+                    'submitted_price': order.price or 0.0,
+                    'submitted_size': int(order.size) if order.size else 0,
+                },
+                execution_details={
+                    'executed_price': 0.0,
+                    'executed_size': 0,
+                    'commission': 0.0,
+                    'status': 'REJECTED',
+                },
+                position_impact={
+                    'position_before': 0,
+                    'position_after': 0,
+                    'avg_price_before': 0.0,
+                    'avg_price_after': 0.0,
+                },
+                pnl_impact={'realized_pnl': 0.0, 'unrealized_pnl': 0.0},
+                symbol=sc.instrument,
+            )
+        except Exception as e:
+            log.error(f"[{slot.slot_id}] Rejected-bookkeeping failed: {e}")
+        return
+
+    # CANCELED / ABANDONED branch — matches original status in (53, 54).
+    msg = handle.last_status_msg or reason
+    log.warning(f"[{slot.slot_id}] Order canceled: order_id={real_id}, msg={msg}")
+    try:
+        order.status = OrderStatus.CANCELLED
 
         if slot.strategy and hasattr(slot.strategy, 'strategy_logger') and slot.strategy.strategy_logger:
             slot.strategy.strategy_logger.log_order_event({
-                'action': 'rejected',
-                'status': 'Rejected',
+                'action': 'cancelled',
+                'status': 'Cancelled',
                 'ref': order.metadata.get('internal_ref', ''),
             })
+
+        slot.todays_processed_fills.append({
+            'qmt_order_id': real_id,
+            'slot_id': slot.slot_id,
+            'intent': f"CANCELED_{intent_str}" if intent_str else 'CANCELED',
+            'price': 0.0,
+            'volume': 0,
+            'timestamp': datetime.now().isoformat(),
+        })
 
         save_trade_execution(
             trading_data_dir=trade_data_dir,
@@ -260,7 +327,7 @@ def book_terminal_record(
                 'executed_price': 0.0,
                 'executed_size': 0,
                 'commission': 0.0,
-                'status': 'REJECTED',
+                'status': 'CANCELED',
             },
             position_impact={
                 'position_before': 0,
@@ -271,53 +338,8 @@ def book_terminal_record(
             pnl_impact={'realized_pnl': 0.0, 'unrealized_pnl': 0.0},
             symbol=sc.instrument,
         )
-        return
-
-    # CANCELED / ABANDONED branch — matches original status in (53, 54).
-    order.status = OrderStatus.CANCELLED
-    msg = handle.last_status_msg or reason
-    log.warning(f"[{slot.slot_id}] Order canceled: order_id={real_id}, msg={msg}")
-
-    if slot.strategy and hasattr(slot.strategy, 'strategy_logger') and slot.strategy.strategy_logger:
-        slot.strategy.strategy_logger.log_order_event({
-            'action': 'cancelled',
-            'status': 'Cancelled',
-            'ref': order.metadata.get('internal_ref', ''),
-        })
-
-    slot.todays_processed_fills.append({
-        'qmt_order_id': real_id,
-        'slot_id': slot.slot_id,
-        'intent': f"CANCELED_{intent_str}" if intent_str else 'CANCELED',
-        'price': 0.0,
-        'volume': 0,
-        'timestamp': datetime.now().isoformat(),
-    })
-
-    save_trade_execution(
-        trading_data_dir=trade_data_dir,
-        order_info={
-            'order_id': str(real_id),
-            'direction': intent_str,
-            'order_type': 'MARKET',
-            'submitted_price': order.price or 0.0,
-            'submitted_size': int(order.size) if order.size else 0,
-        },
-        execution_details={
-            'executed_price': 0.0,
-            'executed_size': 0,
-            'commission': 0.0,
-            'status': 'CANCELED',
-        },
-        position_impact={
-            'position_before': 0,
-            'position_after': 0,
-            'avg_price_before': 0.0,
-            'avg_price_after': 0.0,
-        },
-        pnl_impact={'realized_pnl': 0.0, 'unrealized_pnl': 0.0},
-        symbol=sc.instrument,
-    )
+    except Exception as e:
+        log.error(f"[{slot.slot_id}] Canceled-bookkeeping failed: {e}")
 
 
 class PortfolioTradingRunner:

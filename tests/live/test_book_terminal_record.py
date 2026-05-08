@@ -6,7 +6,7 @@ prevent regressions in fill bookkeeping (the money path).
 """
 import os
 from pathlib import Path
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
 import pytest
 
@@ -189,3 +189,80 @@ def test_book_filled_inner_exception_is_logged_not_propagated(tmp_path):
     # The error message text matters for ops triage continuity.
     error_messages = [c.args[0] for c in log.error.call_args_list]
     assert any("VP update/logging failed" in m for m in error_messages)
+
+
+def test_book_filled_status_unchanged_when_vp_raises(tmp_path):
+    """P1.2 regression: when VP mutation raises, order.status MUST NOT
+    be left at FILLED — callers using status to infer VP consistency
+    would be misled by the original behavior."""
+    slot = _make_slot(tmp_path)
+    slot.portfolio.open_position.side_effect = RuntimeError("boom")
+    order = _make_order(intent=OrderIntent.ENTRY_LONG)
+    handle = _make_handle(filled_volume=1, filled_avg_price=24600.0)
+    log = MagicMock()
+
+    book_terminal_record(
+        slot=slot, order=order, handle=handle,
+        kind="filled", reason="",
+        slots_dir=str(tmp_path / "slots"),
+        log=log,
+    )
+
+    # Order status must NOT report FILLED when VP failed.
+    assert order.status != OrderStatus.FILLED
+    # And the inner-exception log message is preserved.
+    error_messages = [c.args[0] for c in log.error.call_args_list]
+    assert any("VP update/logging failed" in m for m in error_messages)
+
+
+def test_book_filled_refuses_none_intent(tmp_path):
+    """P1.1 regression: a FILLED record with no intent is a caller bug;
+    refuse to book the fill (no VP mutation, no CSV row, no notify)
+    and log loudly so the bug is visible."""
+    slot = _make_slot(tmp_path)
+    order = _make_order()
+    order.intent = None  # simulate caller bug
+    handle = _make_handle(filled_volume=1, filled_avg_price=24600.0)
+    log = MagicMock()
+
+    book_terminal_record(
+        slot=slot, order=order, handle=handle,
+        kind="filled", reason="",
+        slots_dir=str(tmp_path / "slots"),
+        log=log,
+    )
+
+    # Nothing booked
+    assert len(slot.todays_processed_fills) == 0
+    slot.notify_fill.assert_not_called()
+    slot.strategy.strategy_logger.log_order_event.assert_not_called()
+    # Loud error logged
+    error_messages = [c.args[0] for c in log.error.call_args_list]
+    assert any("no intent" in m.lower() for m in error_messages)
+
+
+def test_book_rejected_inner_exception_logs_distinctly(tmp_path):
+    """P1.3 regression: when save_trade_execution raises in the REJECTED
+    branch, an inner try/except now catches it with a distinct error
+    message ('Rejected-bookkeeping failed') so ops can tell which
+    branch failed."""
+    slot = _make_slot(tmp_path)
+    order = _make_order()
+    handle = _make_handle(filled_volume=0)
+    log = MagicMock()
+
+    with patch(
+        "echolon.live.io.data_logger.save_trade_execution",
+        side_effect=OSError("disk full"),
+    ):
+        book_terminal_record(
+            slot=slot, order=order, handle=handle,
+            kind="rejected", reason="",
+            slots_dir=str(tmp_path / "slots"),
+            log=log,
+        )
+
+    # Both messages logged: the rejection itself + the bookkeeping failure
+    error_messages = [c.args[0] for c in log.error.call_args_list]
+    assert any("Order rejected" in m for m in error_messages)
+    assert any("Rejected-bookkeeping failed" in m for m in error_messages)
