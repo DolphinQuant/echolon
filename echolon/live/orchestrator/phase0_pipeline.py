@@ -20,8 +20,16 @@ hazard exists from this module's location).
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Any
+
+# Default historical lookback for indicator computation when no slot
+# config specifies an explicit `start_date`. 4 years is enough warmup for
+# any realistic indicator parameter — even a 200-day MA on weekly bars
+# only needs ~4 years — without bloating the data download. Slots with
+# tighter lookback needs can override by setting `start_date` on their
+# slot config (a dataclass attribute, read via getattr below).
+_DEFAULT_INDICATOR_LOOKBACK_DAYS = 4 * 365
 
 from ..config.portfolio_deploy_config import PortfolioDeployConfig
 from ..platforms.miniqmt.xtdc_client import XtdcClient
@@ -136,7 +144,22 @@ class Phase0DataPipeline:
                 for (sc, _, _) in slot_configs_with_ind
             ]
             start_dates = [d for d in start_dates if d]
-            start_date = min(start_dates) if start_dates else None
+            if start_dates:
+                start_date = min(start_dates)
+            else:
+                # No slot specified an explicit start_date — fall back to
+                # a default lookback. Without this, run_indicator_calculation
+                # raises ValueError("start_date and end_date are required
+                # when trading_dates is None") and the entire cycle aborts.
+                default_start = present_date - timedelta(
+                    days=_DEFAULT_INDICATOR_LOOKBACK_DAYS,
+                )
+                start_date = default_start.strftime("%Y-%m-%d")
+                self.log.info(
+                    f"Indicators: {group_id} no slot.start_date provided; "
+                    f"defaulting to {start_date} "
+                    f"(present - {_DEFAULT_INDICATOR_LOOKBACK_DAYS} days)"
+                )
 
             first_sc = slot_configs_with_ind[0][0]
             ctx = MarketFactory.create(
