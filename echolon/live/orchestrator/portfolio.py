@@ -1315,49 +1315,27 @@ class PortfolioTradingRunner:
         )
 
     # ---- Pending-exit-intent helpers (Amendment B) ------------------------
+    #
+    # Slot-side state mutations live on TradingSlot. These runner wrappers
+    # preserve the original try/except + self.log error reporting so the
+    # log namespace stays `deploy.portfolio_runner` for ops triage.
 
     def _set_pending_exit_intent(
         self, slot: TradingSlot, intent: str, original_size: int,
     ) -> None:
-        """Record an EXIT-class submission so the next cycle can recover."""
-        if not slot._state_path:
-            return
         try:
-            from echolon.strategy.state_manager import StateManager, PendingExitIntent
-            sm = StateManager(state_path=slot._state_path)
-            sm.load_state()
-            now = datetime.now().isoformat()
-            existing = sm.get_pending_exit_intent()
-            if existing is not None and existing.intent == intent:
-                # Already pending from a prior cycle — bump and re-save.
-                existing.last_attempt_time = now
-                sm.set_pending_exit_intent(existing)
-            else:
-                sm.set_pending_exit_intent(PendingExitIntent(
-                    intent=intent,
-                    original_size=int(original_size),
-                    remaining_size=int(original_size),
-                    attempts_so_far=0,
-                    original_decision_time=now,
-                    last_attempt_time=now,
-                    cycles_pending=1,
-                ))
-            sm.save_state()
+            slot.set_pending_exit_intent(intent=intent, original_size=original_size)
         except Exception as exc:
             self.log.error(f"[{slot.slot_id}] set_pending_exit_intent failed: {exc}")
 
     def _clear_pending_exit_intent(self, slot: TradingSlot) -> None:
-        if not slot._state_path:
-            return
         try:
-            from echolon.strategy.state_manager import StateManager
-            sm = StateManager(state_path=slot._state_path)
-            sm.load_state()
-            sm.clear_pending_exit_intent()
-            sm.save_state()
+            slot.clear_pending_exit_intent()
         except Exception as exc:
             self.log.error(f"[{slot.slot_id}] clear_pending_exit_intent failed: {exc}")
-        # Also remove operator alert row for this slot, if any.
+        # Also remove operator alert row for this slot, if any. This block
+        # runs even if clear_pending_exit_intent above raised — preserves
+        # the original two-try-block structure.
         try:
             self._remove_pending_exit_alert(slot.slot_id)
         except Exception as exc:
@@ -1386,20 +1364,8 @@ class PortfolioTradingRunner:
     def _update_pending_exit_remaining(
         self, slot: TradingSlot, remaining: int,
     ) -> None:
-        if not slot._state_path:
-            return
         try:
-            from echolon.strategy.state_manager import StateManager
-            sm = StateManager(state_path=slot._state_path)
-            sm.load_state()
-            pending = sm.get_pending_exit_intent()
-            if pending is None:
-                return
-            pending.remaining_size = max(0, int(remaining))
-            pending.attempts_so_far += 1
-            pending.last_attempt_time = datetime.now().isoformat()
-            sm.set_pending_exit_intent(pending)
-            sm.save_state()
+            slot.update_pending_exit_remaining(remaining=remaining)
         except Exception as exc:
             self.log.error(f"[{slot.slot_id}] update_pending_exit_remaining failed: {exc}")
 

@@ -597,6 +597,69 @@ class TradingSlot:
         )
         logger.info(f"[{self.slot_id}] Strategy created from {strategy_code_dir}")
 
+    # ---- Pending-exit-intent (Amendment B; moved from PortfolioTradingRunner) ----
+    #
+    # These methods raise on StateManager errors. The runner-side caller
+    # (PortfolioTradingRunner._set/_clear/_update_pending_exit_intent)
+    # wraps each call in try/except and logs via self.log to preserve the
+    # `deploy.portfolio_runner` log namespace from the pre-refactor code.
+
+    def set_pending_exit_intent(self, intent: str, original_size: int) -> None:
+        """Record an EXIT-class submission so the next cycle can recover.
+
+        No-op if ``_state_path`` is not yet initialized (slot uninitialized).
+        Idempotent: re-recording the same intent updates last_attempt_time
+        without resetting the cycle counter.
+        """
+        if not self._state_path:
+            return
+        from echolon.strategy.state_manager import StateManager, PendingExitIntent
+        sm = StateManager(state_path=self._state_path)
+        sm.load_state()
+        now = datetime.now().isoformat()
+        existing = sm.get_pending_exit_intent()
+        if existing is not None and existing.intent == intent:
+            existing.last_attempt_time = now
+            sm.set_pending_exit_intent(existing)
+        else:
+            sm.set_pending_exit_intent(PendingExitIntent(
+                intent=intent,
+                original_size=int(original_size),
+                remaining_size=int(original_size),
+                attempts_so_far=0,
+                original_decision_time=now,
+                last_attempt_time=now,
+                cycles_pending=1,
+            ))
+        sm.save_state()
+
+    def clear_pending_exit_intent(self) -> None:
+        """Clear pending exit (called when chain is fully filled)."""
+        if not self._state_path:
+            return
+        from echolon.strategy.state_manager import StateManager
+        sm = StateManager(state_path=self._state_path)
+        sm.load_state()
+        sm.clear_pending_exit_intent()
+        sm.save_state()
+
+    def update_pending_exit_remaining(self, remaining: int) -> None:
+        """Update the remaining_size on the pending exit intent (called when
+        chain partially filled — bumps attempts_so_far)."""
+        if not self._state_path:
+            return
+        from echolon.strategy.state_manager import StateManager
+        sm = StateManager(state_path=self._state_path)
+        sm.load_state()
+        pending = sm.get_pending_exit_intent()
+        if pending is None:
+            return
+        pending.remaining_size = max(0, int(remaining))
+        pending.attempts_so_far += 1
+        pending.last_attempt_time = datetime.now().isoformat()
+        sm.set_pending_exit_intent(pending)
+        sm.save_state()
+
 
 def _collect_declared_names(indicator_list: object) -> set:
     """Derive the set of lowercase indicator names declared by a flat-dict config.
