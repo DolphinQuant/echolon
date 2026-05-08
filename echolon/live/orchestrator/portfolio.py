@@ -29,13 +29,11 @@ import threading
 import time
 import traceback
 from collections import defaultdict
-from datetime import datetime, timedelta
+from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import pytz
-from apscheduler.schedulers.background import BackgroundScheduler
-from apscheduler.triggers.date import DateTrigger
 
 from ..config.deploy_config import QMTAccountConfig
 from ..config.portfolio_deploy_config import PortfolioDeployConfig, SlotConfig
@@ -59,11 +57,7 @@ from echolon.strategy.interfaces import Order, OrderIntent, OrderStatus
 from ..slot.capital_slot import CapitalSlot
 from ..slot.trading_slot import TradingSlot
 from ..slot.risk_overlay import PortfolioRiskOverlay
-from echolon.data.loaders.calendar_loader import (
-    get_trading_dates,
-    is_trading_day,
-    is_night_market_open,
-)
+from echolon.data.loaders.calendar_loader import is_night_market_open
 import logging
 
 logger = logging.getLogger(__name__)
@@ -363,13 +357,13 @@ class PortfolioTradingRunner:
             deploy_data_dir=self.portfolio_dir,
         )
 
-        # Cached market_data_dir for calendar_loader calls (is_trading_day,
-        # is_night_market_open, get_trading_dates all take it as a kw-only arg).
+        # Cached market_data_dir for calendar_loader calls (is_night_market_open
+        # takes it as a kw-only arg; DailyScheduler also receives it).
         from echolon.config.paths_config import PathsConfig
         self._market_data_dir = PathsConfig.from_env().market_data_dir
 
-        # Scheduling
-        self.scheduler: Optional[BackgroundScheduler] = None
+        # Scheduling — DailyScheduler owns the BackgroundScheduler instance.
+        self.scheduler: Optional["DailyScheduler"] = None
         self.running = False
         self.shutdown_event = threading.Event()
         self.present_date = datetime.now()
@@ -430,14 +424,33 @@ class PortfolioTradingRunner:
 
             self._connect_client()
             self.risk_overlay.load(active_slot_ids=[s.slot_id for s in self.slots])
-            self._schedule_daily_trading()
+
+            from .scheduler import DailyScheduler
+            self.scheduler = DailyScheduler(
+                config=self.config,
+                slots=[s.slot_config for s in self.slots],
+                market_data_dir=self._market_data_dir,
+                portfolio_dir=self.portfolio_dir,
+                timezone=self.TIMEZONE,
+                log=self.log,
+            )
+            self.scheduler.start(
+                on_cycle_trigger=self._market_open_job_inner,
+                on_present_date_set=lambda dt: setattr(self, "present_date", dt),
+                is_running=lambda: self.running,
+                slot_count=lambda: len(self.slots),
+                order_router_tripped=lambda: (
+                    self.order_router.is_tripped if self.order_router else None
+                ),
+            )
 
             while self.running and not self.shutdown_event.is_set():
                 self.shutdown_event.wait(timeout=60)
                 # Heartbeat: write a timestamp file every minute so the
                 # operator can verify liveness via `type scheduler_heartbeat.txt`
                 # without depending on console output (which can block).
-                self._write_scheduler_heartbeat()
+                if self.scheduler:
+                    self.scheduler.write_heartbeat()
         except Exception as e:
             self.log.error(f"Fatal error: {e}\n{traceback.format_exc()}")
         finally:
@@ -453,7 +466,7 @@ class PortfolioTradingRunner:
         self.running = True
         try:
             self._connect_client()
-            self._ensure_trading_calendars()
+            self._ensure_trading_calendars()  # thin shim -> scheduler module
             self.risk_overlay.load(active_slot_ids=[s.slot_id for s in self.slots])
             return self._market_open_job_inner()
         except Exception as e:
@@ -497,7 +510,7 @@ class PortfolioTradingRunner:
 
         if self.scheduler:
             try:
-                self.scheduler.shutdown(wait=False)
+                self.scheduler.shutdown()
             except Exception:
                 pass
             self.scheduler = None
@@ -551,84 +564,9 @@ class PortfolioTradingRunner:
             self.log.warning("QMT connection failed (may be outside trading hours)")
 
     # =========================================================================
-    # Scheduling
+    # Daily cycle (the scheduling itself lives in scheduler.DailyScheduler;
+    # the runner contributes the cycle body invoked via callback)
     # =========================================================================
-
-    def _schedule_daily_trading(self) -> None:
-        """Schedule first daily job using trading calendar."""
-        self.scheduler = BackgroundScheduler(timezone=self.TIMEZONE)
-
-        # Use first slot for calendar checks
-        first = self.slots[0].slot_config if self.slots else None
-        if not first:
-            self.log.error("No slots configured")
-            return
-
-        # Ensure trading calendars exist before any is_trading_day() call
-        self._ensure_trading_calendars()
-
-        today = datetime.now()
-        market, instrument = first.market, first.instrument
-
-        target_date = None
-        if is_trading_day(market, instrument, today, market_data_dir=self._market_data_dir):
-            hour, minute = self._get_schedule_time(today, market, instrument)
-            trigger_time = today.replace(hour=hour, minute=minute, second=0, microsecond=0)
-            if today < trigger_time:
-                target_date = today
-
-        if target_date is None:
-            target_date = self._find_next_trading_day(today, market, instrument)
-
-        if target_date is None:
-            self.log.error("No future trading days found")
-            return
-
-        hour, minute = self._get_schedule_time(target_date, market, instrument)
-        run_date = self.TIMEZONE.localize(
-            target_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
-        )
-
-        self.scheduler.add_job(
-            self._market_open_job,
-            trigger=DateTrigger(run_date=run_date),
-            id="portfolio_daily_job",
-            name="PortfolioDailyJob",
-            replace_existing=True,
-            misfire_grace_time=self.config.deploy.misfire_grace_time,
-            coalesce=True,
-        )
-        self.scheduler.start()
-        self.log.info(f"Scheduled: {target_date.strftime('%Y-%m-%d')} at {hour:02d}:{minute:02d}")
-
-    def _market_open_job(self) -> None:
-        """APScheduler job entry point."""
-        self.log.info("=" * 70)
-        self.log.info("PORTFOLIO DAILY JOB TRIGGERED")
-        self.log.info("=" * 70)
-
-        if not self.running:
-            return
-
-        self._ensure_trading_calendars()
-
-        first = self.slots[0].slot_config
-        if not is_trading_day(
-            first.market, first.instrument, datetime.now(),
-            market_data_dir=self._market_data_dir,
-        ):
-            self.log.info("Not a trading day, skipping")
-            self._reschedule_next_job()
-            return
-
-        self.present_date = datetime.now()
-
-        try:
-            self._market_open_job_inner()
-        except Exception as e:
-            self.log.error(f"Daily cycle failed: {e}\n{traceback.format_exc()}")
-
-        self._reschedule_next_job()
 
     def _market_open_job_inner(self) -> Dict[str, Any]:
         """Core daily cycle logic."""
@@ -1278,35 +1216,19 @@ class PortfolioTradingRunner:
     # =========================================================================
 
     def _ensure_trading_calendars(self) -> None:
-        """Generate trading calendar for each unique instrument if missing.
+        """Thin shim onto scheduler.ensure_trading_calendars.
 
-        Called before is_trading_day() to ensure the calendar CSV is
-        available. Iterates all unique (market, instrument) pairs from
-        enabled slots and asks the SHFE day extractor to materialize each.
+        Kept on the runner so callers without a DailyScheduler instance
+        (run_single_cycle and the goingmerry test_slot_init_only.py
+        script) can still materialize calendars before is_trading_day()
+        lookups.
         """
-        from echolon.data.extractors.shfe.api_day_extractor import SHFEApiDayExtractor
-        from echolon.config.paths_config import PathsConfig
-
-        market_data_dir = PathsConfig.from_env().market_data_dir
-
-        seen = set()
-        for sc in self.config.get_enabled_slots():
-            key = (sc.market, sc.instrument)
-            if key in seen:
-                continue
-            seen.add(key)
-
-            calendar_dir = market_data_dir / sc.market / sc.instrument
-            calendar_file = calendar_dir / "trading_calendar.csv"
-            if calendar_file.exists():
-                continue
-
-            self.log.info(f"Trading calendar not found for {sc.instrument} — generating from static source")
-            extractor = SHFEApiDayExtractor(market=sc.market, asset=sc.instrument)
-            extractor.generate_trading_calendar(
-                source_path=self.config.deploy.trading_calendar_path,
-                output_dir=str(calendar_dir),
-            )
+        from .scheduler import ensure_trading_calendars
+        ensure_trading_calendars(
+            config=self.config,
+            market_data_dir=self._market_data_dir,
+            log=self.log,
+        )
 
     def _central_wait_if_night_market(self) -> None:
         """
@@ -1380,107 +1302,7 @@ class PortfolioTradingRunner:
             )
         return path
 
-    def _get_schedule_time(self, date: datetime, market: str, instrument: str) -> Tuple[int, int]:
-        """Determine schedule time based on night market status."""
-        try:
-            if is_night_market_open(
-                market, instrument, date, market_data_dir=self._market_data_dir,
-            ):
-                return self.config.deploy.night_market_schedule_hour, self.config.deploy.night_market_schedule_minute
-            return self.config.deploy.day_only_schedule_hour, self.config.deploy.day_only_schedule_minute
-        except Exception:
-            return self.config.deploy.night_market_schedule_hour, self.config.deploy.night_market_schedule_minute
-
-    def _find_next_trading_day(self, after_date: datetime, market: str, instrument: str) -> Optional[datetime]:
-        """Find next trading day after given date."""
-        start = after_date + timedelta(days=1)
-        end = after_date + timedelta(days=30)
-        trading_dates = get_trading_dates(
-            market, instrument,
-            start_date=start.strftime("%Y-%m-%d"),
-            end_date=end.strftime("%Y-%m-%d"),
-            market_data_dir=self._market_data_dir,
-        )
-        if not trading_dates:
-            return None
-        first = trading_dates[0]
-        if hasattr(first, 'to_pydatetime'):
-            first = first.to_pydatetime()
-        return first
-
-    def _reschedule_next_job(self) -> None:
-        """Schedule next daily job."""
-        if not self.scheduler:
-            return
-        first = self.slots[0].slot_config if self.slots else None
-        if not first:
-            return
-
-        try:
-            next_day = self._find_next_trading_day(datetime.now(), first.market, first.instrument)
-            if next_day is None:
-                self.log.error("No future trading days found")
-                return
-
-            hour, minute = self._get_schedule_time(next_day, first.market, first.instrument)
-            run_date = self.TIMEZONE.localize(
-                next_day.replace(hour=hour, minute=minute, second=0, microsecond=0)
-            )
-
-            for job in self.scheduler.get_jobs():
-                if job.name == "PortfolioDailyJob":
-                    job.remove()
-
-            self.scheduler.add_job(
-                self._market_open_job,
-                trigger=DateTrigger(run_date=run_date),
-                id="portfolio_daily_job",
-                name="PortfolioDailyJob",
-                replace_existing=True,
-                misfire_grace_time=self.config.deploy.misfire_grace_time,
-                coalesce=True,
-            )
-            self.log.info(f"Rescheduled: {next_day.strftime('%Y-%m-%d')} at {hour:02d}:{minute:02d}")
-        except Exception as e:
-            self.log.error(f"Rescheduling failed: {e}")
-
     def _signal_handler(self, signum, frame) -> None:
         """Handle SIGINT/SIGTERM."""
         self.log.info(f"Received signal {signum} — shutting down")
         self.stop()
-
-    def _write_scheduler_heartbeat(self) -> None:
-        """Write a heartbeat file with current time + next-job time.
-
-        The operator monitors this file (`type scheduler_heartbeat.txt`)
-        to verify the runner is still ticking — without depending on
-        console output, which can block under Windows CMD QuickEdit
-        Mode. Atomic write via temp+rename so partial reads can't see
-        a corrupted file.
-        """
-        if not self.scheduler:
-            return
-        try:
-            jobs = self.scheduler.get_jobs() if self.scheduler else []
-            next_job_run = None
-            for j in jobs:
-                if j.name == "PortfolioDailyJob" and j.next_run_time is not None:
-                    next_job_run = j.next_run_time.isoformat()
-                    break
-
-            heartbeat_path = Path(self.portfolio_dir) / "scheduler_heartbeat.txt"
-            heartbeat_path.parent.mkdir(parents=True, exist_ok=True)
-            tmp_path = heartbeat_path.with_suffix(".txt.tmp")
-            content = (
-                f"now={datetime.now(self.TIMEZONE).isoformat()}\n"
-                f"next_daily_job={next_job_run or 'NONE'}\n"
-                f"running={self.running}\n"
-                f"slots={len(self.slots)}\n"
-                f"order_router_tripped="
-                f"{self.order_router.is_tripped if self.order_router else 'no_router'}\n"
-            )
-            tmp_path.write_text(content, encoding="utf-8")
-            os.replace(tmp_path, heartbeat_path)
-        except Exception:
-            # Heartbeat is best-effort; never raise from here.
-            pass
