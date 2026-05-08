@@ -38,11 +38,12 @@ def test_pending_exit_intent_set_on_first_exit_submit(tmp_path):
     # full __init__ by calling _set_pending_exit_intent directly on a
     # mock slot fixture.
 
+    from echolon.live.slot.trading_slot import TradingSlot
     state_path = tmp_path / "strategy_state.json"
     state_path.parent.mkdir(parents=True, exist_ok=True)
-    fake_slot = MagicMock()
+    fake_slot = TradingSlot.__new__(TradingSlot)
     fake_slot._state_path = str(state_path)
-    fake_slot.slot_id = "al_s1"
+    fake_slot.slot_config = MagicMock(slot_id="al_s1")
 
     runner = PortfolioTradingRunner.__new__(PortfolioTradingRunner)
     runner.log = MagicMock()
@@ -79,9 +80,10 @@ def test_pending_exit_cleared_on_full_fill(tmp_path):
     ))
     sm.save_state()
 
-    fake_slot = MagicMock()
+    from echolon.live.slot.trading_slot import TradingSlot
+    fake_slot = TradingSlot.__new__(TradingSlot)
     fake_slot._state_path = str(state_path)
-    fake_slot.slot_id = "al_s1"
+    fake_slot.slot_config = MagicMock(slot_id="al_s1")
 
     runner = PortfolioTradingRunner.__new__(PortfolioTradingRunner)
     runner.log = MagicMock()
