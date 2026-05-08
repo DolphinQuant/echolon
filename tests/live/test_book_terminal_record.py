@@ -72,6 +72,15 @@ def test_book_filled_appends_fill_record_and_logs_executed(tmp_path):
     assert slot.todays_processed_fills[0]["intent"] == "ENTRY_LONG"
     slot.strategy.strategy_logger.log_order_event.assert_called_once()
     assert slot.strategy.strategy_logger.log_order_event.call_args[0][0]["action"] == "executed"
+    # Money-path safety: notify_fill MUST be called on a successful fill so
+    # the slot's StrategyState top-level fields (position_symbol, position_size,
+    # position_side) get updated. Regression guard.
+    slot.notify_fill.assert_called_once()
+    notify_kwargs = slot.notify_fill.call_args.kwargs
+    assert notify_kwargs["symbol"] == "al2606.SF"
+    assert notify_kwargs["side"] == "LONG"
+    assert notify_kwargs["size"] == 1
+    assert notify_kwargs["price"] == 24600.0
 
 
 def test_book_canceled_marks_order_and_appends_canceled_intent(tmp_path):
