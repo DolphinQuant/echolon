@@ -17,24 +17,32 @@ Rationale for ``BUFFER_TICKS_BY_ATTEMPT[1] = 4``:
     al, price_tick=5) keeps the order marketable for the first ~60s of
     the night session.
 
-Buffer / slippage-cap interaction:
+Buffer / slippage-cap interaction (ENTRY at 0.20% cap):
     The cumulative-drift slippage cap (``MAX_SLIPPAGE_PCT_BY_CLASS``)
     is pinned to the strategy-decision price across the whole retry
     chain. Each retry's buffer counts toward the cap. The cap clips
     the chain when ``buffer_ticks_at_attempt_N * price_tick / price``
-    exceeds the cap. With the current buffer ladder {1: 4, 2: 8, 3: 16}
-    and ENTRY cap of 0.20%:
+    exceeds the cap. With buffer ladder {1: 4, 2: 8, 3: 16}:
 
-      | slot       | att-1 % | att-2 % | att-3 % | clipped at |
-      | al @ 24600 | 0.020% | 0.041% | 0.081% | full 3 attempts |
-      | cu @ 80000 | 0.013% | 0.025% | 0.050% | full 3 attempts |
-      | zn @ 22000 | 0.045% | 0.091% | 0.182% | att-3 trips on minor drift |
+      | slot       | att-1 buf % | att-2 buf % | att-3 buf % | effective chain                   |
+      | al @ 24600 | 0.081%      | 0.163%      | 0.325%      | 2 attempts (att-3 buffer > cap)   |
+      | cu @ 80000 | 0.050%      | 0.100%      | 0.200%      | 2-3 attempts (att-3 == cap edge)  |
+      | zn @ 22000 | 0.091%      | 0.182%      | 0.364%      | 2 attempts (att-3 buffer > cap)   |
 
-    For zn, attempt 3's buffer alone (0.182%) leaves only 18 ticks of
-    drift headroom; in practice attempt 3 will frequently abandon for
-    zn under any adverse market drift. That's intended: if 12 ticks of
-    cumulative buffer over 60 seconds don't fill, the market has moved
-    enough that not entering is the right call.
+    The ENTRY cap is the binding constraint: for al and zn, attempt 3's
+    16-tick buffer alone exceeds the 0.20% cap regardless of market
+    drift, so the chain is de-facto a 2-attempt sequence on those slots.
+    That's intended — if 12 cumulative ticks of aggressive buffer over
+    60 seconds don't fill, the market has moved enough that abandoning
+    the entry is the right call. Attempt 3 (16 ticks) is reserved for
+    EXIT-class chains, where the wider 0.80% cap does fit it.
+
+    For ENTRY-class on cu, attempt 3's percentage equals the cap
+    exactly (0.200% == 0.0020); any market drift trips it. Effectively
+    2.5 attempts depending on tick movement at decision time.
+
+    EXIT cap (0.80%) accommodates the full 5-attempt chain for all
+    configured non-ferrous slots (max att-3 buffer = 0.36% << 0.80%).
 """
 
 from typing import Dict
