@@ -56,6 +56,9 @@ def test_build_snapshot_data_returns_complete_dict(tmp_path):
     assert snap["signal_data"]["signal_type"] == "ENTRY_LONG"
     assert snap["signal_data"]["signal_reason"] == "trending up"
     assert snap["last_trade_action"] is None  # no fills today
+    assert snap["market_data"]["daily_high"] == 24650.0
+    assert snap["market_data"]["daily_low"] == 24450.0
+    assert snap["market_data"]["volume"] == 12000
 
 
 def test_build_snapshot_data_handles_exit_signal(tmp_path):
@@ -97,3 +100,14 @@ def test_build_snapshot_data_no_position(tmp_path):
     assert snap["position_data"]["current_position_size"] == 0
     assert snap["position_data"]["current_position_avg_price"] is None
     assert snap["position_contract"] == ""
+
+
+def test_build_snapshot_data_no_strategy(tmp_path):
+    """Defensive path: slot.strategy is None (e.g. cold-start or
+    partial-init). signal_type and trade_count fall back to defaults
+    without raising."""
+    slot = _make_slot_with_runtime(tmp_path)
+    slot.strategy = None
+    snap = slot.build_snapshot_data()
+    assert snap["signal_data"]["signal_type"] is None
+    assert snap["performance_data"]["trade_count"] == 0
