@@ -4,6 +4,116 @@ All notable changes to echolon are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/). Pre-1.0 minor and patch
 versions may carry breaking changes — they are clearly flagged below.
 
+## 0.1.5 — 2026-05-08
+
+Live-deploy hardening release. The ``PortfolioTradingRunner`` god-class
+in ``echolon.live.orchestrator.portfolio`` is decomposed into focused
+collaborators with behavioral equivalence preserved verbatim. Slippage
+caps and circuit-breaker thresholds in ``order_policy`` are tightened
+to align with realistic SHFE strategy edge. ~85 new tests added across
+the live module surface. Phase 0 fail-loud-on-xtdc-unavailable closes
+a class of stale-data trading risk.
+
+### Breaking changes
+
+- ``echolon.live.config.order_policy.MAX_SLIPPAGE_PCT_BY_CLASS`` values
+  tightened by 3-10×. Previous defaults exceeded typical SHFE
+  non-ferrous per-trade strategy edge by an order of magnitude. New
+  values: ``ENTRY=0.0020`` (was 0.02), ``EXIT=0.0080`` (was 0.05),
+  ``FORCED_EXIT=0.0150`` (was 0.05). Hosts that previously relied on
+  the looser defaults to keep marginal fills should override these
+  constants explicitly via subclassing or monkeypatch.
+- ``echolon.live.config.order_policy.CIRCUIT_THRESHOLDS`` tightened:
+  ``abandoned_rate_pct=0.20`` (was 0.4), ``rejected_rate_pct=0.25``
+  (was 0.5), ``abandoned_rate_min_n=10`` (was 5).
+- ``PortfolioTradingRunner._phase0_data_pipeline`` now raises
+  ``RuntimeError`` when ``XtdcClient.connect()`` fails, instead of
+  logging error and silently skipping the cycle. Hosts that depended
+  on the silent-skip behavior must catch the exception or repair their
+  data pipeline.
+- ``echolon.live.config.order_policy.TICK_SNAPSHOT_MAX_AGE_S`` raised
+  ``2.0 → 4.0`` to accommodate SHFE off-peak tick gaps. Hosts on other
+  exchanges should override.
+
+### New
+
+- ``echolon.live.orchestrator.phase0_pipeline.Phase0DataPipeline`` —
+  extracted from ``PortfolioTradingRunner._phase0_data_pipeline``. Now
+  independently testable. Constructor takes ``(config, log)`` and
+  ``.run(present_date)`` executes xtdc connect → per-instrument data
+  download → per-group indicator calculation.
+- ``echolon.live.orchestrator.scheduler.DailyScheduler`` — extracted
+  APScheduler instance + 7 calendar-aware scheduling methods
+  (``_schedule_daily_trading``, ``_market_open_job`` callback,
+  ``_reschedule_next_job``, ``_get_schedule_time``,
+  ``_find_next_trading_day``, ``_ensure_trading_calendars``,
+  ``_write_scheduler_heartbeat``). Constructed by the runner with
+  callback hooks; runner's ``_market_open_job_inner`` stays in place.
+- ``echolon.live.orchestrator.portfolio.book_terminal_record`` —
+  module-level helper deduplicating the FILLED / CANCELED / REJECTED
+  bookkeeping branches in ``_process_fills``. Hardened: refuses to book
+  FILLED records with ``intent=None`` (was a phantom-fill silent path);
+  ``order.status`` mutation is now atomic with VP update inside the
+  inner try/except (was set before the try, leaving state inconsistent
+  on VP failure); REJECTED / CANCELED branches now have inner
+  exception handling with branch-distinct log messages.
+- ``echolon.live.slot.trading_slot.TradingSlot`` gains four methods
+  moved off the runner: ``set_pending_exit_intent``,
+  ``clear_pending_exit_intent``, ``update_pending_exit_remaining``,
+  and ``build_snapshot_data``. Pending-exit StateManager mutations are
+  now slot-owned; runner-side wrappers preserved for log-namespace
+  equivalence.
+- ``echolon.live.slot.risk_overlay.PortfolioRiskOverlay.peak_equity`` —
+  public property replacing ``hasattr`` reach-in to
+  ``_peak_portfolio_equity``.
+- ``Phase0DataPipeline`` ``log.critical`` + ``RuntimeError`` on xtdc
+  unavailability with explicit message text for ops triage.
+- ``DailyScheduler._get_schedule_time`` logs a warning before falling
+  back to night-market schedule on calendar-failure (was silent).
+- ``echolon.data.live_data.run_live_data_update`` now copies
+  ``main_contract.csv`` from ``<symbol>_by_contract/`` to the
+  canonical loader path as a final pipeline step. Previously the
+  runner crashed at slot.initialize with ``DAT-003`` on first cycle.
+
+### Fixed
+
+- Calendar API mismatch: ``is_trading_day`` /
+  ``is_night_market_open`` / ``get_trading_dates`` /
+  ``get_main_contract`` are kw-only in ``market_data_dir``; six call
+  sites in the runner + slot were missing the kwarg, raising
+  ``TypeError`` at startup.
+- ``portfolio.py`` was passing positional args where new
+  ``run_indicator_calculation(paths=...)`` is required.
+- ``_apply_fill_to_vp`` is removed (inlined into the new
+  ``book_terminal_record`` helper); dead ``_map_intent`` static method
+  removed (post-OrderRouter migration); dead ``xtconstant`` import
+  removed.
+- ``PortfolioRiskOverlay.peak_equity`` access via property no longer
+  collapses 0.0 peak to ``portfolio_equity`` (the original ``hasattr``
+  guard returned 0.0 verbatim; the property preserves that exactly).
+
+### Removed
+
+- ``PortfolioTradingRunner._map_intent`` (dead since OrderRouter
+  migration; no callers).
+- ``PortfolioTradingRunner._apply_fill_to_vp`` (inlined into
+  ``book_terminal_record``).
+
+### Internal
+
+- ``portfolio.py`` shrunk from 1740 → 1308 LOC (-25%) without losing
+  any user-visible behavior.
+- New test files: ``test_phase0_pipeline.py``, ``test_daily_scheduler.py``,
+  ``test_book_terminal_record.py``, ``test_trading_slot_pending_exit.py``,
+  ``test_trading_slot_snapshot.py``, ``test_capital_slot.py``,
+  ``test_portfolio_risk_overlay.py``, ``test_cross_slot_isolation.py``,
+  ``test_scheduler_time_selection.py``, ``test_data_logger_contract.py``,
+  ``test_shfe_bands_bounds.py``, ``test_state_manager_invariants.py``,
+  ``test_order_policy_bounds.py``. Test count rose 695 → 778.
+- New bounds-test pattern: ``test_order_policy_bounds.py`` and friends
+  assert *upper* bounds on safety constants rather than exact values,
+  catching accidental relaxation in future commits.
+
 ## 0.1.3 — 2026-05-05
 
 User-facing logging cleanup. ``echolon hello`` and the default
