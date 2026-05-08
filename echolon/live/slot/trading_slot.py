@@ -667,13 +667,15 @@ class TradingSlot:
         ``io.data_logger.save_trading_data_snapshot``. Pure transformation
         of slot-owned attributes into the snapshot dict shape.
 
-        Behavioral equivalence with pre-refactor inline code in
-        PortfolioTradingRunner._market_open_job_inner Phase 5:
-        - No internal exception handling — caller's outer try/except is the
-          error boundary.
-        - Signal-extraction uses hasattr + .get; raises if current_bar_data
-          is None (matches original).
-        - get_unrealized_pnl is called unconditionally.
+        Hardened past pre-refactor behavior (followup F4):
+        - Inner try/except around market_data extraction; falls back to
+          zero defaults with a warning log so the snapshot row is preserved
+          even when get_market_data raises.
+        - Signal-extraction uses isinstance(cbd, dict) instead of the
+          original hasattr+.get pattern; safely skips when current_bar_data
+          is None instead of raising AttributeError.
+        - get_unrealized_pnl + capital_slot fields short-circuit to 0.0
+          when the underlying object is None.
 
         Returns:
             Dict with keys: market_data, signal_data, position_data,
@@ -682,14 +684,24 @@ class TradingSlot:
         """
         sc = self.slot_config
 
-        md = self.engine.get_market_data()
-        market_data = {
-            "current_price": md.get_current_price(),
-            "daily_open": md.get_open(),
-            "daily_high": md.get_high(),
-            "daily_low": md.get_low(),
-            "volume": md.get_volume(),
-        }
+        try:
+            md = self.engine.get_market_data()
+            market_data = {
+                "current_price": md.get_current_price(),
+                "daily_open": md.get_open(),
+                "daily_high": md.get_high(),
+                "daily_low": md.get_low(),
+                "volume": md.get_volume(),
+            }
+        except Exception as exc:
+            logger.warning(
+                f"[{self.slot_id}] snapshot market_data extraction failed; "
+                f"using zero defaults so the snapshot row is preserved: {exc}"
+            )
+            market_data = {
+                "current_price": 0.0, "daily_open": 0.0,
+                "daily_high": 0.0, "daily_low": 0.0, "volume": 0,
+            }
 
         # Signal extraction from strategy logger — match original's
         # hasattr + .get pattern (do NOT replace with isinstance check).
@@ -697,8 +709,8 @@ class TradingSlot:
         sig_strength = 0.0
         sig_reason = None
         strat_logger = getattr(self.strategy, "strategy_logger", None) if self.strategy else None
-        if strat_logger and hasattr(strat_logger, "current_bar_data"):
-            cbd = strat_logger.current_bar_data
+        cbd = getattr(strat_logger, "current_bar_data", None) if strat_logger else None
+        if isinstance(cbd, dict):
             if cbd.get("exit_should_exit"):
                 sig_type = "EXIT"
                 sig_strength = 1.0
@@ -731,15 +743,15 @@ class TradingSlot:
             "position_data": {
                 "current_position_size": int(position.size) if position else 0,
                 "current_position_avg_price": position.avg_price if position else None,
-                "unrealized_pnl": self.portfolio.get_unrealized_pnl(),
+                "unrealized_pnl": self.portfolio.get_unrealized_pnl() if position else 0.0,
             },
             "account_data": {
-                "available_cash": self.capital_slot.available_cash,
-                "total_account_value": self.capital_slot.equity,
+                "available_cash": self.capital_slot.available_cash if self.capital_slot else 0.0,
+                "total_account_value": self.capital_slot.equity if self.capital_slot else 0.0,
             },
             "performance_data": {
                 "daily_pnl": 0.0,
-                "total_pnl": self.capital_slot.realized_pnl,
+                "total_pnl": self.capital_slot.realized_pnl if self.capital_slot else 0.0,
                 "win_rate": 0.0,
                 "trade_count": getattr(self.strategy, "total_trades", 0) if self.strategy else 0,
             },

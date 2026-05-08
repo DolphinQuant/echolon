@@ -111,3 +111,45 @@ def test_build_snapshot_data_no_strategy(tmp_path):
     snap = slot.build_snapshot_data()
     assert snap["signal_data"]["signal_type"] is None
     assert snap["performance_data"]["trade_count"] == 0
+
+
+def test_build_snapshot_data_market_data_failure_logged_with_zero_defaults(tmp_path, caplog):
+    """D1: when engine.get_market_data() raises, snapshot is still
+    produced with zero defaults and a warning is emitted."""
+    import logging
+    slot = _make_slot_with_runtime(tmp_path)
+    slot.engine.get_market_data.side_effect = RuntimeError("data layer dead")
+
+    with caplog.at_level(logging.WARNING, logger="echolon.live.slot.trading_slot"):
+        snap = slot.build_snapshot_data()
+
+    assert snap["market_data"]["current_price"] == 0.0
+    assert snap["market_data"]["daily_open"] == 0.0
+    assert snap["market_data"]["volume"] == 0
+    # Warning logged
+    assert any("market_data extraction failed" in r.message for r in caplog.records)
+
+
+def test_build_snapshot_data_with_none_current_bar_data(tmp_path):
+    """D2: current_bar_data=None is handled by isinstance check (was
+    previously an AttributeError on cbd.get(...))."""
+    slot = _make_slot_with_runtime(tmp_path)
+    slot.strategy.strategy_logger.current_bar_data = None
+
+    snap = slot.build_snapshot_data()
+
+    # No raise; signal_type falls back to defaults
+    assert snap["signal_data"]["signal_type"] is None
+
+
+def test_build_snapshot_data_with_none_capital_slot(tmp_path):
+    """D4: capital_slot=None falls back to 0.0 across account_data
+    and performance_data."""
+    slot = _make_slot_with_runtime(tmp_path)
+    slot.capital_slot = None
+
+    snap = slot.build_snapshot_data()
+
+    assert snap["account_data"]["available_cash"] == 0.0
+    assert snap["account_data"]["total_account_value"] == 0.0
+    assert snap["performance_data"]["total_pnl"] == 0.0
