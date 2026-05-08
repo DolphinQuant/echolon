@@ -13,11 +13,9 @@ skipping. Trading without fresh market data is unsafe (stale indicators
 → mislead strategy → real-money loss).
 
 Behavioral equivalence: every code path matches PortfolioTradingRunner.
-_phase0_data_pipeline pre-refactor. The ``get_regime_params`` import
-stays deferred to minimize diff from the pre-refactor portfolio.py
-(no actual circular-import hazard exists in this module's location;
-the import could be hoisted to module top in a future commit if
-desired).
+_phase0_data_pipeline pre-refactor (the deferred ``get_regime_params``
+import was hoisted to module top in followup F2 — verified no circular
+hazard exists from this module's location).
 """
 from __future__ import annotations
 
@@ -34,9 +32,7 @@ from echolon.indicators.run import run_indicator_calculation
 from echolon.indicators.utils.merge_indicators import (
     load_indicator_list, merge_indicator_lists,
 )
-# NB: get_regime_params is imported lazily inside _calculate_indicators_per_group
-# to minimize diff from the pre-refactor inline code (no circular-import
-# hazard here — safe to hoist in a future commit).
+from echolon._internal.strategy_files import get_regime_params
 
 
 class Phase0DataPipeline:
@@ -97,11 +93,6 @@ class Phase0DataPipeline:
     # ----- Step 2: per-group indicator calculation -----
 
     def _calculate_indicators_per_group(self, present_date: datetime) -> None:
-        # Deferred import — preserved from pre-refactor portfolio.py to
-        # minimize behavioral diff. No actual circular-import hazard exists
-        # in this module's location; safe to hoist if desired later.
-        from echolon._internal.strategy_files import get_regime_params
-
         paths = PathsConfig.from_env()
         indicators_backtest_dir = paths.indicators_backtest_dir
         end_date = present_date.strftime("%Y-%m-%d")
