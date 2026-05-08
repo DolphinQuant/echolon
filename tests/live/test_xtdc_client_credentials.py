@@ -150,6 +150,19 @@ def test_addr_list_omitted_when_empty(monkeypatch, caplog):
     import logging
     _reset_env(monkeypatch)
     monkeypatch.setenv("XUNTOU_TOKEN", "x")
+    # When the real xtquant package is installed (Windows trading PC),
+    # _ensure_listener would otherwise call into xtdc.init/listen and
+    # attempt a real network connection. Stub xtquant.xtdatacenter (both
+    # as a sys.modules entry and as an attribute on the xtquant package,
+    # since `from xtquant import xtdatacenter` reads the attribute when
+    # the package is already loaded) so the test exercises only our
+    # pre-init logging branch.
+    import sys
+    from unittest.mock import MagicMock
+    fake_xtdc = MagicMock()
+    monkeypatch.setitem(sys.modules, "xtquant.xtdatacenter", fake_xtdc)
+    import xtquant
+    monkeypatch.setattr(xtquant, "xtdatacenter", fake_xtdc, raising=False)
     client = XtdcClient()
     assert client._addr_list == []
     with caplog.at_level(logging.WARNING):

@@ -115,6 +115,11 @@ class PortfolioTradingRunner:
             deploy_data_dir=self.portfolio_dir,
         )
 
+        # Cached market_data_dir for calendar_loader calls (is_trading_day,
+        # is_night_market_open, get_trading_dates all take it as a kw-only arg).
+        from echolon.config.paths_config import PathsConfig
+        self._market_data_dir = PathsConfig.from_env().market_data_dir
+
         # Scheduling
         self.scheduler: Optional[BackgroundScheduler] = None
         self.running = False
@@ -318,7 +323,7 @@ class PortfolioTradingRunner:
         market, instrument = first.market, first.instrument
 
         target_date = None
-        if is_trading_day(market, instrument, today):
+        if is_trading_day(market, instrument, today, market_data_dir=self._market_data_dir):
             hour, minute = self._get_schedule_time(today, market, instrument)
             trigger_time = today.replace(hour=hour, minute=minute, second=0, microsecond=0)
             if today < trigger_time:
@@ -360,7 +365,10 @@ class PortfolioTradingRunner:
         self._ensure_trading_calendars()
 
         first = self.slots[0].slot_config
-        if not is_trading_day(first.market, first.instrument, datetime.now()):
+        if not is_trading_day(
+            first.market, first.instrument, datetime.now(),
+            market_data_dir=self._market_data_dir,
+        ):
             self.log.info("Not a trading day, skipping")
             self._reschedule_next_job()
             return
@@ -624,11 +632,21 @@ class PortfolioTradingRunner:
         )
         from ..platforms.miniqmt.xtdc_client import XtdcClient
 
-        # Connect XtdcClient once for all instruments
+        # Connect XtdcClient once for all instruments. If xtdc is unavailable,
+        # ABORT the cycle — proceeding without fresh market data means
+        # indicators would be computed against stale bars and the strategy
+        # would make decisions on outdated state. That's a real-money loss
+        # risk, so fail loud and stop here.
         xtdc = XtdcClient()
         if not xtdc.connect():
-            self.log.error("XtdcClient connection failed — data pipeline will be skipped")
-            return
+            self.log.critical(
+                "XtdcClient connection failed — ABORTING cycle. Trading without "
+                "fresh market data is unsafe (stale indicators → mislead strategy). "
+                "Investigate Xuntou auth / network / VPN routing, then re-run."
+            )
+            raise RuntimeError(
+                "Phase 0 abort: XtdcClient connect failed; refusing to trade on stale data"
+            )
 
         try:
             # Step 1: Data download — once per (instrument, bar_size)
@@ -745,6 +763,7 @@ class PortfolioTradingRunner:
                     regime_params=regime_params,
                     start_date=start_date,
                     end_date=end_date,
+                    paths=paths,
                 )
             except Exception as e:
                 self.log.error(f"Indicators failed for group {group_id}: {e}")
@@ -1555,7 +1574,10 @@ class PortfolioTradingRunner:
             return
 
         try:
-            is_night = is_night_market_open(first.market, first.instrument, self.present_date)
+            is_night = is_night_market_open(
+                first.market, first.instrument, self.present_date,
+                market_data_dir=self._market_data_dir,
+            )
         except Exception:
             is_night = False
 
@@ -1615,7 +1637,9 @@ class PortfolioTradingRunner:
     def _get_schedule_time(self, date: datetime, market: str, instrument: str) -> Tuple[int, int]:
         """Determine schedule time based on night market status."""
         try:
-            if is_night_market_open(market, instrument, date):
+            if is_night_market_open(
+                market, instrument, date, market_data_dir=self._market_data_dir,
+            ):
                 return self.config.deploy.night_market_schedule_hour, self.config.deploy.night_market_schedule_minute
             return self.config.deploy.day_only_schedule_hour, self.config.deploy.day_only_schedule_minute
         except Exception:
@@ -1629,6 +1653,7 @@ class PortfolioTradingRunner:
             market, instrument,
             start_date=start.strftime("%Y-%m-%d"),
             end_date=end.strftime("%Y-%m-%d"),
+            market_data_dir=self._market_data_dir,
         )
         if not trading_dates:
             return None

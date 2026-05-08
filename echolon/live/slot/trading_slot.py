@@ -122,7 +122,12 @@ class TradingSlot:
         logger.info(f"[{slot_id}] QMTEngine created (deferred execution)")
 
         # Step 3: Resolve main contract
-        self.trading_contract = get_main_contract(present_date, symbol=sc.instrument_code)
+        from echolon.config.paths_config import PathsConfig
+        self.trading_contract = get_main_contract(
+            present_date,
+            symbol=sc.instrument_code,
+            market_data_dir=PathsConfig.from_env().market_data_dir,
+        )
         self.engine.set_trading_contract(self.trading_contract)
         logger.info(f"[{slot_id}] Main contract: {self.trading_contract}")
 

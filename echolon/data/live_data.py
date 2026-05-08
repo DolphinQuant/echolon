@@ -173,6 +173,28 @@ def run_live_data_update(
         contracts = splitter.split(raw_data)
         logger.info(f"[LIVE_DATA] Split into {len(contracts)} contracts")
 
+    # Step 6: Copy main_contract.csv to canonical location.
+    # extract_raw writes it to <instrument>/<futures_code>_by_contract/main_contract.csv
+    # but the SHFE contract loader (echolon/markets/shfe/contract_rules.py)
+    # reads it from <instrument>/main_contract.csv. Without this copy, the
+    # live runner's slot.initialize() fails with DAT-003 immediately.
+    # Mirrors backtest_data.run_data_pipeline Step 6.
+    if not is_intraday:
+        import shutil
+        canonical_path = output_path / "main_contract.csv"
+        source_path = output_path / f"{extractor.futures_code}_by_contract" / "main_contract.csv"
+        if source_path.is_file():
+            logger.info(
+                f"[LIVE_DATA] Step 6: Copying main_contract.csv "
+                f"{source_path} → {canonical_path}"
+            )
+            shutil.copyfile(source_path, canonical_path)
+        else:
+            logger.warning(
+                f"[LIVE_DATA] Step 6: main_contract.csv missing at {source_path}; "
+                "downstream slot.initialize() will fail with DAT-003"
+            )
+
     logger.info("[LIVE_DATA] Complete")
     return True
 

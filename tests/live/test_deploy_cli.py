@@ -102,5 +102,6 @@ def test_portfolio_config_resolves_relative_strategy_paths(tmp_path):
     slot = config.slots[0]
     # After load(), the paths should be absolute and anchored to config_dir
     assert str(config_dir) in slot.strategy_code_dir, f"expected absolute path, got {slot.strategy_code_dir}"
-    assert slot.strategy_code_dir.endswith("strategies/al_s1/current"), slot.strategy_code_dir
+    # Normalize separators so the assertion is OS-independent (Windows uses \).
+    assert slot.strategy_code_dir.replace("\\", "/").endswith("strategies/al_s1/current"), slot.strategy_code_dir
     assert str(config_dir) in slot.trial_params_path
