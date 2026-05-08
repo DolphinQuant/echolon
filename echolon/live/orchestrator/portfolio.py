@@ -31,7 +31,7 @@ import traceback
 from collections import defaultdict
 from datetime import datetime, timedelta
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Tuple
+from typing import Any, Callable, Dict, List, Optional, Tuple
 
 import pytz
 from apscheduler.schedulers.background import BackgroundScheduler
@@ -71,6 +71,263 @@ from echolon.indicators.run import run_indicator_calculation
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def book_terminal_record(
+    *,
+    slot: "TradingSlot",
+    order: "Order",
+    handle: Any,
+    kind: str,
+    reason: str,
+    slots_dir: str,
+    log: Any,
+    resolve_fill_price: Optional[Callable[[int, str], float]] = None,
+) -> None:
+    """Book a single terminal record for one (slot, order) pair.
+
+    Replaces the three near-identical 80-line branches that lived in
+    PortfolioTradingRunner._process_fills (status 56=FILLED, 53/54=CANCELED/
+    ABANDONED, 57=REJECTED). Behavior is bit-for-bit equivalent to the
+    pre-refactor inline branches:
+
+    Branch gating (matches original):
+        kind == "filled" AND handle.filled_volume > 0   -> FILLED logic
+        kind == "filled" AND handle.filled_volume == 0  -> silent return
+                                                          (matches original
+                                                          fall-through; status
+                                                          56 + volume 0 hit
+                                                          no elif)
+        kind == "rejected"                               -> REJECTED logic
+        kind in ("canceled", "abandoned", "partial")    -> CANCELED logic
+
+    Inner exception boundary (matches original):
+        FILLED branch's VP update + dict appends + notify_fill +
+        save_trade_execution are wrapped in a try/except that logs
+        ``[slot_id] VP update/logging failed: <exc>``.
+
+    PRICE_UNKNOWN guard:
+        Inside the FILLED branch, if traded_price <= 0 after resolve attempt,
+        appends a fill record with ``error='PRICE_UNKNOWN'`` and returns
+        WITHOUT mutating VP.
+    """
+    from ..io.data_logger import save_trade_execution
+    from ..config.qmt_constants import QMT_STATUS_MAP
+
+    sc = slot.slot_config
+    trade_data_dir = os.path.join(slots_dir, slot.slot_id)
+    real_id = handle.qmt_order_id or handle.seq_id
+    intent_str = order.intent.value if order.intent else ""
+
+    # FILLED branch — matches original `if status == 56 and traded_volume > 0`.
+    # When kind=="filled" with volume==0, fall through to silent return.
+    if kind == "filled":
+        traded_price = handle.filled_avg_price
+        traded_volume = handle.filled_volume
+        if traded_volume <= 0:
+            return  # silent fall-through; matches pre-refactor behavior
+
+        # PRICE_UNKNOWN guard
+        if traded_price <= 0 and resolve_fill_price is not None:
+            traded_price = resolve_fill_price(real_id, slot.slot_id)
+        if traded_price <= 0:
+            log.error(
+                f"[{slot.slot_id}] CRITICAL: Fill price unresolvable for "
+                f"order_id={real_id}. Skipping VP update to prevent "
+                f"capital corruption. Manual reconciliation required."
+            )
+            slot.todays_processed_fills.append({
+                'qmt_order_id': real_id,
+                'slot_id': slot.slot_id,
+                'intent': intent_str,
+                'price': 0.0,
+                'volume': traded_volume,
+                'timestamp': datetime.now().isoformat(),
+                'error': 'PRICE_UNKNOWN',
+            })
+            return
+
+        order.status = OrderStatus.FILLED
+        order.filled_price = traded_price
+        order.filled_size = traded_volume
+
+        # Inner try/except matches original — wraps VP update + dict appends
+        # + strategy_logger + notify_fill + save_trade_execution. Specific
+        # error message preserved verbatim for ops triage continuity.
+        try:
+            prev_pos = slot.portfolio.get_position()
+            prev_size = int(prev_pos.size) if prev_pos else 0
+            prev_avg = prev_pos.avg_price if prev_pos else 0.0
+            prev_realized = slot.capital_slot.realized_pnl
+
+            # Apply fill to VP (intent -> portfolio mutation; replaces
+            # the now-deleted _apply_fill_to_vp method).
+            portfolio = slot.portfolio
+            intent = order.intent
+            if intent in (OrderIntent.ENTRY_LONG, OrderIntent.ROLLOVER_OPEN):
+                portfolio.open_position(symbol=order.symbol, direction="LONG",
+                                        size=traded_volume, price=traded_price)
+            elif intent == OrderIntent.ENTRY_SHORT:
+                portfolio.open_position(symbol=order.symbol, direction="SHORT",
+                                        size=traded_volume, price=traded_price)
+            elif intent in (OrderIntent.EXIT_LONG, OrderIntent.EXIT_SHORT,
+                            OrderIntent.FORCED_EXIT, OrderIntent.ROLLOVER_CLOSE):
+                portfolio.close_position(size=traded_volume, price=traded_price)
+
+            cur_pos = slot.portfolio.get_position()
+            cur_size = int(cur_pos.size) if cur_pos else 0
+            cur_avg = cur_pos.avg_price if cur_pos else 0.0
+            trade_realized_pnl = slot.capital_slot.realized_pnl - prev_realized
+
+            slot.todays_processed_fills.append({
+                'qmt_order_id': real_id,
+                'slot_id': slot.slot_id,
+                'intent': intent_str,
+                'price': traded_price,
+                'volume': traded_volume,
+                'timestamp': datetime.now().isoformat(),
+            })
+
+            if slot.strategy and hasattr(slot.strategy, 'strategy_logger') and slot.strategy.strategy_logger:
+                slot.strategy.strategy_logger.log_order_event({
+                    'action': 'executed',
+                    'ref': order.metadata.get('internal_ref', ''),
+                    'execution_price': traded_price,
+                    'executed_size': traded_volume,
+                    'execution_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                })
+            if slot.strategy:
+                slot.strategy.total_trades = getattr(slot.strategy, 'total_trades', 0) + 1
+
+            # Top-level state update
+            if intent in (OrderIntent.ENTRY_LONG, OrderIntent.ROLLOVER_OPEN):
+                fill_side = "LONG"
+            elif intent == OrderIntent.ENTRY_SHORT:
+                fill_side = "SHORT"
+            else:
+                fill_side = "FLAT"
+            slot.notify_fill(
+                symbol=order.symbol, side=fill_side,
+                size=traded_volume, price=traded_price,
+                bar_count=getattr(slot.strategy, 'bar_count', 0),
+            )
+
+            save_trade_execution(
+                trading_data_dir=trade_data_dir,
+                order_info={
+                    'order_id': str(real_id),
+                    'direction': intent_str,
+                    'order_type': 'MARKET',
+                    'submitted_price': order.price or 0.0,
+                    'submitted_size': int(order.size) if order.size else 0,
+                },
+                execution_details={
+                    'executed_price': traded_price,
+                    'executed_size': traded_volume,
+                    'commission': 0.0,
+                    'status': QMT_STATUS_MAP[56],
+                },
+                position_impact={
+                    'position_before': prev_size,
+                    'position_after': cur_size,
+                    'avg_price_before': prev_avg,
+                    'avg_price_after': cur_avg,
+                },
+                pnl_impact={
+                    'realized_pnl': trade_realized_pnl,
+                    'unrealized_pnl': slot.portfolio.get_unrealized_pnl(),
+                },
+                symbol=sc.instrument,
+            )
+        except Exception as e:
+            log.error(f"[{slot.slot_id}] VP update/logging failed: {e}")
+        return
+
+    # REJECTED branch — matches original status==57.
+    # NB: rejected branch does NOT append to todays_processed_fills.
+    if kind == "rejected":
+        order.status = OrderStatus.REJECTED
+        msg = handle.last_status_msg or reason
+        log.error(f"[{slot.slot_id}] Order rejected: order_id={real_id}, msg={msg}")
+
+        if slot.strategy and hasattr(slot.strategy, 'strategy_logger') and slot.strategy.strategy_logger:
+            slot.strategy.strategy_logger.log_order_event({
+                'action': 'rejected',
+                'status': 'Rejected',
+                'ref': order.metadata.get('internal_ref', ''),
+            })
+
+        save_trade_execution(
+            trading_data_dir=trade_data_dir,
+            order_info={
+                'order_id': str(real_id),
+                'direction': intent_str,
+                'order_type': 'MARKET',
+                'submitted_price': order.price or 0.0,
+                'submitted_size': int(order.size) if order.size else 0,
+            },
+            execution_details={
+                'executed_price': 0.0,
+                'executed_size': 0,
+                'commission': 0.0,
+                'status': 'REJECTED',
+            },
+            position_impact={
+                'position_before': 0,
+                'position_after': 0,
+                'avg_price_before': 0.0,
+                'avg_price_after': 0.0,
+            },
+            pnl_impact={'realized_pnl': 0.0, 'unrealized_pnl': 0.0},
+            symbol=sc.instrument,
+        )
+        return
+
+    # CANCELED / ABANDONED branch — matches original status in (53, 54).
+    order.status = OrderStatus.CANCELLED
+    msg = handle.last_status_msg or reason
+    log.warning(f"[{slot.slot_id}] Order canceled: order_id={real_id}, msg={msg}")
+
+    if slot.strategy and hasattr(slot.strategy, 'strategy_logger') and slot.strategy.strategy_logger:
+        slot.strategy.strategy_logger.log_order_event({
+            'action': 'cancelled',
+            'status': 'Cancelled',
+            'ref': order.metadata.get('internal_ref', ''),
+        })
+
+    slot.todays_processed_fills.append({
+        'qmt_order_id': real_id,
+        'slot_id': slot.slot_id,
+        'intent': f"CANCELED_{intent_str}" if intent_str else 'CANCELED',
+        'price': 0.0,
+        'volume': 0,
+        'timestamp': datetime.now().isoformat(),
+    })
+
+    save_trade_execution(
+        trading_data_dir=trade_data_dir,
+        order_info={
+            'order_id': str(real_id),
+            'direction': intent_str,
+            'order_type': 'MARKET',
+            'submitted_price': order.price or 0.0,
+            'submitted_size': int(order.size) if order.size else 0,
+        },
+        execution_details={
+            'executed_price': 0.0,
+            'executed_size': 0,
+            'commission': 0.0,
+            'status': 'CANCELED',
+        },
+        position_impact={
+            'position_before': 0,
+            'position_after': 0,
+            'avg_price_before': 0.0,
+            'avg_price_after': 0.0,
+        },
+        pnl_impact={'realized_pnl': 0.0, 'unrealized_pnl': 0.0},
+        symbol=sc.instrument,
+    )
 
 
 class PortfolioTradingRunner:
@@ -863,259 +1120,52 @@ class PortfolioTradingRunner:
             for record in records:
                 kind = record["kind"]
                 handle = record["handle"]
-                # Find the originating Order — match by chain root seq_id.
                 chain_root = handle.original_handle_id or handle.seq_id
                 order = self._find_order_for_chain(order_list, chain_root)
                 if order is None:
-                    # Most commonly: an immediately-rejected handle whose
-                    # fake-negative seq_id never made it into the slot's
-                    # handle_map. The on_rejected callback already logged
-                    # the rejection at submit time; nothing else to book.
                     self.log.debug(
                         f"[{slot_id}] Skipping record kind={kind} "
                         f"seq={handle.seq_id}: no matching order in handle_map"
                     )
                     continue
 
-                # Coerce kind → status code for legacy bookkeeping branches.
+                # Map kind → status code (matches original if/elif chain).
                 if kind == "filled":
-                    status = 56
+                    status_code = 56
                 elif kind == "partial":
-                    status = 55
+                    status_code = 55
                 elif kind == "rejected":
-                    status = 57
-                else:                       # abandoned (treated like cancel)
-                    status = 54
+                    status_code = 57
+                else:                       # canceled / abandoned
+                    status_code = 54
 
-                traded_price = handle.filled_avg_price
-                traded_volume = handle.filled_volume
-                real_id = handle.qmt_order_id or handle.seq_id
-                exec_status = QMT_STATUS_MAP.get(status, f'UNKNOWN_{status}')
+                exec_status = QMT_STATUS_MAP.get(status_code, f'UNKNOWN_{status_code}')
 
                 self.log.info(
                     f"[{slot_id}] Terminal: kind={kind} "
-                    f"status={exec_status} price={traded_price} "
-                    f"volume={traded_volume} seq={handle.seq_id} "
+                    f"status={exec_status} price={handle.filled_avg_price} "
+                    f"volume={handle.filled_volume} seq={handle.seq_id} "
                     f"reason={record.get('reason', '')}"
                 )
 
-                # The bookkeeping branches below mirror the legacy code
-                # (FILLED / CANCELED / REJECTED); they apply VP updates,
-                # write per-slot CSVs, and update strategy loggers.
+                # Map kind to the helper's branch vocabulary. 'partial' is
+                # not currently emitted as a terminal record — if it ever is,
+                # treat as filled (helper's filled branch handles partial fills
+                # via filled_volume).
+                book_kind = "filled" if kind in ("filled", "partial") else (
+                    "rejected" if kind == "rejected" else "canceled"
+                )
 
-                if status == 56 and traded_volume > 0:  # FILLED
-                    # Safety: resolve traded_price if still 0.0
-                    if traded_price <= 0:
-                        traded_price = self._resolve_fill_price(real_id, slot_id)
-
-                    if traded_price <= 0:
-                        self.log.error(
-                            f"[{slot_id}] CRITICAL: Fill price unresolvable for "
-                            f"order_id={real_id}. Skipping VP update to prevent "
-                            f"capital corruption. Manual reconciliation required."
-                        )
-                        slot.todays_processed_fills.append({
-                            'qmt_order_id': real_id,
-                            'slot_id': slot_id,
-                            'intent': order.intent.value if order.intent else '',
-                            'price': 0.0,
-                            'volume': traded_volume,
-                            'timestamp': datetime.now().isoformat(),
-                            'error': 'PRICE_UNKNOWN',
-                        })
-                        continue
-
-                    order.status = OrderStatus.FILLED
-                    order.filled_price = traded_price
-                    order.filled_size = traded_volume
-
-                    # Update VP and log trade
-                    try:
-                        prev_pos = slot.portfolio.get_position()
-                        prev_size = int(prev_pos.size) if prev_pos else 0
-                        prev_avg = prev_pos.avg_price if prev_pos else 0.0
-                        prev_realized = slot.capital_slot.realized_pnl
-
-                        self._apply_fill_to_vp(slot, order, traded_price, traded_volume)
-
-                        cur_pos = slot.portfolio.get_position()
-                        cur_size = int(cur_pos.size) if cur_pos else 0
-                        cur_avg = cur_pos.avg_price if cur_pos else 0.0
-                        # Per-trade realized P&L = delta in cumulative realized
-                        trade_realized_pnl = slot.capital_slot.realized_pnl - prev_realized
-
-                        slot.todays_processed_fills.append({
-                            'qmt_order_id': real_id,
-                            'slot_id': slot_id,
-                            'intent': order.intent.value if order.intent else '',
-                            'price': traded_price,
-                            'volume': traded_volume,
-                            'timestamp': datetime.now().isoformat(),
-                        })
-
-                        # Update strategy logger with fill result
-                        if slot.strategy and hasattr(slot.strategy, 'strategy_logger') and slot.strategy.strategy_logger:
-                            slot.strategy.strategy_logger.log_order_event({
-                                'action': 'executed',
-                                'ref': order.metadata.get('internal_ref', ''),
-                                'execution_price': traded_price,
-                                'executed_size': traded_volume,
-                                'execution_date': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-                            })
-
-                        # Update strategy trade counters
-                        if slot.strategy:
-                            slot.strategy.total_trades = getattr(slot.strategy, 'total_trades', 0) + 1
-
-                        # Update top-level StrategyState fields
-                        intent = order.intent
-                        if intent in (OrderIntent.ENTRY_LONG, OrderIntent.ROLLOVER_OPEN):
-                            fill_side = "LONG"
-                        elif intent == OrderIntent.ENTRY_SHORT:
-                            fill_side = "SHORT"
-                        else:
-                            fill_side = "FLAT"
-                        slot.notify_fill(
-                            symbol=order.symbol,
-                            side=fill_side,
-                            size=traded_volume,
-                            price=traded_price,
-                            bar_count=getattr(slot.strategy, 'bar_count', 0),
-                        )
-
-                        # Write per-slot trade execution CSV
-                        from ..io.data_logger import save_trade_execution
-                        sc = slot.slot_config
-                        trade_data_dir = os.path.join(self.slots_dir, slot_id)
-                        save_trade_execution(
-                            trading_data_dir=trade_data_dir,
-                            order_info={
-                                'order_id': str(real_id),
-                                'direction': order.intent.value if order.intent else '',
-                                'order_type': 'MARKET',
-                                'submitted_price': order.price or 0.0,
-                                'submitted_size': int(order.size) if order.size else 0,
-                            },
-                            execution_details={
-                                'executed_price': traded_price,
-                                'executed_size': traded_volume,
-                                'commission': 0.0,
-                                'status': exec_status,
-                            },
-                            position_impact={
-                                'position_before': prev_size,
-                                'position_after': cur_size,
-                                'avg_price_before': prev_avg,
-                                'avg_price_after': cur_avg,
-                            },
-                            pnl_impact={
-                                'realized_pnl': trade_realized_pnl,
-                                'unrealized_pnl': slot.portfolio.get_unrealized_pnl(),
-                            },
-                            symbol=sc.instrument,
-                        )
-                    except Exception as e:
-                        self.log.error(f"[{slot_id}] VP update/logging failed: {e}")
-
-                elif status in (53, 54):  # CANCELED / ABANDONED
-                    order.status = OrderStatus.CANCELLED
-                    msg = handle.last_status_msg or record.get('reason', '')
-                    self.log.warning(f"[{slot_id}] Order canceled: order_id={real_id}, msg={msg}")
-
-                    # Update strategy logger with cancel
-                    if slot.strategy and hasattr(slot.strategy, 'strategy_logger') and slot.strategy.strategy_logger:
-                        slot.strategy.strategy_logger.log_order_event({
-                            'action': 'cancelled',
-                            'status': 'Cancelled',
-                            'ref': order.metadata.get('internal_ref', ''),
-                        })
-
-                    # Record canceled order in today's fills for trading_data snapshot
-                    slot.todays_processed_fills.append({
-                        'qmt_order_id': real_id,
-                        'slot_id': slot_id,
-                        'intent': f"CANCELED_{order.intent.value}" if order.intent else 'CANCELED',
-                        'price': 0.0,
-                        'volume': 0,
-                        'timestamp': datetime.now().isoformat(),
-                    })
-
-                    # Write canceled trade to execution CSV
-                    from ..io.data_logger import save_trade_execution
-                    sc = slot.slot_config
-                    trade_data_dir = os.path.join(self.slots_dir, slot_id)
-                    save_trade_execution(
-                        trading_data_dir=trade_data_dir,
-                        order_info={
-                            'order_id': str(real_id),
-                            'direction': order.intent.value if order.intent else '',
-                            'order_type': 'MARKET',
-                            'submitted_price': order.price or 0.0,
-                            'submitted_size': int(order.size) if order.size else 0,
-                        },
-                        execution_details={
-                            'executed_price': 0.0,
-                            'executed_size': 0,
-                            'commission': 0.0,
-                            'status': 'CANCELED',
-                        },
-                        position_impact={
-                            'position_before': 0,
-                            'position_after': 0,
-                            'avg_price_before': 0.0,
-                            'avg_price_after': 0.0,
-                        },
-                        pnl_impact={
-                            'realized_pnl': 0.0,
-                            'unrealized_pnl': 0.0,
-                        },
-                        symbol=sc.instrument,
+                try:
+                    book_terminal_record(
+                        slot=slot, order=order, handle=handle,
+                        kind=book_kind, reason=record.get("reason", ""),
+                        slots_dir=self.slots_dir,
+                        log=self.log,
+                        resolve_fill_price=self._resolve_fill_price,
                     )
-
-                elif status == 57:  # REJECTED
-                    order.status = OrderStatus.REJECTED
-                    msg = handle.last_status_msg or record.get('reason', '')
-                    self.log.error(f"[{slot_id}] Order rejected: order_id={real_id}, msg={msg}")
-
-                    # Update strategy logger with rejection
-                    if slot.strategy and hasattr(slot.strategy, 'strategy_logger') and slot.strategy.strategy_logger:
-                        slot.strategy.strategy_logger.log_order_event({
-                            'action': 'rejected',
-                            'status': 'Rejected',
-                            'ref': order.metadata.get('internal_ref', ''),
-                        })
-
-                    # Write rejected trade to execution CSV
-                    from ..io.data_logger import save_trade_execution
-                    sc = slot.slot_config
-                    trade_data_dir = os.path.join(self.slots_dir, slot_id)
-                    save_trade_execution(
-                        trading_data_dir=trade_data_dir,
-                        order_info={
-                            'order_id': str(real_id),
-                            'direction': order.intent.value if order.intent else '',
-                            'order_type': 'MARKET',
-                            'submitted_price': order.price or 0.0,
-                            'submitted_size': int(order.size) if order.size else 0,
-                        },
-                        execution_details={
-                            'executed_price': 0.0,
-                            'executed_size': 0,
-                            'commission': 0.0,
-                            'status': 'REJECTED',
-                        },
-                        position_impact={
-                            'position_before': 0,
-                            'position_after': 0,
-                            'avg_price_before': 0.0,
-                            'avg_price_after': 0.0,
-                        },
-                        pnl_impact={
-                            'realized_pnl': 0.0,
-                            'unrealized_pnl': 0.0,
-                        },
-                        symbol=sc.instrument,
-                    )
+                except Exception as e:
+                    self.log.error(f"[{slot_id}] book_terminal_record failed: {e}")
 
         # Phase C — chain-aware pending_exit_intent reconciliation
         # (Amendment B). Process AFTER per-record bookkeeping so split chains
@@ -1174,37 +1224,6 @@ class PortfolioTradingRunner:
 
         self.log.error(f"[{slot_id}] Price resolution FAILED for order_id={order_id}")
         return 0.0
-
-    def _apply_fill_to_vp(
-        self,
-        slot: TradingSlot,
-        order: Order,
-        price: float,
-        volume: float,
-    ) -> None:
-        """Update SlotAwarePortfolio based on fill."""
-        portfolio = slot.portfolio
-        intent = order.intent
-
-        if intent in (OrderIntent.ENTRY_LONG, OrderIntent.ROLLOVER_OPEN):
-            portfolio.open_position(
-                symbol=order.symbol,
-                direction="LONG",
-                size=volume,
-                price=price,
-            )
-        elif intent == OrderIntent.ENTRY_SHORT:
-            portfolio.open_position(
-                symbol=order.symbol,
-                direction="SHORT",
-                size=volume,
-                price=price,
-            )
-        elif intent in (
-            OrderIntent.EXIT_LONG, OrderIntent.EXIT_SHORT,
-            OrderIntent.FORCED_EXIT, OrderIntent.ROLLOVER_CLOSE,
-        ):
-            portfolio.close_position(size=volume, price=price)
 
     # =========================================================================
     # OrderRouter callbacks (from watchdog thread — append-only here)
