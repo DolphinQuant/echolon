@@ -161,3 +161,63 @@ def test_daily_scheduler_skips_when_runner_not_running(tmp_path):
     # Reschedule MUST NOT fire either — the runner is shutting down,
     # so re-arming the scheduler is wrong.
     mock_reschedule.assert_not_called()
+
+
+def test_schedule_time_warns_on_calendar_failure(tmp_path):
+    """P1.4 regression: silent fallback to night-market is gone — when
+    is_night_market_open raises, _get_schedule_time logs a warning and
+    still returns night-market schedule (preserves existing fallback
+    behavior, just adds visibility)."""
+    from echolon.live.orchestrator.scheduler import DailyScheduler
+
+    cfg, sc = _make_config(tmp_path)
+    log = MagicMock()
+    sched = DailyScheduler(
+        config=cfg, slots=[sc], market_data_dir=tmp_path / "data",
+        portfolio_dir=str(tmp_path / "portfolio"),
+        timezone=pytz.timezone("Asia/Shanghai"),
+        log=log,
+    )
+
+    with patch(
+        "echolon.live.orchestrator.scheduler.is_night_market_open",
+        side_effect=RuntimeError("calendar corrupt"),
+    ):
+        hour, minute = sched._get_schedule_time(
+            datetime(2026, 5, 11), sc.market, sc.instrument,
+        )
+
+    # Falls back to night-market schedule (preserves original behavior)
+    assert hour == cfg.deploy.night_market_schedule_hour
+    assert minute == cfg.deploy.night_market_schedule_minute
+    # AND logs a warning so the operator can diagnose
+    warning_messages = [c.args[0] for c in log.warning.call_args_list]
+    assert any("is_night_market_open" in m and "default" in m for m in warning_messages)
+
+
+def test_scheduler_stays_none_when_no_slots(tmp_path):
+    """P1.5 regression: when start() early-returns due to no slots,
+    self._scheduler must remain None so write_heartbeat correctly
+    reports the un-started state instead of writing next_daily_job=NONE
+    indistinguishable from normal."""
+    from echolon.live.orchestrator.scheduler import DailyScheduler
+
+    cfg, _ = _make_config(tmp_path)
+    sched = DailyScheduler(
+        config=cfg, slots=[],  # no slots
+        market_data_dir=tmp_path / "data",
+        portfolio_dir=str(tmp_path / "portfolio"),
+        timezone=pytz.timezone("Asia/Shanghai"),
+        log=MagicMock(),
+    )
+    sched._ensure_trading_calendars = lambda: None
+
+    sched.start(
+        on_cycle_trigger=lambda: None,
+        on_present_date_set=lambda dt: None,
+        is_running=lambda: True,
+        slot_count=lambda: 0,
+        order_router_tripped=lambda: None,
+    )
+
+    assert sched._scheduler is None

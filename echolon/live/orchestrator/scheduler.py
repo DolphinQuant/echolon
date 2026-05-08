@@ -133,8 +133,6 @@ class DailyScheduler:
         self._slot_count = slot_count
         self._order_router_tripped = order_router_tripped
 
-        self._scheduler = BackgroundScheduler(timezone=self.timezone)
-
         # Use first slot for calendar checks (matches pre-refactor)
         first = self.slots[0] if self.slots else None
         if not first:
@@ -168,6 +166,7 @@ class DailyScheduler:
             target_date.replace(hour=hour, minute=minute, second=0, microsecond=0)
         )
 
+        self._scheduler = BackgroundScheduler(timezone=self.timezone)
         self._scheduler.add_job(
             self._market_open_job,
             trigger=DateTrigger(run_date=run_date),
@@ -287,7 +286,11 @@ class DailyScheduler:
             ):
                 return self.config.deploy.night_market_schedule_hour, self.config.deploy.night_market_schedule_minute
             return self.config.deploy.day_only_schedule_hour, self.config.deploy.day_only_schedule_minute
-        except Exception:
+        except Exception as e:
+            self.log.warning(
+                f"is_night_market_open({market}/{instrument}) failed; defaulting "
+                f"to night-market schedule (could fire ~5h late on day-only days): {e}"
+            )
             return self.config.deploy.night_market_schedule_hour, self.config.deploy.night_market_schedule_minute
 
     def _find_next_trading_day(self, after_date: datetime, market: str, instrument: str) -> Optional[datetime]:
@@ -325,10 +328,6 @@ class DailyScheduler:
             run_date = self.timezone.localize(
                 next_day.replace(hour=hour, minute=minute, second=0, microsecond=0)
             )
-
-            for job in self._scheduler.get_jobs():
-                if job.name == "PortfolioDailyJob":
-                    job.remove()
 
             self._scheduler.add_job(
                 self._market_open_job,
