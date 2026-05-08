@@ -10,8 +10,11 @@ from pathlib import Path
 from echolon.indicators.run import run_indicator_calculation
 
 
-def _src(mod_path: str) -> str:
-    return Path(mod_path).read_text(encoding="utf-8")
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
+
+def _src(rel_path: str) -> str:
+    return (_REPO_ROOT / rel_path).read_text(encoding="utf-8")
 
 
 def test_run_indicator_calculation_signature_has_indicator_list():

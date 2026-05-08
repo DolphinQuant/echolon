@@ -14,8 +14,10 @@ skipping. Trading without fresh market data is unsafe (stale indicators
 
 Behavioral equivalence: every code path matches PortfolioTradingRunner.
 _phase0_data_pipeline pre-refactor. The ``get_regime_params`` import
-stays deferred (matches original; the original used a lazy import to
-avoid circular-import issues and the refactor preserves that pattern).
+stays deferred to minimize diff from the pre-refactor portfolio.py
+(no actual circular-import hazard exists in this module's location;
+the import could be hoisted to module top in a future commit if
+desired).
 """
 from __future__ import annotations
 
@@ -33,7 +35,8 @@ from echolon.indicators.utils.merge_indicators import (
     load_indicator_list, merge_indicator_lists,
 )
 # NB: get_regime_params is imported lazily inside _calculate_indicators_per_group
-# to mirror the pre-refactor circular-import dodge.
+# to minimize diff from the pre-refactor inline code (no circular-import
+# hazard here — safe to hoist in a future commit).
 
 
 class Phase0DataPipeline:
@@ -94,8 +97,9 @@ class Phase0DataPipeline:
     # ----- Step 2: per-group indicator calculation -----
 
     def _calculate_indicators_per_group(self, present_date: datetime) -> None:
-        # Deferred import (matches pre-refactor pattern in
-        # PortfolioTradingRunner._phase0_data_pipeline — circular-import dodge).
+        # Deferred import — preserved from pre-refactor portfolio.py to
+        # minimize behavioral diff. No actual circular-import hazard exists
+        # in this module's location; safe to hoist if desired later.
         from echolon._internal.strategy_files import get_regime_params
 
         paths = PathsConfig.from_env()

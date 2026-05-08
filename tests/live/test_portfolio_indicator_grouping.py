@@ -8,6 +8,8 @@ from pathlib import Path
 
 from echolon.indicators.utils.merge_indicators import merge_indicator_lists
 
+_REPO_ROOT = Path(__file__).resolve().parents[2]
+
 
 def test_phase0_portfolio_source_groups_by_instrument_and_barsize():
     """The phase 0 implementation must loop over get_slots_by_instrument_and_barsize,
@@ -15,7 +17,7 @@ def test_phase0_portfolio_source_groups_by_instrument_and_barsize():
 
     Phase 0 was extracted to phase0_pipeline.py in the 2026-05-08 refactor.
     """
-    src = Path("echolon/live/orchestrator/phase0_pipeline.py").read_text(encoding="utf-8")
+    src = (_REPO_ROOT / "echolon" / "live" / "orchestrator" / "phase0_pipeline.py").read_text(encoding="utf-8")
     assert "get_slots_by_instrument_and_barsize()" in src, (
         "phase0_pipeline.py must group slots by (instrument, bar_size)"
     )
@@ -28,14 +30,14 @@ def test_phase0_portfolio_source_groups_by_instrument_and_barsize():
 
 def test_phase0_portfolio_output_dir_is_group_dir():
     """Shared output dir format: {instrument_code}_{bar_size}/"""
-    src = Path("echolon/live/orchestrator/phase0_pipeline.py").read_text(encoding="utf-8")
+    src = (_REPO_ROOT / "echolon" / "live" / "orchestrator" / "phase0_pipeline.py").read_text(encoding="utf-8")
     assert 'f"{instrument_code}_{bar_size}"' in src
 
 
 def test_trading_slot_resolves_group_dir_fallback():
     """trading_slot._get_indicators_path falls back to {instrument_code}_{bar_size}/ when
     the per-slot dir is absent — this is how slots find the merged output."""
-    src = Path("echolon/live/slot/trading_slot.py").read_text(encoding="utf-8")
+    src = (_REPO_ROOT / "echolon" / "live" / "slot" / "trading_slot.py").read_text(encoding="utf-8")
     assert "{sc.instrument_code}_{sc.bar_size}" in src
 
 
