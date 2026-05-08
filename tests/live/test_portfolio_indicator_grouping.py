@@ -11,13 +11,16 @@ from echolon.indicators.utils.merge_indicators import merge_indicator_lists
 
 def test_phase0_portfolio_source_groups_by_instrument_and_barsize():
     """The phase 0 implementation must loop over get_slots_by_instrument_and_barsize,
-    not per-slot, so two slots on the same instrument share one compute."""
-    src = Path("echolon/live/orchestrator/portfolio.py").read_text(encoding="utf-8")
+    not per-slot, so two slots on the same instrument share one compute.
+
+    Phase 0 was extracted to phase0_pipeline.py in the 2026-05-08 refactor.
+    """
+    src = Path("echolon/live/orchestrator/phase0_pipeline.py").read_text(encoding="utf-8")
     assert "get_slots_by_instrument_and_barsize()" in src, (
-        "portfolio.py phase 0 must group slots by (instrument, bar_size)"
+        "phase0_pipeline.py must group slots by (instrument, bar_size)"
     )
     assert "merge_indicator_lists" in src, (
-        "portfolio.py must call merge_indicator_lists over per-group slot configs"
+        "phase0_pipeline.py must call merge_indicator_lists over per-group slot configs"
     )
     # No per-slot output dir in phase 0 anymore — output goes to the group dir
     assert "group_dir" in src
@@ -25,7 +28,7 @@ def test_phase0_portfolio_source_groups_by_instrument_and_barsize():
 
 def test_phase0_portfolio_output_dir_is_group_dir():
     """Shared output dir format: {instrument_code}_{bar_size}/"""
-    src = Path("echolon/live/orchestrator/portfolio.py").read_text(encoding="utf-8")
+    src = Path("echolon/live/orchestrator/phase0_pipeline.py").read_text(encoding="utf-8")
     assert 'f"{instrument_code}_{bar_size}"' in src
 
 

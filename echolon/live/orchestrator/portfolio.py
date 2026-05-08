@@ -64,10 +64,6 @@ from echolon.data.loaders.calendar_loader import (
     is_trading_day,
     is_night_market_open,
 )
-from echolon.config.markets.factory import MarketFactory
-from echolon.data.live_data import run_live_data_update
-from echolon.indicators.run import run_indicator_calculation
-
 import logging
 
 logger = logging.getLogger(__name__)
@@ -803,158 +799,12 @@ class PortfolioTradingRunner:
     def _phase0_data_pipeline(self) -> None:
         """Run data pipeline per instrument, then indicators per slot.
 
-        Uses XtdcClient (token-based xtdatacenter) instead of MiniQMTClient
-        for the data pipeline. One xtdc session serves all instruments:
-        - main_contract.csv download (token-only API)
-        - per-contract OHLCV download
-        - contract discovery via xtdata
-
-        The xtdc connection is opened once, shared across all instruments,
-        and closed after all downloads complete. This avoids the port
-        conflict that occurs when separate xtdc sessions are created
-        per instrument.
+        Implementation in echolon.live.orchestrator.phase0_pipeline.
+        Raises RuntimeError if XtdcClient is unavailable — caller (the
+        cycle) propagates and the cycle aborts.
         """
-        from echolon.indicators.utils.merge_indicators import (
-            load_indicator_list,
-            merge_indicator_lists,
-        )
-        from ..platforms.miniqmt.xtdc_client import XtdcClient
-
-        # Connect XtdcClient once for all instruments. If xtdc is unavailable,
-        # ABORT the cycle — proceeding without fresh market data means
-        # indicators would be computed against stale bars and the strategy
-        # would make decisions on outdated state. That's a real-money loss
-        # risk, so fail loud and stop here.
-        xtdc = XtdcClient()
-        if not xtdc.connect():
-            self.log.critical(
-                "XtdcClient connection failed — ABORTING cycle. Trading without "
-                "fresh market data is unsafe (stale indicators → mislead strategy). "
-                "Investigate Xuntou auth / network / VPN routing, then re-run."
-            )
-            raise RuntimeError(
-                "Phase 0 abort: XtdcClient connect failed; refusing to trade on stale data"
-            )
-
-        try:
-            # Step 1: Data download — once per (instrument, bar_size)
-            # XtdcClient provides both download_main_contract_history()
-            # (called by extract_main_contract) and get_market_data()
-            # (called by _download_single_contract) through one connection.
-            groups = self.config.get_slots_by_instrument_and_barsize()
-            for (instrument_code, bar_size), slot_configs in groups.items():
-                first_sc = slot_configs[0]
-                ctx = MarketFactory.create(
-                    market=first_sc.market,
-                    instrument=first_sc.instrument_code,
-                    frequency=first_sc.frequency,
-                    bar_size=first_sc.bar_size,
-                )
-                self.log.info(f"Data download: {instrument_code}/{bar_size}")
-                try:
-                    run_live_data_update(
-                        ctx=ctx,
-                        client=xtdc,
-                        present_date=self.present_date,
-                        trading_calendar_path=self.config.deploy.trading_calendar_path,
-                        skip_calendar=True,
-                    )
-                except Exception as e:
-                    self.log.error(f"Data download failed for {instrument_code}/{bar_size}: {e}")
-        finally:
-            xtdc.disconnect()
-
-        # Build PathsConfig once outside the loop
-        from echolon.config.paths_config import PathsConfig
-        paths = PathsConfig.from_env()
-        indicators_backtest_dir = paths.indicators_backtest_dir
-
-        end_date = (
-            self.present_date.strftime("%Y-%m-%d")
-            if hasattr(self.present_date, "strftime")
-            else str(self.present_date)
-        )
-
-        # Step 2: Indicator calculation — merge per-(instrument, bar_size) group,
-        # compute the union once, output to a shared dir. trading_slot's
-        # _get_indicators_path resolves this group dir after its per-slot check.
-        groups = self.config.get_slots_by_instrument_and_barsize()
-        for (instrument_code, bar_size), slot_configs in groups.items():
-            group_id = f"{instrument_code}_{bar_size}"
-            group_dir = os.path.join(str(indicators_backtest_dir), group_id)
-
-            # Collect each slot's flat-dict indicator_list + regime_params
-            # (read from calculator_params.json).
-            from echolon._internal.strategy_files import get_regime_params
-            slot_configs_with_ind = []
-            for sc in slot_configs:
-                ind_path = os.path.join(sc.strategy_code_dir, "strategy_indicator_list.json")
-                if not os.path.exists(ind_path):
-                    self.log.warning(f"[{sc.slot_id}] skipped: no {ind_path}")
-                    continue
-                ind = load_indicator_list(ind_path)
-                rp = get_regime_params(sc.strategy_code_dir)
-                slot_configs_with_ind.append((sc, ind, rp))
-
-            if not slot_configs_with_ind:
-                self.log.warning(f"Indicators skipped for group {group_id}: no slot has a list")
-                continue
-
-            # Union indicator_lists across slots in this group
-            merged_indicator_list = merge_indicator_lists(
-                [ind for (_, ind, _) in slot_configs_with_ind]
-            )
-
-            # Regime params: take the first slot's. Warn if any other slot in
-            # the group has a different set (divergent regime_params would need
-            # per-slot compute; deferred until that case actually appears).
-            regime_params = next(
-                (rp for (_, _, rp) in slot_configs_with_ind if rp is not None),
-                None,
-            )
-            if regime_params is not None:
-                for (sc, _, rp) in slot_configs_with_ind:
-                    if rp is not None and rp != regime_params:
-                        self.log.warning(
-                            f"[{sc.slot_id}] regime_params differ within group {group_id}; "
-                            f"using first slot's params (falling back to per-slot compute "
-                            f"is not yet implemented)"
-                        )
-
-            # Window: earliest start_date across the group (for backfill)
-            start_dates = [
-                getattr(sc, "start_date", None)
-                for (sc, _, _) in slot_configs_with_ind
-            ]
-            start_dates = [d for d in start_dates if d]
-            start_date = min(start_dates) if start_dates else None
-
-            first_sc = slot_configs_with_ind[0][0]
-            ctx = MarketFactory.create(
-                market=first_sc.market,
-                instrument=first_sc.instrument_code,
-                frequency=first_sc.frequency,
-                bar_size=first_sc.bar_size,
-            )
-
-            self.log.info(
-                f"Indicators: {group_id} "
-                f"({len(slot_configs_with_ind)} slot(s), "
-                f"{len(merged_indicator_list)} unique indicators) -> {group_dir}"
-            )
-            try:
-                run_indicator_calculation(
-                    ctx=ctx,
-                    output_dir=group_dir,
-                    indicator_list=merged_indicator_list,
-                    use_parallel=True,
-                    regime_params=regime_params,
-                    start_date=start_date,
-                    end_date=end_date,
-                    paths=paths,
-                )
-            except Exception as e:
-                self.log.error(f"Indicators failed for group {group_id}: {e}")
+        from .phase0_pipeline import Phase0DataPipeline
+        Phase0DataPipeline(config=self.config, log=self.log).run(self.present_date)
 
     # =========================================================================
     # Phase 2.5: Central order firing

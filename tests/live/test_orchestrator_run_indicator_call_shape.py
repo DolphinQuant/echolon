@@ -23,9 +23,13 @@ def test_run_indicator_calculation_signature_has_indicator_list():
 
 
 def test_portfolio_does_not_use_deprecated_kwargs():
-    src = _src("echolon/live/orchestrator/portfolio.py")
+    # Phase 0 implementation lives in phase0_pipeline.py post-2026-05-08 refactor;
+    # also assert nothing came back into portfolio.py.
+    portfolio_src = _src("echolon/live/orchestrator/portfolio.py")
+    pipeline_src = _src("echolon/live/orchestrator/phase0_pipeline.py")
     # These kwargs do NOT exist on run_indicator_calculation — must not appear as kwargs.
     for bad in ("selected_only=", "mode=", "optimize_regime=", "indicator_config="):
-        assert bad not in src, f"portfolio.py still references deprecated kwarg {bad!r}"
-    # Must pass the actual kwarg (portfolio uses merged_indicator_list from the grouping step)
-    assert "indicator_list=merged_indicator_list" in src
+        assert bad not in portfolio_src, f"portfolio.py still references deprecated kwarg {bad!r}"
+        assert bad not in pipeline_src, f"phase0_pipeline.py still references deprecated kwarg {bad!r}"
+    # Must pass the actual kwarg (uses merged_indicator_list from the grouping step)
+    assert "indicator_list=merged_indicator_list" in pipeline_src
