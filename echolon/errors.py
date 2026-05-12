@@ -341,6 +341,23 @@ ERROR_CATALOG: dict[str, dict] = {
             "  rows_seen:   {rows_seen}"
         ),
     },
+    "DAT-005": {
+        "class": DataError,
+        "what": "Unsupported OHLCV frequency parameter",
+        "why": (
+            "load_ohlcv accepts a frequency literal in {1d, 1m, 5m, 15m, 1h} "
+            "per Q48 spec (qorka 2026-05-13). An unrecognized value would "
+            "resolve to a path that doesn't exist; failing early with a "
+            "clear error is preferable to a confusing DAT-001 not-found."
+        ),
+        "fix_template": (
+            "Pass a frequency value that matches the supported set:\n"
+            "  passed:    {frequency}\n"
+            "  supported: {supported}\n"
+            "Adjust the caller, or extend SUPPORTED_FREQUENCIES + storage "
+            "convention if a new frequency tier is needed."
+        ),
+    },
     "IND-003": {
         "class": IndicatorError,
         "what": "Indicator column produced more NaN than warmup requires",

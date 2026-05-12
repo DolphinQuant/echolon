@@ -33,6 +33,7 @@ showing the typical LLM-author mistake. `EchelonError.docs_url` points here.
 - [DAT-002](DAT-002.md): Corrupt state JSON
 - [DAT-003](DAT-003.md): Main contract data missing
 - [DAT-004](DAT-004.md): Empty calendar
+- [DAT-005](DAT-005.md): Unsupported OHLCV frequency parameter
 
 ## Backtest (BT-*)
 - [BT-001](BT-001.md): Strategy on_bar exception

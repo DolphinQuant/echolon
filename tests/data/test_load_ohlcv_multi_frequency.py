@@ -41,8 +41,12 @@ def test_load_ohlcv_accepts_frequency_param():
 
 
 def test_load_ohlcv_rejects_unsupported_frequency(tmp_path):
-    """Invalid frequency raises ValueError, not a path-not-found error."""
-    with pytest.raises(ValueError, match="Unsupported frequency"):
+    """Invalid frequency raises DAT-005 (DataError) per echolon error
+    catalog — NOT a generic ValueError + NOT a DAT-001 path-not-found
+    (which would confuse the caller about whether the file exists)."""
+    from echolon.errors import DataError
+
+    with pytest.raises(DataError, match="DAT-005"):
         load_ohlcv(
             market="SHFE",
             asset="aluminum",

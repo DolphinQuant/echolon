@@ -115,9 +115,10 @@ def load_ohlcv(
         Echolon DAT-001 error: if the resolved file path does not exist.
     """
     if frequency not in SUPPORTED_FREQUENCIES:
-        raise ValueError(
-            f"Unsupported frequency {frequency!r}; expected one of "
-            f"{sorted(SUPPORTED_FREQUENCIES)} per Q48 spec"
+        raise_error(
+            "DAT-005",
+            frequency=frequency,
+            supported=sorted(SUPPORTED_FREQUENCIES),
         )
 
     # Per Q48 spec: daily uses legacy single-file layout; intraday uses
