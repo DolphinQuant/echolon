@@ -1235,8 +1235,17 @@ class BacktraderEngine(ITradingEngine):
                     mult=contract_spec.multiplier
                 )
 
-        # Set slippage based on tick_size
-        if contract_spec is not None and contract_spec.tick_size > 0:
+        # Set slippage: prefer live-calibrated override per Q47 Option A;
+        # fall back to tick-size-derived default for instruments without
+        # calibration data. The override is populated by qorka's A9
+        # cost-calibration workflow at backtest-config injection time
+        # (see qorka docs/4_plans/wave_1/2026-05-13-gate-1a-foundation.md
+        # T32/T33). When set, `calibrated_slippage_bps` reflects observed
+        # live p50/p90 slippage with a buffer rule per Q41.
+        if contract_spec is not None and contract_spec.calibrated_slippage_bps is not None:
+            slippage_pct = contract_spec.calibrated_slippage_bps / 10000.0
+            self._cerebro.broker.set_slippage_perc(slippage_pct)
+        elif contract_spec is not None and contract_spec.tick_size > 0:
             typical_price = 20000.0  # Typical aluminum price
             slippage_pct = contract_spec.tick_size / typical_price
             self._cerebro.broker.set_slippage_perc(slippage_pct)

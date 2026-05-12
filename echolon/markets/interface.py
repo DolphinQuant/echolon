@@ -56,6 +56,13 @@ class ContractSpec:
     trading_unit: str = "lots"  # "lots", "contracts", "coins"
     min_order_size: float = 1.0
     max_order_size: Optional[float] = None
+    # Live-calibrated slippage override (basis points per side). When set,
+    # backtrader_engine prefers this value over the default tick-derived
+    # slippage at backtest setup. Populated by qorka's A9 cost-calibration
+    # workflow from observed live execution data (see qorka
+    # docs/4_plans/wave_1/2026-05-13-gate-1a-foundation.md T32/T33). Per
+    # Q47 Option A.
+    calibrated_slippage_bps: Optional[float] = None
 
     def calculate_contract_value(self, price: float, size: float = 1.0) -> float:
         """Calculate notional value of contracts."""
