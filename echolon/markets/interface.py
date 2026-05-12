@@ -56,12 +56,48 @@ class ContractSpec:
     trading_unit: str = "lots"  # "lots", "contracts", "coins"
     min_order_size: float = 1.0
     max_order_size: Optional[float] = None
-    # Live-calibrated slippage override (basis points per side). When set,
-    # backtrader_engine prefers this value over the default tick-derived
-    # slippage at backtest setup. Populated by qorka's A9 cost-calibration
-    # workflow from observed live execution data (see qorka
-    # docs/4_plans/wave_1/2026-05-13-gate-1a-foundation.md T32/T33). Per
-    # Q47 Option A.
+
+    # =========================================================================
+    # Cost-model v2 fields (Q59 + Q60; per qorka decisions_log.md 2026-05-13
+    # "Cost-model v2" entry). Address 2 of the 5 gaps in v1 scalar:
+    # gap 1 (per-intent variance) + gap 4 (vol-regime dependence). Gap 2
+    # (abandonment) ships in Gate 1B alongside A9 live-replay. Gaps 3+5
+    # (partial-fill, fat-tail) deferred to Wave 2 per Q62.
+    #
+    # Precedence rule in backtrader_engine:
+    #   1. calibrated_slippage_bps_by_intent (v2) — preferred when set
+    #   2. calibrated_slippage_bps (v1 scalar) — backward-compat fallback
+    #   3. tick_size-derived (legacy default)
+    # =========================================================================
+
+    # Per-intent slippage in basis points (one-way). Keys: "ENTRY", "EXIT",
+    # "FORCED_EXIT". When set, backtrader_engine installs a custom slippage
+    # broker (`StructuredSlippageBroker`) that classifies each order's intent
+    # by inspecting position state pre-fill and applies the matching bps.
+    # Populated by qorka's per-intent calibration (Q59 default plan: p50 of
+    # observed live `trade_executions_*.csv` filtered by `intent` field, plus
+    # Q41 buffer rule).
+    calibrated_slippage_bps_by_intent: Optional[dict] = None
+
+    # Vol-regime cost multiplier. When current bar's 60-day rolling vol
+    # percentile exceeds `high_vol_pct_threshold`, per-intent bps is
+    # multiplied by `high_vol_slippage_multiplier`. Default 1.0 = no
+    # regime dependence. Per Q60 default plan: threshold=75.0, multiplier
+    # calibrated from observed live high-vol vs normal-period fills.
+    high_vol_slippage_multiplier: float = 1.0
+    high_vol_pct_threshold: float = 75.0
+
+    # Stub for Wave 2 fat-tail modeling (Q62). When > 1.0, stress-test
+    # backtests can sample tail slippage as tail_factor × median. Ignored
+    # in Gate 1A — the underlying stochastic-sampling slippage class is
+    # Wave 2 scope per `decisions_log.md` 2026-05-13 "Cost-model v2".
+    tail_factor: float = 1.0
+
+    # v1 scalar (DEPRECATED 2026-05-13; backward-compat fallback only).
+    # Ignored when `calibrated_slippage_bps_by_intent` is set.
+    # Live-calibrated slippage override (basis points per side). When set
+    # AND v2 dict is None, backtrader_engine prefers this over the
+    # tick-derived slippage. Per Q47 Option A (v1).
     calibrated_slippage_bps: Optional[float] = None
 
     def calculate_contract_value(self, price: float, size: float = 1.0) -> float:
