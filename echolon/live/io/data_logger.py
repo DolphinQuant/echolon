@@ -48,6 +48,14 @@ class TradingDataRecord:
     signal_strength: float = 0.0
     signal_confidence: float = 0.0
     signal_reason: Optional[str] = None
+    # Per-pathway identifier for paradigms that decompose signal generation
+    # into named pathways (e.g., TRS's P1..P8 regime-routed pathways). Set
+    # by paradigm-specific signal-emission code at order placement time;
+    # consumed by qorka's A9 §4.11 live-replay diagnostic to compute
+    # per-pathway hit-rate drift (live vs backtest signal-fired-correctly
+    # rate per pathway). `None` for paradigms without pathway structure.
+    # Per Q51 (qorka decisions_log.md 2026-05-12).
+    pathway_id: Optional[str] = None
 
     # Trading actions
     last_action: Optional[str] = None  # 'BOUGHT', 'SOLD', 'CLOSED'
@@ -212,6 +220,7 @@ def save_trading_data_snapshot(
             signal_strength=signal_data.get('signal_strength', 0.0),
             signal_confidence=signal_data.get('signal_confidence', 0.0),
             signal_reason=signal_data.get('signal_reason'),
+            pathway_id=signal_data.get('pathway_id'),  # per Q51 — None for non-pathway paradigms
             # Trading actions
             last_action=last_trade_action.get('action') if last_trade_action else 'NO_ACTION',
             last_action_price=last_trade_action.get('price') if last_trade_action else 0.0,
