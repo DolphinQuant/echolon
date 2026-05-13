@@ -144,17 +144,26 @@ def test_precedence_v2_set_v1_ignored():
     assert selected_bps == pytest.approx(6.5)
 
 
-def test_v2_graceful_degrade_warning(caplog):
-    """When v2 by_intent is set, current engine logs a warning that
-    StructuredSlippageBroker is not yet implemented (degrades to mean-
-    of-intents as scalar). This is the transitional state until the
-    follow-up commit ships the broker."""
-    # The warning is emitted from backtrader_engine.py at engine setup
-    # time. We verify the warning string exists in the source code.
+def test_v2_installs_structured_slippage_broker():
+    """When v2 by_intent is set, the engine installs StructuredSlippageBroker
+    (NOT the transitional mean-of-intents degrade). Verified structurally:
+    the v2 branch in backtrader_engine.py imports + constructs the broker.
+
+    Updated 2026-05-14 after T27b/c shipped the actual broker. The prior
+    "StructuredSlippageBroker is not yet implemented" warning string is
+    intentionally absent from the source — its absence is the regression
+    signal we care about going forward."""
     import echolon.backtest.engine.backtrader_engine as bte
     src = inspect.getsource(bte)
-    assert "StructuredSlippageBroker is not yet implemented" in src
-    assert "Degrading to mean-of-intents scalar" in src
+    # Positive signal: the v2 branch now imports the broker
+    assert "from echolon.backtest.engine.structured_slippage import (" in src
+    assert "StructuredSlippageBroker" in src
+    # Positive signal: the v2 branch installs the broker
+    assert "structured_broker = StructuredSlippageBroker()" in src
+    assert "structured_broker.configure_v2(" in src
+    # Negative signal: the transitional degrade warning is gone
+    assert "StructuredSlippageBroker is not yet implemented" not in src
+    assert "Degrading to mean-of-intents scalar" not in src
 
 
 # ---------------------------------------------------------------------------

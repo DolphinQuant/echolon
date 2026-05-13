@@ -1248,32 +1248,36 @@ class BacktraderEngine(ITradingEngine):
         #   3. tick-size-derived default (legacy fallback when neither calibration is set)
         #      → set_slippage_perc(tick_size / typical_price)
         if contract_spec is not None and contract_spec.calibrated_slippage_bps_by_intent is not None:
-            # v2 path — per-intent + vol-regime cost model
-            by_intent = contract_spec.calibrated_slippage_bps_by_intent
-            # TODO(T27b followup): install StructuredSlippageBroker that
-            # classifies each order's intent (ENTRY/EXIT/FORCED_EXIT) by
-            # inspecting position state pre-fill and applies the matching
-            # bps × vol-regime multiplier. Pending follow-up commit.
-            # For now: degrade to mean-of-intents as scalar with explicit
-            # warning so the v2 contract is honored at the API level even
-            # though the per-order classification isn't yet wired.
+            # v2 path — install StructuredSlippageBroker for per-order
+            # intent classification + vol-regime multiplier. Replaces
+            # the prior degrade-to-mean-of-intents fallback.
+            from echolon.backtest.engine.structured_slippage import (
+                StructuredSlippageBroker,
+            )
             import logging
             logger = logging.getLogger(__name__)
-            mean_bps = sum(by_intent.values()) / max(len(by_intent), 1)
-            if contract_spec.high_vol_slippage_multiplier != 1.0:
-                # Apply unconditionally for now — the per-bar vol-regime
-                # check requires broker-level integration (T27c follow-up)
-                mean_bps *= ((1.0 + contract_spec.high_vol_slippage_multiplier) / 2.0)
-            slippage_pct = mean_bps / 10000.0
-            self._cerebro.broker.set_slippage_perc(slippage_pct)
-            logger.warning(
-                "ContractSpec %s: v2 calibrated_slippage_bps_by_intent is set "
-                "(%s) but StructuredSlippageBroker is not yet implemented. "
-                "Degrading to mean-of-intents scalar (%.2f bps × 0.5×(1+vol_mult) "
-                "if vol_mult set). Per-order classification + vol-regime "
-                "lookup are pending follow-up commit per qorka "
-                "docs/4_plans/wave_1/2026-05-13-gate-1a-foundation.md T27b/c.",
-                contract_spec.symbol, by_intent, mean_bps,
+
+            # Capture cash from the default broker before swap so the
+            # configured initial_cash isn't lost when we replace the
+            # broker instance.
+            initial_cash = self._cerebro.broker.getcash()
+
+            structured_broker = StructuredSlippageBroker()
+            structured_broker.setcash(initial_cash)
+            structured_broker.configure_v2(
+                by_intent=contract_spec.calibrated_slippage_bps_by_intent,
+                high_vol_threshold=contract_spec.high_vol_pct_threshold,
+                high_vol_multiplier=contract_spec.high_vol_slippage_multiplier,
+            )
+            self._cerebro.broker = structured_broker
+            logger.info(
+                "ContractSpec %s: installed StructuredSlippageBroker with "
+                "by_intent=%s, high_vol_threshold=%.1f, high_vol_multiplier=%.2f. "
+                "Per-order intent classification active.",
+                contract_spec.symbol,
+                contract_spec.calibrated_slippage_bps_by_intent,
+                contract_spec.high_vol_pct_threshold,
+                contract_spec.high_vol_slippage_multiplier,
             )
         elif contract_spec is not None and contract_spec.calibrated_slippage_bps is not None:
             # v1 path — scalar override
