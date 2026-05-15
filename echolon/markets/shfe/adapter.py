@@ -334,6 +334,71 @@ class SHFEAdapter(BaseMarketAdapter):
         return parse_contract(contract)
 
     # =========================================================================
+    # Forward-curve / Chain Composition (Gate 1C WS2 B2.1)
+    # =========================================================================
+
+    def get_contract_chain(
+        self,
+        trading_date: date,
+        instrument: Optional[str] = None,
+        n_contracts: Optional[int] = None,
+    ) -> List[str]:
+        """Get active contracts for an instrument on a trading date.
+
+        Delegates to :func:`echolon.data.loaders.chain_composer.get_contract_chain`
+        with this adapter's ``market_data_dir``. See chain_composer docstring
+        for the "active on date" definition.
+
+        Args:
+            trading_date: Date to enumerate the chain for.
+            instrument: Optional product override; defaults to ``self._symbol``.
+            n_contracts: If given, truncate to the nearest-expiry contracts.
+
+        Returns:
+            List of contract codes sorted by expiry ascending (front first).
+        """
+        from echolon.data.loaders.chain_composer import get_contract_chain as _get_chain
+        sym = instrument.lower() if instrument else self._symbol
+        return _get_chain(
+            sym,
+            trading_date,
+            market="SHFE",
+            market_data_dir=self._market_data_dir,
+            n_contracts=n_contracts,
+        )
+
+    def get_curve_snapshot(
+        self,
+        trading_date: date,
+        instrument: Optional[str] = None,
+        n_contracts: Optional[int] = None,
+    ):
+        """Build a same-date forward-curve snapshot across the active chain.
+
+        Delegates to :func:`echolon.data.loaders.chain_composer.get_curve_snapshot`
+        with this adapter's ``market_data_dir``.
+
+        Args:
+            trading_date: Date to snapshot the curve for.
+            instrument: Optional product override; defaults to ``self._symbol``.
+            n_contracts: If given, truncate to the nearest-expiry contracts.
+
+        Returns:
+            DataFrame with one row per active contract — columns include
+            ``contract``, ``settlement``, ``expiry_date``, ``days_to_expiry``,
+            and the usual OHLCV fields. See chain_composer docstring.
+        """
+        from echolon.data.loaders.chain_composer import get_curve_snapshot as _get_snap
+        sym = instrument.lower() if instrument else self._symbol
+        return _get_snap(
+            sym,
+            trading_date,
+            market="SHFE",
+            market_data_dir=self._market_data_dir,
+            n_contracts=n_contracts,
+        )
+
+    # =========================================================================
     # Calendar Methods
     # =========================================================================
 
