@@ -1,6 +1,6 @@
 # Updates since v0.1.5
 
-> Temporary review log (untracked scratch doc — **not** committed to the repo).
+> Review log of updates since v0.1.5.
 > Generated 2026-06-06. Covers every commit after the `v0.1.5` tag
 > (`4db8e93`). Format follows [Keep a Changelog](https://keepachangelog.com/)
 > so this can later seed a `CHANGELOG.md` entry — note `CHANGELOG.md` currently
