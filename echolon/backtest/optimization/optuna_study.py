@@ -49,6 +49,7 @@ from typing import Dict, Any, Tuple, Optional, Union, Callable, TYPE_CHECKING
 from functools import partial
 from pathlib import Path
 from concurrent.futures import ProcessPoolExecutor, as_completed
+import multiprocessing
 from tqdm import tqdm
 
 import sys
@@ -484,7 +485,19 @@ class OptunaOptimizer:
             # self._run_trial_in_process would require pickling self, which contains ctx
             # (TradingContext with unpicklable lambdas). The module-level function avoids
             # this by using OptimizationRunner._shared_data which is inherited via fork().
-            with ProcessPoolExecutor(max_workers=min(current_batch, max_workers)) as executor:
+            # mp_context="fork": workers read OptimizationRunner._shared_data
+            # (indicators DataFrame + ctx with unpicklable lambdas) via
+            # copy-on-write inheritance — the design this module depends on
+            # (see the comment above + setup_shared_data). macOS / Python 3.8+
+            # default to "spawn", which gives each worker a FRESH class with
+            # _shared_data unset → every trial fails "Shared data not
+            # initialized" (WFA-001). Forcing fork restores inheritance on
+            # macOS. Pair with OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES in the
+            # caller's env to avoid the macOS Objective-C fork-crash guard.
+            with ProcessPoolExecutor(
+                max_workers=min(current_batch, max_workers),
+                mp_context=multiprocessing.get_context("fork"),
+            ) as executor:
                 future_to_trial = {
                     executor.submit(
                         run_optimization_trial,
