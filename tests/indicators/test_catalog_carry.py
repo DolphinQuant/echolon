@@ -65,3 +65,15 @@ def test_validate_accepts_carry_name_ind004_retired():
     # a declared carry name now validates clean against the catalog.
     errors = catalog.validate({"carry_front_back": {}})
     assert errors == [], f"carry_front_back should validate clean, got: {errors}"
+
+
+def test_validate_is_kind_aware_for_carry_params():
+    # validate is catalog-backed, so it validates a curve_carry indicator's
+    # OWN params (window/n/lag) — not the ta-lib param set.
+    assert catalog.validate({"carry_z_3m": {"window": [40, 80]}}) == []
+    # unknown param on a carry indicator → IND-005 (param-level awareness)
+    bad_param = catalog.validate({"carry_z_3m": {"bogus_param": 5}})
+    assert any(e["code"] == "IND-005" for e in bad_param), bad_param
+    # range validation still applies to carry params
+    bad_range = catalog.validate({"carry_z_3m": {"window": [80, 40]}})
+    assert any(e["code"] == "IND-006" for e in bad_range), bad_range

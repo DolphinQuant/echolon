@@ -1,8 +1,16 @@
 """
-Indicator Mapping Configuration
+Per-contract TA-Lib calculator map (canonical name: ``PER_CONTRACT_TALIB_MAP``).
 
-This module provides mapping between indicator keys and their corresponding
-utility function names for easy orchestration and function calling.
+Maps single-contract, TA-Lib-style indicator keys to their calculator function
++ module. These are dispatched in the PER-CONTRACT indicator loop
+(``processor._compute_indicators_for_contract`` → ``function(df, **params)``).
+
+This is NOT the catalog / availability surface — that is
+``echolon.indicators.catalog`` (the union of this map, the regime-classifier
+registry, and the curve/carry registry). Curve indicators (carry) and regime
+classifiers are intentionally absent here (different call contracts).
+
+``INDICATOR_MAPPING`` remains as a deprecated alias (see bottom of module).
 """
 
 INDICATOR_FILES = {
@@ -10,7 +18,7 @@ INDICATOR_FILES = {
 }
 
 # Indicator key to function name + file mapping
-INDICATOR_MAPPING = {
+PER_CONTRACT_TALIB_MAP = {
     # Indicators with lookback period
     "ATR": {"function": "atr",
             "file": INDICATOR_FILES["talib_indicator"]},
@@ -197,10 +205,15 @@ INDICATOR_MAPPING = {
     "ADOSC": {"function": "adosc", "file": INDICATOR_FILES["talib_indicator"]}
 }
 
+# Deprecated alias — kept so any straggler / dynamic importer of the old name
+# keeps working. Prefer PER_CONTRACT_TALIB_MAP. Remove once all callers migrate.
+INDICATOR_MAPPING = PER_CONTRACT_TALIB_MAP
+
+
 # Function to get all available indicator keys
 def get_all_indicator_keys():
     """Return list of all available indicator keys"""
-    return list(INDICATOR_MAPPING.keys())
+    return list(PER_CONTRACT_TALIB_MAP.keys())
 
 # Function to get the actual function by indicator key
 def get_function(indicator_key, frequency: str = "day"):
@@ -226,7 +239,7 @@ def get_function(indicator_key, frequency: str = "day"):
         return intraday_indicator_mapping.get_function(indicator_key)
 
     # Use interday mapping (default)
-    mapping = INDICATOR_MAPPING.get(indicator_key.upper())
+    mapping = PER_CONTRACT_TALIB_MAP.get(indicator_key.upper())
     if not mapping:
         return None
 
@@ -257,9 +270,9 @@ def get_indicator_info(indicator_key, frequency: str = "day"):
         return intraday_indicator_mapping.get_indicator_info(indicator_key)
 
     # Use interday mapping (default)
-    return INDICATOR_MAPPING.get(indicator_key.upper())
+    return PER_CONTRACT_TALIB_MAP.get(indicator_key.upper())
 
 # Function to check if indicator exists
 def indicator_exists(indicator_key):
     """Check if indicator key exists in mapping"""
-    return indicator_key.upper() in INDICATOR_MAPPING
+    return indicator_key.upper() in PER_CONTRACT_TALIB_MAP

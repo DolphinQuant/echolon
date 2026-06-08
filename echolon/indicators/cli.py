@@ -50,7 +50,7 @@ def _build_catalog() -> dict:
     catalog: dict[str, dict] = {}
 
     # Walk interday mapping
-    for name, entry in interday_mapping.INDICATOR_MAPPING.items():
+    for name, entry in interday_mapping.PER_CONTRACT_TALIB_MAP.items():
         info = _meta_catalog.info(name.lower())
         catalog[name] = {
             "has_lookback": info.has_lookback if info else False,

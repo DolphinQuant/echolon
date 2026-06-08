@@ -151,7 +151,7 @@ def _load_from_registry() -> dict[str, IndicatorInfo]:
     ``{name}_{key1}{val1}_{key2}{val2}`` for multi-param sweeps.
     """
     from echolon.indicators.calculators.interday.indicator_mapping import (
-        INDICATOR_MAPPING,
+        PER_CONTRACT_TALIB_MAP,
     )
     from echolon.indicators.calculators.intraday.indicator_mapping import (
         INTRADAY_INDICATOR_MAPPING,
@@ -203,7 +203,7 @@ def _load_from_registry() -> dict[str, IndicatorInfo]:
                 output=OUT_PER_DATE_SCALAR,
             )
 
-    _ingest(INDICATOR_MAPPING, is_intraday=False)
+    _ingest(PER_CONTRACT_TALIB_MAP, is_intraday=False)
     _ingest(INTRADAY_INDICATOR_MAPPING, is_intraday=True)
     _ingest_curve(CURVE_INDICATOR_MAP)
     return catalog
