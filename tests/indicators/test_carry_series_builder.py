@@ -35,9 +35,11 @@ from echolon.indicators.calculators.interday.carry.series_builder import (
 # --------------------------------------------------------------------------- #
 # Synthetic on-disk forward curve
 # --------------------------------------------------------------------------- #
-def _write_sbd(dir_path, instrument: str, rows: list[tuple]) -> None:
-    """Write a synthetic sort_by_date.csv. rows = (date_int, contract, settle, oi)."""
-    inst_dir = dir_path / instrument
+def _write_sbd(dir_path, instrument: str, rows: list[tuple], market: str = "SHFE") -> None:
+    """Write a synthetic sort_by_date.csv at the echolon-native layout
+    ``{dir_path}/{MARKET}/{instrument}/sort_by_date.csv``.
+    rows = (date_int, contract, settle, oi)."""
+    inst_dir = dir_path / market.upper() / instrument
     inst_dir.mkdir(parents=True, exist_ok=True)
     df = pd.DataFrame(rows, columns=["date", "contract", "settlement", "open_interest"])
     df.to_csv(inst_dir / "sort_by_date.csv", index=False)
@@ -107,7 +109,7 @@ def test_scalar_equivalence_with_echelon_carry_front_back():
 # --------------------------------------------------------------------------- #
 def test_build_frame_has_carry_columns_and_date_index(tmp_path):
     _write_sbd(tmp_path, "al", _three_contract_rows())
-    out = build_carry_indicator_frame("al", tmp_path)
+    out = build_carry_indicator_frame("al", market_data_dir=tmp_path)
     assert isinstance(out.index, pd.DatetimeIndex)
     for col in CARRY_INDICATOR_COLUMNS:
         assert col in out.columns, f"{col} missing from builder output"
@@ -124,7 +126,7 @@ def test_carry_front_back_column_internally_consistent(tmp_path):
     # wired the right columns into the right formula (no hand-computed calendar
     # needed).
     _write_sbd(tmp_path, "al", _three_contract_rows())
-    out = build_carry_indicator_frame("al", tmp_path)
+    out = build_carry_indicator_frame("al", market_data_dir=tmp_path)
     valid = out.dropna(subset=["settlement_front", "settlement_back"])
     assert len(valid) > 10
     for d, row in valid.iterrows():
@@ -137,7 +139,7 @@ def test_carry_front_back_column_internally_consistent(tmp_path):
 
 def test_rolling_derivatives_match_their_defining_relations(tmp_path):
     _write_sbd(tmp_path, "al", _three_contract_rows())
-    out = build_carry_indicator_frame("al", tmp_path)
+    out = build_carry_indicator_frame("al", market_data_dir=tmp_path)
     cfb = out["carry_front_back"]
     # carry_change_20d == carry_today - carry_(t-20), incl NaN propagation
     pd.testing.assert_series_equal(
@@ -160,7 +162,7 @@ def test_rolling_derivatives_match_their_defining_relations(tmp_path):
 def test_degenerate_day_is_nan_and_does_not_raise(tmp_path):
     rows = _three_contract_rows(n_dates=30, degenerate_at=12)
     _write_sbd(tmp_path, "al", rows)
-    out = build_carry_indicator_frame("al", tmp_path)  # must not raise
+    out = build_carry_indicator_frame("al", market_data_dir=tmp_path)  # must not raise
     deg_date = pd.Timestamp(pd.bdate_range("2024-01-02", periods=30)[12])
     assert np.isnan(out.loc[deg_date, "carry_front_back"])
     assert np.isnan(out.loc[deg_date, "settlement_front"])
@@ -181,7 +183,7 @@ def test_unparseable_contracts_are_dropped_no_raise(tmp_path):
         (20240102, "GARBAGE", 999.0, 1),
     ]
     _write_sbd(tmp_path, "al", rows)
-    out = build_carry_indicator_frame("al", tmp_path)
+    out = build_carry_indicator_frame("al", market_data_dir=tmp_path)
     d = pd.Timestamp("2024-01-02")
     assert not np.isnan(out.loc[d, "carry_front_back"])
 
@@ -189,7 +191,7 @@ def test_unparseable_contracts_are_dropped_no_raise(tmp_path):
 def test_no_back_open_interest_column(tmp_path):
     # echolon does NOT read open_interest (no .get default) -> no back_open_interest.
     _write_sbd(tmp_path, "al", _three_contract_rows(n_dates=10))
-    out = build_carry_indicator_frame("al", tmp_path)
+    out = build_carry_indicator_frame("al", market_data_dir=tmp_path)
     assert "back_open_interest" not in out.columns
 
 
@@ -205,7 +207,7 @@ def test_real_aluminum_slice_parity_regression():
     from pathlib import Path
 
     fx = Path(__file__).parent / "fixtures"
-    out = build_carry_indicator_frame("al", fx / "carry_slice")
+    out = build_carry_indicator_frame("al", market_data_dir=fx / "carry_slice")
     expected = pd.read_csv(
         fx / "carry_aluminum_slice_expected.csv", index_col=0, parse_dates=[0]
     )

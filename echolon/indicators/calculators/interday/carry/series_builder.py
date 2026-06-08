@@ -115,24 +115,34 @@ def _curve_slope_near(settles: np.ndarray, dtes: np.ndarray) -> float:
     return float(-slope)
 
 
-def build_carry_indicator_frame(instrument: str, market_data_dir: Path) -> pd.DataFrame:
+def build_carry_indicator_frame(
+    asset: str, *, market: str = "SHFE", market_data_dir: Path
+) -> pd.DataFrame:
     """Assemble the 5 carry indicators as a per-date DataFrame.
 
     Args:
-        instrument: instrument dir name (e.g. ``"al"`` / ``"aluminum"``) holding
-            ``sort_by_date.csv``.
-        market_data_dir: the MARKET-specific market-data dir — already includes
-            the market segment (e.g. ``.../market_data/SHFE``); the curve file is
-            ``market_data_dir / instrument / "sort_by_date.csv"``.
+        asset: instrument dir name (e.g. ``"aluminum"``), as resolved by the
+            indicator processor (``ctx.instrument_name`` — the same token
+            ``load_contract_ohlcv(asset=...)`` uses).
+        market: market code (default ``"SHFE"``). Echolon-native path
+            convention, matching ``load_ohlcv`` / ``get_curve_snapshot``.
+        market_data_dir: the ROOT market-data dir (``paths.market_data_dir`` —
+            does NOT include the market segment). The curve file is resolved as
+            ``market_data_dir / MARKET / asset / "sort_by_date.csv"``.
 
     Returns:
         DataFrame indexed by trading date (DatetimeIndex) with
         :data:`CARRY_INDICATOR_COLUMNS` plus the settlement/dte byproducts in
         :data:`_SUPPORTING_COLUMNS`. Degenerate days are NaN.
     """
-    sbd_path = Path(market_data_dir) / instrument / "sort_by_date.csv"
+    # Resolve the date-major curve file the echolon-native way
+    # ({market_data_dir}/{MARKET}/{asset}/sort_by_date.csv — same layout as
+    # ohlcv_loader.load_ohlcv). The raw read below is kept byte-identical to the
+    # qorka Path-B source so carry values are unchanged; only path resolution is
+    # echolon-native.
+    sbd_path = Path(market_data_dir) / market.upper() / asset / "sort_by_date.csv"
     if not sbd_path.exists():
-        raise FileNotFoundError(f"sort_by_date.csv missing for {instrument}: {sbd_path}")
+        raise FileNotFoundError(f"sort_by_date.csv missing for {asset}: {sbd_path}")
 
     df = pd.read_csv(sbd_path, usecols=lambda c: c in ("contract", "date", "settlement"))
     df = df.dropna(subset=["contract", "date", "settlement"])

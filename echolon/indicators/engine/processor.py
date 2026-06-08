@@ -157,6 +157,34 @@ class IndicatorProcessor:
         # Map frequency for internal use: interday -> "day", intraday -> "minute"
         self.frequency = "minute" if ctx.is_intraday else "day"
 
+        # Kind-route declared indicators. ``curve_carry`` indicators (the 5
+        # forward-curve carry signals) are computed by a dedicated curve stage in
+        # extract_main_contract_indicators — NOT the per-contract TA-Lib path
+        # (they need a multi-contract curve snapshot, not a single-contract df,
+        # so _resolve_function would IND-002 on them). TA-Lib indicators +
+        # registered classifiers stay on the per-contract path. The split is
+        # DORMANT unless a curve_carry name is declared, so non-carry strategies
+        # are byte-unchanged.
+        self._curve_carry_list, self._per_contract_indicator_list = _split_curve_carry(
+            self.indicator_list
+        )
+        if self._curve_carry_list:
+            if self.frequency != "day":
+                raise ValueError(
+                    "curve_carry indicators are interday-only (built from the "
+                    "daily forward curve sort_by_date.csv); got an intraday ctx "
+                    f"with declared carry: {sorted(self._curve_carry_list)}"
+                )
+            # The curve builder uses fixed pool-default windows; a declared param
+            # spec would be silently discarded — fail loud (NO_ERROR_HANDLING).
+            swept = {n: p for n, p in self._curve_carry_list.items() if p}
+            if swept:
+                raise ValueError(
+                    "curve_carry indicators do not accept a param spec (the "
+                    "builder uses fixed pool-default windows); declare them with "
+                    f"an empty spec. Offending: {sorted(swept)}"
+                )
+
         self.output_dir = Path(output_dir)
         self.contract_output_dir = Path(output_dir) / "by_contract"
         self.n_jobs = n_jobs or cpu_count()
@@ -297,7 +325,7 @@ class IndicatorProcessor:
         # Calculate indicators using the unified flat-dict compute path
         indicator_results = _compute_indicators_for_contract(
             df,
-            indicator_list=self.indicator_list,
+            indicator_list=self._per_contract_indicator_list,
             ctx=self.ctx,
             regime_params=self.regime_params,
             default_params=self.default_params,
@@ -556,6 +584,15 @@ class IndicatorProcessor:
             else:
                 combined_indicators = combined_indicators.sort_values('trading_date').reset_index(drop=True)
 
+            # Curve-stage carry: kind-routed curve_carry indicators are built
+            # once from the forward curve and left-joined onto the per-date main
+            # contract frame (bare canonical names -> exactly what the strategy
+            # reads). Dormant unless a curve_carry name was declared.
+            if self._curve_carry_list:
+                combined_indicators = self._merge_curve_carry_indicators(
+                    combined_indicators, market_data_dir
+                )
+
             # Save to strategy_indicators.csv and .pkl in output directory
             csv_file = os.path.join(self.output_dir, "strategy_indicators.csv")
             pkl_file = os.path.join(self.output_dir, "strategy_indicators.pkl")
@@ -581,6 +618,39 @@ class IndicatorProcessor:
             logger.error("[INDICATOR_PROCESSOR] Extraction failed | reason=No main contract indicators")
             return pd.DataFrame()
 
+
+    def _merge_curve_carry_indicators(
+        self, combined_indicators: pd.DataFrame, market_data_dir
+    ) -> pd.DataFrame:
+        """Left-join the declared ``curve_carry`` indicators onto the per-date
+        main-contract frame.
+
+        The series builder reads the forward curve (sort_by_date.csv) once and
+        returns the 5 carry indicators date-indexed; we select the declared
+        subset by bare canonical name (lower-cased, no param suffix — exactly
+        the column names the strategy reads) and join on the ``date`` column.
+        Dates absent from the curve are NaN (left join).
+        """
+        from echolon.indicators.calculators.interday.carry.series_builder import (
+            build_carry_indicator_frame,
+        )
+
+        carry = build_carry_indicator_frame(
+            self.asset, market=self.market, market_data_dir=market_data_dir
+        )
+        wanted = [name.lower() for name in self._curve_carry_list]
+        carry_cols = carry[wanted]
+
+        out = combined_indicators.copy()
+        out["date"] = pd.to_datetime(out["date"])
+        merged = out.merge(carry_cols, left_on="date", right_index=True, how="left")
+        if logger.isEnabledFor(logging.INFO):
+            finite = int(merged[wanted[0]].notna().sum()) if wanted else 0
+            logger.info(
+                f"[INDICATOR_PROCESSOR] Curve-stage carry merged | indicators={wanted}, "
+                f"rows={len(merged)}, finite[{wanted[0] if wanted else '-'}]={finite}"
+            )
+        return merged
 
     def save_strategy_indicator_metadata(self, combined_indicators: pd.DataFrame) -> None:
         """
@@ -659,6 +729,30 @@ class IndicatorProcessor:
 # ---------------------------------------------------------------------------
 # Module-level helpers for the unified compute path
 # ---------------------------------------------------------------------------
+def _split_curve_carry(
+    indicator_list: Dict[str, Dict[str, Any]],
+):
+    """Partition a declared indicator_list into ``(curve_carry, per_contract)``.
+
+    Routing is by catalog KIND: a name whose ``catalog.info(name).kind`` is
+    ``curve_carry`` goes to the dedicated curve stage; everything else — TA-Lib
+    indicators AND registered classifiers (which are not in the catalog, so
+    ``info()`` is None) — stays on the per-contract path. ``catalog.info`` is
+    case-insensitive and returns None on a miss, so unknown / classifier names
+    fall through to ``per_contract`` unharmed.
+    """
+    from echolon.indicators import catalog
+    from echolon.indicators.catalog import KIND_CURVE_CARRY
+
+    curve: Dict[str, Dict[str, Any]] = {}
+    per_contract: Dict[str, Dict[str, Any]] = {}
+    for name, spec in indicator_list.items():
+        info = catalog.info(name)
+        if info is not None and info.kind == KIND_CURVE_CARRY:
+            curve[name] = spec
+        else:
+            per_contract[name] = spec
+    return curve, per_contract
 
 #: Multi-output indicator output names (tuples returned by the calculator).
 _MULTI_OUTPUT_NAMES: Dict[str, List[str]] = {
