@@ -36,6 +36,23 @@ _PERIOD_PARAM_NAMES: frozenset = frozenset({
 })
 
 
+# --- Indicator KIND: which compute interface an entry obeys -----------------
+KIND_PER_CONTRACT_TALIB = "per_contract_talib"   # fn(df, params) -> per-bar ndarray
+KIND_REGIME_CLASSIFIER = "regime_classifier"     # fit_classify(df, params) -> series
+KIND_CURVE_CARRY = "curve_carry"                 # curve snapshot(s) -> per-date scalar
+
+# --- COMPUTE SOURCE: where the value actually comes from --------------------
+SOURCE_ECHOLON_PIPELINE = "echolon_pipeline"        # the per-contract loop
+SOURCE_ECHOLON_CURVE_STAGE = "echolon_curve_stage"  # the engine carry stage (Part 2)
+SOURCE_EXTERNAL_INJECTION = "external_injection"    # precomputed + injected (qorka Path-B)
+
+# --- INPUT requirement / OUTPUT shape --------------------------------------
+REQ_SINGLE_CONTRACT = "single_contract_ohlcv"
+REQ_CURVE_SNAPSHOT = "forward_curve_snapshot"
+OUT_PER_BAR_SERIES = "per_bar_series"
+OUT_PER_DATE_SCALAR = "per_date_scalar_broadcast"
+
+
 @dataclass
 class IndicatorInfo:
     """Structured metadata for one indicator entry."""
@@ -44,6 +61,16 @@ class IndicatorInfo:
     function: str              # underlying function name in the calculator module
     file: str                  # calculator module name (e.g. "ta_lib")
     params: list[dict]         # [{"name": "timeperiod", "default": 14, "type": "int"}, ...]
+
+    # Kind/source metadata — defaults describe the per-contract ta-lib entries
+    # (the majority); the curve-carry ingest overrides them. ``compute_source``
+    # is the load-bearing honesty field: it tells a caller whether echolon
+    # computes the value in-pipeline, via the curve stage, or whether it is
+    # provided by external injection (Path-B).
+    kind: str = KIND_PER_CONTRACT_TALIB
+    compute_source: str = SOURCE_ECHOLON_PIPELINE
+    requires: str = REQ_SINGLE_CONTRACT      # "single_contract_ohlcv" | "forward_curve_snapshot"
+    output: str = OUT_PER_BAR_SERIES         # "per_bar_series" | "per_date_scalar_broadcast"
 
     @property
     def has_lookback(self) -> bool:
@@ -129,6 +156,9 @@ def _load_from_registry() -> dict[str, IndicatorInfo]:
     from echolon.indicators.calculators.intraday.indicator_mapping import (
         INTRADAY_INDICATOR_MAPPING,
     )
+    from echolon.indicators.calculators.interday.carry.registry import (
+        CURVE_INDICATOR_MAP,
+    )
 
     catalog: dict[str, IndicatorInfo] = {}
 
@@ -144,10 +174,38 @@ def _load_from_registry() -> dict[str, IndicatorInfo]:
                 function=func_name,
                 file=file_name,
                 params=_extract_params(func_name, file_name, is_intraday),
+                # ta-lib defaults apply (per_contract_talib / echolon_pipeline /
+                # single_contract_ohlcv / per_bar_series).
+            )
+
+    def _ingest_curve(curve_map: dict) -> None:
+        """Ingest the curve/multi-contract carry indicators (a distinct kind).
+
+        Their tunable params are declared in CURVE_INDICATOR_MAP (the
+        curve_snapshot / history args are data inputs, not tunables, so they
+        are excluded — same discipline as the ta-lib catalog excluding ``df``).
+        ``compute_source`` is EXTERNAL_INJECTION while carry is precomputed
+        qorka-side (Path-B); flip to ECHOLON_CURVE_STAGE when the engine carry
+        stage lands (Part 2).
+        """
+        for name, meta in curve_map.items():
+            name_lower = name.lower()
+            if name_lower in catalog:
+                continue
+            catalog[name_lower] = IndicatorInfo(
+                name=name_lower,
+                function=meta["function"],
+                file="curve_carry",
+                params=meta["params"],
+                kind=KIND_CURVE_CARRY,
+                compute_source=SOURCE_EXTERNAL_INJECTION,
+                requires=REQ_CURVE_SNAPSHOT,
+                output=OUT_PER_DATE_SCALAR,
             )
 
     _ingest(INDICATOR_MAPPING, is_intraday=False)
     _ingest(INTRADAY_INDICATOR_MAPPING, is_intraday=True)
+    _ingest_curve(CURVE_INDICATOR_MAP)
     return catalog
 
 

@@ -118,6 +118,8 @@ def build_server() -> FastMCP:
             return None
         return {
             "name": info.name,
+            "kind": info.kind,                      # per_contract_talib | curve_carry | regime_classifier
+            "compute_source": info.compute_source,  # echolon_pipeline | echolon_curve_stage | external_injection
             "has_lookback": info.has_lookback,
             "function": info.function,
             "file": info.file,
