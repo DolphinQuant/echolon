@@ -188,11 +188,16 @@ def test_unparseable_contracts_are_dropped_no_raise(tmp_path):
     assert not np.isnan(out.loc[d, "carry_front_back"])
 
 
-def test_no_back_open_interest_column(tmp_path):
-    # echolon does NOT read open_interest (no .get default) -> no back_open_interest.
+def test_back_open_interest_is_back_contract_oi(tmp_path):
+    # echolon emits back_open_interest (the back contract's OI) as a supporting
+    # column — the R&D basis back-leg-liquidity input. In the synthetic curve the
+    # back contract is al2407 (OI=900) on every non-degenerate date.
     _write_sbd(tmp_path, "al", _three_contract_rows(n_dates=10))
     out = build_carry_indicator_frame("al", market_data_dir=tmp_path)
-    assert "back_open_interest" not in out.columns
+    assert "back_open_interest" in out.columns
+    valid = out["back_open_interest"].dropna()
+    assert len(valid) > 0
+    assert (valid == 900).all()
 
 
 # --------------------------------------------------------------------------- #

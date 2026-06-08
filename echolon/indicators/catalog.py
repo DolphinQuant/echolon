@@ -43,8 +43,7 @@ KIND_CURVE_CARRY = "curve_carry"                 # curve snapshot(s) -> per-date
 
 # --- COMPUTE SOURCE: where the value actually comes from --------------------
 SOURCE_ECHOLON_PIPELINE = "echolon_pipeline"        # the per-contract loop
-SOURCE_ECHOLON_CURVE_STAGE = "echolon_curve_stage"  # the engine carry stage (Part 2)
-SOURCE_EXTERNAL_INJECTION = "external_injection"    # precomputed + injected (qorka Path-B)
+SOURCE_ECHOLON_CURVE_STAGE = "echolon_curve_stage"  # the engine carry curve stage
 
 # --- INPUT requirement / OUTPUT shape --------------------------------------
 REQ_SINGLE_CONTRACT = "single_contract_ohlcv"
@@ -65,8 +64,7 @@ class IndicatorInfo:
     # Kind/source metadata — defaults describe the per-contract ta-lib entries
     # (the majority); the curve-carry ingest overrides them. ``compute_source``
     # is the load-bearing honesty field: it tells a caller whether echolon
-    # computes the value in-pipeline, via the curve stage, or whether it is
-    # provided by external injection (Path-B).
+    # computes the value in the per-contract pipeline or via the curve stage.
     kind: str = KIND_PER_CONTRACT_TALIB
     compute_source: str = SOURCE_ECHOLON_PIPELINE
     requires: str = REQ_SINGLE_CONTRACT      # "single_contract_ohlcv" | "forward_curve_snapshot"
@@ -184,9 +182,8 @@ def _load_from_registry() -> dict[str, IndicatorInfo]:
         Their tunable params are declared in CURVE_INDICATOR_MAP (the
         curve_snapshot / history args are data inputs, not tunables, so they
         are excluded — same discipline as the ta-lib catalog excluding ``df``).
-        ``compute_source`` is EXTERNAL_INJECTION while carry is precomputed
-        qorka-side (Path-B); flip to ECHOLON_CURVE_STAGE when the engine carry
-        stage lands (Part 2).
+        ``compute_source`` is ECHOLON_CURVE_STAGE — carry is computed engine-side
+        by the indicator processor's curve stage (``build_carry_indicator_frame``).
         """
         for name, meta in curve_map.items():
             name_lower = name.lower()
@@ -198,7 +195,7 @@ def _load_from_registry() -> dict[str, IndicatorInfo]:
                 file="curve_carry",
                 params=meta["params"],
                 kind=KIND_CURVE_CARRY,
-                compute_source=SOURCE_EXTERNAL_INJECTION,
+                compute_source=SOURCE_ECHOLON_CURVE_STAGE,
                 requires=REQ_CURVE_SNAPSHOT,
                 output=OUT_PER_DATE_SCALAR,
             )
@@ -282,6 +279,26 @@ def validate(flat_dict: dict) -> list[dict]:
                 "field": ind_name,
                 "message": msg,
                 "suggestion": suggestions,
+            })
+            continue
+
+        # curve_carry indicators are param-FREE in a declaration: the curve stage
+        # uses fixed pool-default windows and the processor RAISES on any non-empty
+        # spec. Reject a param HERE (the codegen/validate gate) so the failure is
+        # loud at validation, not deferred to backtest. carry_front_back (params=[])
+        # already self-rejects via the per-key check below; the other 4 advertise
+        # n/window/lag for discoverability but accept none in a declaration — this
+        # closes that gap so all 5 behave identically.
+        if indicator.kind == KIND_CURVE_CARRY and isinstance(params, dict) and params:
+            errors.append({
+                "code": "IND-005",
+                "field": ind_name,
+                "message": (
+                    f"'{ind_name}' is a forward-curve carry indicator and accepts no "
+                    f"param spec (declare it with an empty {{}} — the curve stage uses "
+                    f"fixed pool-default windows). Got params: {sorted(params)}."
+                ),
+                "suggestion": [],
             })
             continue
 

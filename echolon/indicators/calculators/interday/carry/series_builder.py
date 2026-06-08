@@ -11,26 +11,29 @@ contract's settlement per date) ONCE, date-major, and emits the 5 carry
 indicators as a date-indexed frame, computing the identical formulas the scalar
 calculators use.
 
-Behavior-preserving port of qorka ``lib/data/carry_basis.py::
-build_carry_basis_series`` (the prior Path-B injector source) — same windows,
-sign conventions, float floors, and weekday-approximation expiry, so the carry
-values entering the backtest do NOT change when computation moves engine-side.
-Two spellings differ from the qorka source to honor echolon's NO_ERROR_HANDLING
-policy (the COMPUTED VALUES are byte-identical):
+Behavior-preserving port of the former qorka ``carry_basis.build_carry_basis_series``
+(the prior Path-B injector source, since removed — echolon is now the single source
+of carry computation) — same windows, sign conventions, float floors, and
+weekday-approximation expiry, so the carry values entering the backtest are
+unchanged. Two spellings differ from that source to honor echolon's
+NO_ERROR_HANDLING policy (the COMPUTED VALUES are byte-identical):
 
   1. Contract parsing uses a vectorized regex MASK, not a ``try/except
      ValueError`` drop — non-conforming codes (wrong shape, month outside 1..12)
      are filtered, exactly the set qorka's exception path drops.
-  2. ``open_interest`` is not read and ``back_open_interest`` is not emitted (no
-     carry indicator consumes it) — so there is no ``.get(col, default)``
-     fallback. A consumer that needs OI joins it itself.
+  2. ``open_interest`` is read only when the column is present (echolon's own
+     "when present" convention for OI, per ``chain_composer.get_curve_snapshot``);
+     no ``.get(col, default)`` fallback. ``back_open_interest`` (the back leg's
+     OI) is emitted as a supporting byproduct — not a carry indicator, but the
+     back-leg liquidity input the R&D basis analyzer needs, so the frame is a
+     complete drop-in for the carry-basis series.
 
 DEGENERATE DAYS -> NaN is a DELIBERATE DOMAIN SENTINEL, not error suppression: a
 series builder and a scalar calculator are different contracts by design. The
 scalar ``carry_front_back`` RAISES on a <2-contract / zero-spread day (correct —
 the caller asked for one value); the series builder marks that single date NaN so
 one bad day cannot abort the whole backtest. Numerically identical on every valid
-day. (See qorka carry_basis.py module docstring divergence note.)
+day.
 """
 from __future__ import annotations
 
@@ -64,14 +67,16 @@ CARRY_INDICATOR_COLUMNS = (
     "carry_change_20d",
 )
 
-# Settlement/DTE byproducts emitted alongside the 5 indicators (the scalar
-# inputs the carry values are computed from; a drop-in superset for qorka's
-# build_carry_basis_series minus the unused back_open_interest).
+# Settlement/DTE/OI byproducts emitted alongside the 5 indicators (the scalar
+# inputs the carry values are computed from, plus the back-leg open interest the
+# R&D basis-liquidity analysis needs) — a complete drop-in for the carry-basis
+# series.
 _SUPPORTING_COLUMNS = (
     "settlement_front",
     "settlement_back",
     "days_to_expiry_front",
     "days_to_expiry_back",
+    "back_open_interest",
 )
 
 
@@ -144,9 +149,14 @@ def build_carry_indicator_frame(
     if not sbd_path.exists():
         raise FileNotFoundError(f"sort_by_date.csv missing for {asset}: {sbd_path}")
 
-    df = pd.read_csv(sbd_path, usecols=lambda c: c in ("contract", "date", "settlement"))
+    df = pd.read_csv(
+        sbd_path, usecols=lambda c: c in ("contract", "date", "settlement", "open_interest")
+    )
     df = df.dropna(subset=["contract", "date", "settlement"])
     df["date"] = pd.to_datetime(df["date"].astype(int).astype(str), format="%Y%m%d")
+    # OI is optional in the schema (chain_composer reads it "when present"); emit
+    # back_open_interest only if the column exists, per-row NaN otherwise.
+    has_oi = "open_interest" in df.columns
 
     # Parse contract -> (year, month) -> expiry, VECTORIZED (no try/except). The
     # regex mask keeps only conforming codes; .str[:2]/[2:4] are then guaranteed
@@ -179,12 +189,14 @@ def build_carry_indicator_frame(
         dte_front = (front["_expiry"] - d_date).days
         dte_back = (back["_expiry"] - d_date).days
         near = g.head(_SLOPE_N)
+        back_oi = float(back["open_interest"]) if (has_oi and pd.notna(back["open_interest"])) else np.nan
         rows.append({
             "date": d,
             "settlement_front": float(front["settlement"]),
             "settlement_back": float(back["settlement"]),
             "days_to_expiry_front": dte_front,
             "days_to_expiry_back": dte_back,
+            "back_open_interest": back_oi,
             "carry_front_back": _carry_front_back(
                 float(front["settlement"]), float(back["settlement"]), dte_front, dte_back
             ),

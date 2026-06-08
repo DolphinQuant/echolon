@@ -24,12 +24,12 @@ def test_carry_indicators_present_in_catalog():
         assert n in names, f"{n} missing from catalog.list_all()"
 
 
-def test_carry_info_tagged_curve_kind_and_injection_source():
+def test_carry_info_tagged_curve_kind_and_curve_stage_source():
     cfb = catalog.info("carry_front_back")
     assert cfb is not None
     assert cfb.kind == "curve_carry"
-    # Step 1: carry is still qorka-injected (Path-B); engine-compute is Step 2.
-    assert cfb.compute_source == "external_injection"
+    # Step 2: carry is computed engine-side by the curve stage (Path-B retired).
+    assert cfb.compute_source == "echolon_curve_stage"
     assert cfb.requires == "forward_curve_snapshot"
     assert cfb.output == "per_date_scalar_broadcast"
 
@@ -67,13 +67,16 @@ def test_validate_accepts_carry_name_ind004_retired():
     assert errors == [], f"carry_front_back should validate clean, got: {errors}"
 
 
-def test_validate_is_kind_aware_for_carry_params():
-    # validate is catalog-backed, so it validates a curve_carry indicator's
-    # OWN params (window/n/lag) — not the ta-lib param set.
-    assert catalog.validate({"carry_z_3m": {"window": [40, 80]}}) == []
-    # unknown param on a carry indicator → IND-005 (param-level awareness)
-    bad_param = catalog.validate({"carry_z_3m": {"bogus_param": 5}})
-    assert any(e["code"] == "IND-005" for e in bad_param), bad_param
-    # range validation still applies to carry params
-    bad_range = catalog.validate({"carry_z_3m": {"window": [80, 40]}})
-    assert any(e["code"] == "IND-006" for e in bad_range), bad_range
+def test_validate_rejects_any_param_on_curve_carry():
+    # curve_carry indicators are param-FREE in a declaration: the curve stage uses
+    # fixed pool-default windows and the processor raises on any non-empty spec.
+    # validate must reject a param at the codegen gate (loud-at-validation, not
+    # deferred to backtest) — including an ADVERTISED param like window (catalog.info
+    # shows window=63 for discoverability, but it is not declarable).
+    assert catalog.validate({"carry_z_3m": {}}) == []
+    swept = catalog.validate({"carry_z_3m": {"window": [40, 80]}})
+    assert any(e["code"] == "IND-005" for e in swept), swept
+    scalar = catalog.validate({"carry_z_3m": {"window": 40}})
+    assert any(e["code"] == "IND-005" for e in scalar), scalar
+    # carry_front_back (params=[]) likewise rejects any param
+    assert any(e["code"] == "IND-005" for e in catalog.validate({"carry_front_back": {"x": 1}}))

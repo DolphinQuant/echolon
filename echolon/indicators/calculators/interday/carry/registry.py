@@ -8,9 +8,8 @@ the *tunable* params (the curve_snapshot / history args are data inputs, not
 tunables, so they are not listed here).
 
 Hydrated into ``echolon.indicators.catalog`` via ``_ingest_curve`` with
-``kind="curve_carry"``. ``compute_source`` is set at ingest time
-(``external_injection`` while carry is still precomputed qorka-side / Path-B;
-flip to ``echolon_curve_stage`` when the engine-side curve stage lands).
+``kind="curve_carry"`` and ``compute_source="echolon_curve_stage"`` — carry is
+computed engine-side by the indicator processor's curve stage.
 
 Design: docs (qorka) ``2026-06-08-carry-indicator-catalog-and-engine-wiring.md``.
 """
