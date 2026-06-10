@@ -1,6 +1,6 @@
 [project]
 name = "echolon"
-version = "0.1.6"
+version = "0.1.7"
 description = "See what others can't. Market-agnostic quantitative trading engine for futures backtesting, optimization, and deployment."
 readme = "README.md"
 license = "Apache-2.0"
