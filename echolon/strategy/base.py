@@ -33,6 +33,7 @@ Hook lifecycle:
 4. on_stop() -> hook.on_stop(strategy)
 """
 
+import dataclasses
 from pathlib import Path
 from typing import Dict, Any, Optional, List, Union, TYPE_CHECKING
 from datetime import datetime
@@ -385,6 +386,42 @@ class BaseStrategy(IStrategyCallbacks):
             if hasattr(output, 'model_dump'):
                 output = output.model_dump()
             self.strategy_logger.log_component_output(component_name, output)
+
+    def _log_effective_params(self) -> None:
+        """Write the EFFECTIVE component parameters into the current bar's log row.
+
+        Audit hook for the trial->deployed parameter mapping: values are read
+        from the live component instances (the dicts the components actually
+        consult via ``self.params[...]``), NOT from selected_robust_trial.json
+        or DEFAULT_PARAMS — so a mapping defect (optimized value orphaned,
+        default delivered) shows up directly in the strategy log CSV as a
+        ``param_{component}_{key}`` column differing from the trial's optimized
+        value. Keys are logged verbatim as the component reads them. Scalar
+        values only; the CSV logger preserves these as dynamic columns.
+        """
+        try:
+            slogger = self.strategy_logger
+            if not slogger or not getattr(slogger, "enabled", False):
+                return
+            bar = getattr(slogger, "current_bar_data", None)
+            if not isinstance(bar, dict) or not bar:
+                return  # bar scope not open yet (log_strategy_state opens it)
+            for comp_name, comp in (
+                ("entry", self.entry_rule),
+                ("exit", self.exit_rule),
+                ("risk", self.risk_manager),
+                ("sizer", self.position_sizer),
+            ):
+                params = getattr(comp, "params", None)
+                if dataclasses.is_dataclass(params) and not isinstance(params, type):
+                    params = dataclasses.asdict(params)
+                if not isinstance(params, dict):
+                    continue
+                for key, value in params.items():
+                    if isinstance(value, (bool, int, float, str)):
+                        bar[f"param_{comp_name}_{key}"] = value
+        except Exception:
+            pass  # Non-critical logging must never break trading
 
     # ========================================================================
     # Portfolio and Position Helpers
@@ -956,6 +993,10 @@ class BaseStrategy(IStrategyCallbacks):
                         self.strategy_logger.log_indicator_values(ind_vals)
                 except Exception:
                     pass  # Non-critical logging should not break trading
+
+            # Effective-params audit: record what the components actually hold
+            # this bar (never raises; see _log_effective_params).
+            self._log_effective_params()
 
         # Execute strategy-specific logic (derived classes override this)
         self._execute_bar()
