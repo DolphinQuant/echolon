@@ -1255,7 +1255,7 @@ class BacktraderEngine(ITradingEngine):
                 StructuredSlippageBroker,
             )
             import logging
-            logger = logging.getLogger(__name__)
+            # logger = logging.getLogger(__name__)  # patched: use module-level logger
 
             # Capture cash from the default broker before swap so the
             # configured initial_cash isn't lost when we replace the
