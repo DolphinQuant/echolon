@@ -110,6 +110,7 @@ class TrialSelector:
         apply_shared_params_fn: Optional[Callable[[Dict], Dict]] = None,
         param_classifications: Optional[Dict[str, Any]] = None,
         strategy_code_dir: Optional[Path] = None,
+        search_space_fn: Optional[Callable[..., Dict[str, Any]]] = None,
     ):
         self.trial_data_path = trial_data_path
         self.output_dir = Path(output_dir)
@@ -118,6 +119,11 @@ class TrialSelector:
         self.default_params = default_params or {}
         self.apply_shared_params_fn = apply_shared_params_fn
         self.param_classifications = param_classifications
+        # The strategy's generated optuna_search_space. When provided, select()
+        # also emits resolved_params.json — the optimizer's exact nested
+        # component dicts, replayed via FixedTrial — so consumers can bypass
+        # the lossy strip-once flat-name mapping entirely.
+        self.search_space_fn = search_space_fn
 
         # selected_robust_trial.json goes to strategy_code_dir by default
         # (stays with strategy code for hypothesis testing)
@@ -164,6 +170,10 @@ class TrialSelector:
                 json.dump(validated.model_dump(), f, indent=2)
             logger.info(f"[TRIAL_SELECTOR] Saved selected trial to {selected_path}")
 
+            # Companion artifact: the RESOLVED effective vector (best-effort;
+            # never blocks selection). See _export_resolved_params.
+            self._export_resolved_params(validated.model_dump())
+
             metrics = validated.metrics
             logger.info(
                 f"[TRIAL_SELECTOR] Selected trial {validated.trial_number} | "
@@ -176,6 +186,67 @@ class TrialSelector:
         else:
             logger.warning("[TRIAL_SELECTOR] No robust trial found")
             return None
+
+    def _export_resolved_params(self, selected: Dict[str, Any]) -> None:
+        """Emit resolved_params.json next to selected_robust_trial.json (best-effort).
+
+        The trial file's flat optuna names are mangled by the historical
+        strip-once consumers (prefixed canonical names orphaned, bare names
+        dropped, shared copies stale). Replaying the generated search space
+        with FixedTrial reproduces the optimizer's exact nested dict; the
+        sha256 provenance lets consumers detect a stale trial/resolved pair
+        and fall back. Failure here is logged and skipped — selection itself
+        must never be blocked by the companion export.
+
+        Whenever a fresh export is NOT written (no search_space_fn, replay
+        failure), any pre-existing resolved_params.json is removed: a trial
+        save must never leave an OLDER companion pairing with the NEW trial
+        file (the sha gate catches a params mismatch, but a same-params
+        regeneration would not).
+        """
+        stale = self.selected_trial_output_dir / 'resolved_params.json'
+
+        def _discard_stale() -> None:
+            try:
+                stale.unlink(missing_ok=True)
+            except OSError:
+                pass
+
+        if self.search_space_fn is None:
+            _discard_stale()
+            return
+        try:
+            from echolon._internal.param_resolution import resolve_via_replay
+            from echolon._internal.strategy_files import (
+                save_resolved_params,
+                trial_params_fingerprint,
+            )
+
+            flat = selected.get('params') or {}
+            nested = resolve_via_replay(self.search_space_fn, flat)
+            if nested is None:
+                logger.warning(
+                    "[TRIAL_SELECTOR] resolved_params export skipped (replay failed); "
+                    "consumers will use the legacy flat-name mapping"
+                )
+                _discard_stale()
+                return
+            from datetime import datetime, timezone
+            provenance = {
+                'trial_number': selected.get('trial_number'),
+                'trial_params_sha256': trial_params_fingerprint(flat),
+                'generated_by': 'echolon TrialSelector',
+                'created_utc': datetime.now(timezone.utc).isoformat(),
+            }
+            path = save_resolved_params(
+                self.selected_trial_output_dir, nested, provenance=provenance
+            )
+            logger.info(f"[TRIAL_SELECTOR] Saved resolved params to {path}")
+        except Exception as exc:
+            logger.warning(
+                f"[TRIAL_SELECTOR] resolved_params export failed (non-fatal): {exc}"
+            )
+            _discard_stale()
 
     def _prepare_data(self) -> None:
         """Prepare and clean the trial data."""

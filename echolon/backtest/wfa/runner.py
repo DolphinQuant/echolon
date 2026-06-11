@@ -245,13 +245,13 @@ class WFARunner:
                 logger.warning(f"Window {window.window_id}: No trials CSV, skipping")
                 continue
 
-            selector = TrialSelector(
-                trial_data_path=str(trials_csv_path),
-                output_dir=str(window_dir),
-                max_drawdown_threshold=self.config.max_drawdown_threshold,
+            selector = self._build_selector(
+                trials_csv_path=trials_csv_path,
+                window_dir=window_dir,
                 default_params=DEFAULT_PARAMS,
                 apply_shared_params_fn=apply_shared_params,
                 param_classifications=framework.get_param_classifications(),
+                search_space_fn=optuna_search_space,
             )
             selected_trial = selector.select()
             window.selected_trial = selected_trial
@@ -267,9 +267,12 @@ class WFARunner:
             )
 
             # --- Step 4: Run OOS backtest ---
-            # TrialSelector saves selected_robust_trial.json to the strategy
-            # code directory (PathsConfig.strategy_code_dir) — which is what
-            # run_best_trial reads by default.
+            # TrialSelector saved THIS window's selection (+ resolved_params
+            # .json companion) into self._paths.strategy_code_dir — the exact
+            # dir run_best_trial reads below (paths.best_params_file). The
+            # explicit strategy_code_dir kwarg above is load-bearing: the
+            # env-based default resolves to a DIFFERENT dir under run
+            # isolation (the stale-read defect).
             oos_results = run_best_trial(
                 ctx=self.ctx,
                 start_date=window.oos_start,
@@ -327,10 +330,10 @@ class WFARunner:
         wfa_window_details = wfa_analyzer.compute_window_details()
 
         # --- Step 7: Final full-period backtest with last window's params ---
-        # Last window's TrialSelector already saved selected_robust_trial.json
-        # to the strategy code directory (PathsConfig.strategy_code_dir).
-        # run_best_trial() reads from there by default and backtests across
-        # the full BACKTEST_START_DATE → BACKTEST_END_DATE.
+        # Last window's TrialSelector saved selected_robust_trial.json (+
+        # resolved_params.json) into self._paths.strategy_code_dir — the dir
+        # run_best_trial() reads (paths.best_params_file) — and backtests
+        # across the full BACKTEST_START_DATE → BACKTEST_END_DATE.
         # This produces consistent performance_metrics, trades, and equity curve
         # all from one parameter set — no artificial stitching.
         logger.info(
@@ -360,6 +363,44 @@ class WFARunner:
         )
 
         return final_results
+
+    def _build_selector(
+        self,
+        *,
+        trials_csv_path: Path,
+        window_dir: Path,
+        default_params: Dict[str, Any],
+        apply_shared_params_fn,
+        param_classifications,
+        search_space_fn,
+    ) -> "TrialSelector":  # noqa: F821 — imported lazily below, like run() does
+        """Construct the per-window TrialSelector.
+
+        STALE-READ GUARD (load-bearing, regression-tested): the selection MUST
+        be written to ``self._paths.strategy_code_dir`` — the exact dir
+        ``run_best_trial`` reads (``paths.best_params_file``). TrialSelector's
+        own default falls back to ``PathsConfig.from_env()``, which is a
+        DIFFERENT dir under host-app run isolation; with that default, every
+        OOS window silently executes whatever stale selected_robust_trial.json
+        sits at the read path (proven incident: one identical executed vector
+        across all 5 windows while the selector picked 5 different trials).
+
+        ``search_space_fn`` enables the resolved_params.json companion export
+        (the optimizer-exact nested vector; consumers prefer it over the lossy
+        flat-name mapping).
+        """
+        from echolon.backtest.optimization.select_best_trial import TrialSelector
+
+        return TrialSelector(
+            trial_data_path=str(trials_csv_path),
+            output_dir=str(window_dir),
+            max_drawdown_threshold=self.config.max_drawdown_threshold,
+            default_params=default_params,
+            apply_shared_params_fn=apply_shared_params_fn,
+            param_classifications=param_classifications,
+            strategy_code_dir=self._paths.strategy_code_dir,
+            search_space_fn=search_space_fn,
+        )
 
     def _extract_is_sharpe(self, study) -> float:
         """Extract the best IS sharpe from the Optuna study."""
