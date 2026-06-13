@@ -320,6 +320,31 @@ def build_server() -> FastMCP:
         return _impl(strategy_dir=strategy_dir).to_dict()
 
     @server.tool()
+    def validate_component_smoke(strategy_dir: str) -> dict:
+        """Bar-0 smoke: instantiate each component against a stub engine and
+        call its trading method once, flagging indicator columns the code
+        reads that strategy_indicator_list.json never declared (IND-007).
+
+        Catches the JSON↔code naming drift that the static validators
+        (import / signature / DEFAULT_PARAMS shape) cannot — the engine only
+        computes declared indicators, so an undeclared read KeyErrors deep in
+        the WFA backtest. This surfaces it in seconds.
+
+        Advisory + zero-false-positive by design: the stub's get_indicator
+        never raises, detection is base-name based (so valid multi-param
+        columns are not mis-flagged), and EVERY other exception
+        (instantiation / method crash on the imperfect stub) is swallowed,
+        never reported. It is therefore NOT part of validate_strategy_full —
+        call it explicitly as a cheap pre-flight before the debugger stage.
+
+        Returns ``{"any_errors": bool, "findings": [...]}``.
+        """
+        from echolon.strategy.validators.component_smoke import (
+            validate_component_smoke as _impl,
+        )
+        return _impl(strategy_dir=strategy_dir).to_dict()
+
+    @server.tool()
     def validate_component_logging(strategy_dir: str) -> dict:
         """AST-check that each component's required method calls the
         matching ``self.log_<component>_output(...)`` with a BaseModel

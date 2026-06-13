@@ -27,6 +27,8 @@ showing the typical LLM-author mistake. `EchelonError.docs_url` points here.
 - [IND-003](IND-003.md): All-NaN column
 - [IND-004](IND-004.md): Degenerate regime optimizer result
 - [IND-005](IND-005.md): Calculator missing required OHLCV column
+- [IND-006](IND-006.md): Inverted [min, max] sweep range
+- [IND-007](IND-007.md): Component reads an undeclared indicator column
 
 ## Data loading (DAT-*)
 - [DAT-001](DAT-001.md): Required OHLCV file not found
