@@ -13,6 +13,7 @@ showing the typical LLM-author mistake. `EchelonError.docs_url` points here.
 - [PRM-002](PRM-002.md): Params structure mismatch
 - [PRM-003](PRM-003.md): Hardcoded parameter value in component logic
 - [PRM-004](PRM-004.md): Defensive `.get()` on self.params
+- [PRM-005](PRM-005.md): Optimized trial parameters could not be resolved
 
 ## Component signal validation (VAL-*)
 - [VAL-001](VAL-001.md): Missing required field

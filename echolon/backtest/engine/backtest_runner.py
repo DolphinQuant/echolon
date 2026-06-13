@@ -646,30 +646,102 @@ class BacktestRunner:
             else:
                 params_path = str(paths.best_params_file)
 
-        # Load and map parameters using shared utility
+        # Load the recorded flat optuna params.
         params_data = load_best_params(params_path)
         optuna_params = params_data.get('params', params_data)
 
-        # Load DEFAULT_PARAMS from slot dir if custom, else platform_agnostic
-        if strategy_code_dir:
-            from echolon.strategy.loader import StrategyLoader
-            loader = StrategyLoader(Path(strategy_code_dir))
-            slot_defaults = loader.load_attr("strategy_params", "DEFAULT_PARAMS")
-        else:
-            slot_defaults = _get_default_params(paths.strategy_code_dir)
-
-        # Prefer the exporter's RESOLVED vector (optimizer-exact nested dicts;
-        # sha-verified against the trial file just loaded) over the legacy
-        # strip-once flat-name mapping. None → legacy fallback, which is a
-        # byte-identical no-op for every dir without resolved_params.json.
-        strategy_params = cls._resolved_strategy_params(params_path, optuna_params)
-        if strategy_params is None:
-            logger.info("[BEST_TRIAL] params source: legacy flat-name mapping")
-            strategy_params = cls._map_optuna_params(optuna_params, slot_defaults)
+        # Resolve to the optimizer-exact nested component vector. AUTHORITATIVE
+        # sources ONLY — the lossy strip-once flat-name mapping was removed.
+        strategy_params = cls._resolve_optimized_params(
+            params_path,
+            optuna_params,
+            strategy_code_dir=(strategy_code_dir or str(paths.strategy_code_dir)),
+        )
 
         return runner.load_data(start_date=start_date, end_date=end_date).run(
             strategy_params, context='best_trial'
         )
+
+    @classmethod
+    def _resolve_optimized_params(
+        cls,
+        params_path: str,
+        optuna_params: Dict[str, Any],
+        *,
+        strategy_code_dir: str,
+    ) -> Dict[str, Any]:
+        """Resolve the optimizer-exact nested component vector, or HARD-FAIL.
+
+        Two AUTHORITATIVE sources, in order — there is NO lossy flat-name
+        fallback (the historical strip-once mapper silently orphaned
+        prefixed-canonical params and dropped in-function shared copies; it was
+        deleted):
+
+          1. ``resolved_params.json`` companion, sha-verified against the trial
+             file just loaded (provenance fast-path).
+          2. On-demand replay of the dir's OWN ``optuna_search_space`` — the
+             same computation the exporter runs, so it reproduces the artifact
+             byte-for-byte. This means an artifact-less dir (a pre-fix archive,
+             a deployed slot) still resolves to the correct vector with NO
+             backfill.
+
+        If neither yields a vector, raise **PRM-005** rather than backtest on
+        partially-correct parameters — a hard failure beats a silent flaw.
+        """
+        resolved = cls._resolved_strategy_params(params_path, optuna_params)
+        if resolved is not None:
+            return resolved
+        replayed = cls._replay_strategy_params(
+            optuna_params, strategy_code_dir=strategy_code_dir
+        )
+        if replayed is not None:
+            return replayed
+        raise_error(
+            "PRM-005",
+            params_path=str(params_path),
+            strategy_code_dir=str(strategy_code_dir),
+        )
+
+    @staticmethod
+    def _replay_strategy_params(
+        optuna_params: Dict[str, Any],
+        *,
+        strategy_code_dir: str,
+    ) -> Optional[Dict[str, Any]]:
+        """Recompute the optimizer-exact nested vector by replaying the dir's
+        own ``optuna_search_space`` with the recorded flat params.
+
+        This is the SAME ``resolve_via_replay`` the TrialSelector exporter runs,
+        so the result is byte-identical to a ``resolved_params.json`` artifact —
+        it is authoritative, not a degraded fallback. Returns None (logged) when
+        the search space can't be loaded or the replay can't run; the caller
+        then hard-fails (PRM-005) rather than guess.
+        """
+        try:
+            from echolon.strategy.loader import StrategyLoader
+            from echolon._internal.param_resolution import resolve_via_replay
+
+            search_space_fn = StrategyLoader(Path(strategy_code_dir)).load_attr(
+                "strategy_params", "optuna_search_space"
+            )
+            nested = resolve_via_replay(search_space_fn, optuna_params)
+            if nested is None:
+                return None
+            logger.info(
+                "[BEST_TRIAL] params source: on-demand replay of "
+                "optuna_search_space (no resolved_params.json artifact present)"
+            )
+            return {
+                key: dict(value)
+                for key, value in nested.items()
+                if isinstance(value, dict)
+            }
+        except Exception as exc:  # noqa: BLE001 — any load/replay failure → caller hard-fails
+            logger.warning(
+                f"[BEST_TRIAL] on-demand replay failed "
+                f"({type(exc).__name__}: {exc}) — caller will hard-fail"
+            )
+            return None
 
     @staticmethod
     def _resolved_strategy_params(
@@ -718,61 +790,6 @@ class BacktestRunner:
                 f"[BEST_TRIAL] resolved_params load failed — legacy mapping: {exc}"
             )
             return None
-
-    @staticmethod
-    def _map_optuna_params(
-        optuna_params: Dict[str, Any],
-        default_params: Dict[str, Any],
-    ) -> Dict[str, Any]:
-        """Map Optuna flat parameters to strategy component structure."""
-        entry_params = {}
-        exit_params = {}
-        sizer_params = {}
-        risk_params = {}
-        strategy_params = {}
-
-        metadata_fields = {
-            'run_timestamp', 'study_name', 'best_trial_number', 'best_value',
-            'datetime_start', 'datetime_complete'
-        }
-
-        for key, value in optuna_params.items():
-            if key in metadata_fields:
-                continue
-
-            if key.startswith('entry_'):
-                entry_params[key[6:]] = value
-            elif key.startswith('exit_'):
-                exit_params[key[5:]] = value
-            elif key.startswith('sizer_'):
-                sizer_params[key[6:]] = value
-            elif key.startswith('risk_'):
-                risk_params[key[5:]] = value
-            else:
-                strategy_params[key] = value
-
-        # Fill missing from defaults
-        component_mapping = {
-            'entry_params': entry_params,
-            'exit_params': exit_params,
-            'sizer_params': sizer_params,
-            'risk_params': risk_params
-        }
-
-        for comp_key, default_comp in default_params.items():
-            if comp_key in component_mapping and isinstance(default_comp, dict):
-                target = component_mapping[comp_key]
-                for param_name, param_value in default_comp.items():
-                    if param_name not in target:
-                        target[param_name] = param_value
-
-        return {
-            **strategy_params,
-            'entry_params': entry_params,
-            'exit_params': exit_params,
-            'sizer_params': sizer_params,
-            'risk_params': risk_params,
-        }
 
 
 # =============================================================================
