@@ -160,22 +160,95 @@ def test_merge_tier3_routes_bare_key_when_unambiguous():
     assert merged["sizer_params"]["trailing_mult"] == 2.222
 
 
-# ---- legacy mapper: the defect must be PRESERVED on the fallback path -------
+# ---- best_trial resolution: authoritative-only, hard-fail (no lossy mapper) --
 
 
-def test_legacy_backtest_mapper_still_exhibits_the_defect():
-    """The legacy path must stay byte-identical (it is today's OOS-validated,
-    live-tracked behavior) — the fix is opt-in via the artifact, never a
-    silent change of the fallback."""
+def test_legacy_strip_once_mapper_is_deleted():
+    """The lossy `_map_optuna_params` must no longer exist — it silently
+    orphaned prefixed-canonical params and dropped shared copies."""
     from echolon.backtest.engine.backtest_runner import BacktestRunner
 
-    sp, trial = _load_fixture()
-    mapped = BacktestRunner._map_optuna_params(trial["params"], sp.DEFAULT_PARAMS)
-    assert mapped["exit_params"]["exit_down_stop_mult"] == DEFAULT_STOP
-    # the optimized value is stranded on the orphan key nothing reads
-    assert mapped["exit_params"]["down_stop_mult"] == OPTIMIZED_STOP
-    # the bare key lands as a top-level extra (absorbed inert downstream)
-    assert mapped["trailing_mult"] == OPTIMIZED_TRAIL
+    assert not hasattr(BacktestRunner, "_map_optuna_params")
+
+
+def test_on_demand_replay_recovers_the_optimized_vector_without_artifact():
+    """`_replay_strategy_params` reproduces the optimizer-exact vector from the
+    dir's OWN optuna_search_space — no resolved_params.json needed. This is the
+    floor that lets an artifact-less dir resolve correctly instead of falling
+    back to the (deleted) lossy mapping."""
+    from echolon.backtest.engine.backtest_runner import BacktestRunner
+
+    _sp, trial = _load_fixture()
+    nested = BacktestRunner._replay_strategy_params(
+        trial["params"], strategy_code_dir=str(FIXTURE)
+    )
+    assert nested is not None
+    # the exact values the legacy strip-once mapper used to lose:
+    assert nested["exit_params"]["exit_down_stop_mult"] == OPTIMIZED_STOP
+    assert nested["sizer_params"]["trailing_mult"] == OPTIMIZED_TRAIL
+
+
+def test_replay_returns_none_when_search_space_unloadable(tmp_path):
+    """A dir with no loadable optuna_search_space → None (caller hard-fails)."""
+    from echolon.backtest.engine.backtest_runner import BacktestRunner
+
+    assert BacktestRunner._replay_strategy_params(
+        {"x": 1}, strategy_code_dir=str(tmp_path)
+    ) is None
+
+
+def test_resolve_optimized_params_prefers_artifact(tmp_path):
+    """When a sha-verified resolved_params.json is present it wins (provenance
+    fast-path), even over replay."""
+    from echolon.backtest.engine.backtest_runner import BacktestRunner
+
+    _sp, trial = _load_fixture()
+    (tmp_path / "selected_robust_trial.json").write_text(json.dumps(trial))
+    components = {"entry_params": {"sentinel": 1}}
+    save_resolved_params(
+        tmp_path, components,
+        provenance={"trial_number": trial["trial_number"],
+                    "trial_params_sha256": trial_params_fingerprint(trial["params"])},
+    )
+    got = BacktestRunner._resolve_optimized_params(
+        str(tmp_path / "selected_robust_trial.json"), trial["params"],
+        strategy_code_dir=str(tmp_path),
+    )
+    assert got == {"entry_params": {"sentinel": 1}}  # artifact, not replay
+
+
+def test_resolve_optimized_params_falls_through_to_replay(tmp_path):
+    """No artifact but a loadable search space → on-demand replay vector."""
+    from echolon.backtest.engine.backtest_runner import BacktestRunner
+
+    _sp, trial = _load_fixture()
+    got = BacktestRunner._resolve_optimized_params(
+        str(FIXTURE / "selected_robust_trial.json"), trial["params"],
+        strategy_code_dir=str(FIXTURE),
+    )
+    assert got["exit_params"]["exit_down_stop_mult"] == OPTIMIZED_STOP
+
+
+def test_resolve_optimized_params_hard_fails_when_unresolvable(tmp_path):
+    """No artifact AND no loadable search space → PRM-005, never a lossy guess."""
+    from echolon.backtest.engine.backtest_runner import BacktestRunner
+
+    with pytest.raises(Exception) as exc:
+        BacktestRunner._resolve_optimized_params(
+            str(tmp_path / "selected_robust_trial.json"), {"x": 1},
+            strategy_code_dir=str(tmp_path),
+        )
+    assert "PRM-005" in str(exc.value)
+
+
+def test_prm005_is_documented():
+    """get_error_doc('PRM-005') must resolve (registry + markdown) so the
+    hard-fail's remediation is available to agents/operators."""
+    from echolon.native.errors import get_error_doc
+
+    doc = get_error_doc("PRM-005")
+    assert doc.code == "PRM-005"
+    assert doc.what and doc.fix
 
 
 # ---- artifact IO ------------------------------------------------------------

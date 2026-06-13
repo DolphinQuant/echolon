@@ -285,6 +285,27 @@ ERROR_CATALOG: dict[str, dict] = {
             "  call:             {call}"
         ),
     },
+    "PRM-005": {
+        "class": ParameterError,
+        "what": "Optimized trial parameters could not be resolved to the component vector",
+        "why": (
+            "best_trial could neither read a sha-verified resolved_params.json "
+            "companion NOR replay the strategy dir's optuna_search_space to "
+            "reproduce the optimizer-exact nested params. The lossy strip-once "
+            "flat-name mapping was REMOVED (it silently orphaned prefixed-"
+            "canonical params and dropped in-function shared copies), so rather "
+            "than backtest on partially-correct parameters the run hard-fails."
+        ),
+        "fix_template": (
+            "Make the dir's params resolvable, then re-run:\n"
+            "  params_path:        {params_path}\n"
+            "  strategy_code_dir:  {strategy_code_dir}\n"
+            "Either (a) re-run trial selection to regenerate "
+            "selected_robust_trial.json + its resolved_params.json companion, or "
+            "(b) verify strategy_params.py imports cleanly and exposes "
+            "optuna_search_space so on-demand replay can reproduce the vector."
+        ),
+    },
     "DAT-001": {
         "class": DataError,
         "what": "Required OHLCV file not found",
