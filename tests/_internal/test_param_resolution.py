@@ -30,7 +30,7 @@ from types import SimpleNamespace
 
 import pytest
 
-from echolon._internal.param_resolution import resolve_via_merge, resolve_via_replay
+from echolon._internal.param_resolution import resolve_via_replay
 from echolon._internal.strategy_files import (
     ResolvedParams,
     load_resolved_params,
@@ -41,7 +41,6 @@ from echolon._internal.strategy_files import (
 FIXTURE = Path(__file__).parent.parent / "fixtures" / "param_resolution" / "synthetic_s1"
 
 OPTIMIZED_STOP = 1.444
-DEFAULT_STOP = 1.0
 OPTIMIZED_TRAIL = 2.222
 
 
@@ -70,16 +69,13 @@ def test_replay_recovers_orphaned_canonical_prefixed_values():
     assert isinstance(nested["entry_params"]["alpha_period"], int)
 
 
-def test_replay_recovers_shared_sizer_copy_merge_cannot():
-    """The in-function shared copy only exists in the replay — the flat dict's
-    sizer twin carries the stale default and no name merge can know better."""
+def test_replay_recovers_shared_sizer_copy():
+    """The in-function shared copy exists ONLY in the replay — the flat dict's
+    sizer twin carries the stale default, so replaying the search space is the
+    only way to recover the optimized value (no name-based merge can)."""
     sp, trial = _load_fixture()
     nested = resolve_via_replay(sp.optuna_search_space, trial["params"])
     assert nested["sizer_params"]["exit_down_stop_mult"] == OPTIMIZED_STOP
-
-    merged = resolve_via_merge(trial["params"], sp.DEFAULT_PARAMS)
-    # documented limitation: Family-B twin (default) wins in the flat dict
-    assert merged["sizer_params"]["exit_down_stop_mult"] == DEFAULT_STOP
 
 
 def test_replay_recovers_bare_optuna_key():
@@ -120,44 +116,6 @@ def test_replay_canonicalizes_categorical_types():
     assert nested["x_params"]["n"] == 10 and isinstance(nested["x_params"]["n"], int)
     assert nested["x_params"]["flag"] is True
     assert nested["x_params"]["label"] == "b"
-
-
-# ---- resolve_via_merge: tier behavior (fallback/diagnostics only) ----------
-
-
-def test_merge_tier1_canonical_prefixed_beats_tier2_double_prefixed():
-    """The flat dict carries BOTH 'exit_down_stop_mult' (Family A, canonical
-    name == member of exit_params) and 'exit_exit_down_stop_mult' (Family B).
-    Tier 1 must win regardless of iteration order."""
-    sp, trial = _load_fixture()
-    merged = resolve_via_merge(trial["params"], sp.DEFAULT_PARAMS)
-    assert merged["exit_params"]["exit_down_stop_mult"] == OPTIMIZED_STOP
-    assert merged["entry_params"]["entry_gate_threshold"] == pytest.approx(0.777)
-
-
-def test_merge_tier2_strips_generator_prefix():
-    sp, trial = _load_fixture()
-    merged = resolve_via_merge(trial["params"], sp.DEFAULT_PARAMS)
-    # 'entry_alpha_period' (generator-prefixed; canonical 'alpha_period')
-    assert merged["entry_params"]["alpha_period"] == 21.0
-
-
-def test_merge_tier3_loses_to_family_b_twin_replay_does_not():
-    """The bare optuna name (optimized, tier 3) collides with the Family-B
-    twin 'sizer_trailing_mult' (default, tier 2) on the same destination —
-    lowest tier wins, so the merge keeps the DEFAULT. Genuinely ambiguous from
-    names alone: one more proof merge is diagnostics-only."""
-    sp, trial = _load_fixture()
-    merged = resolve_via_merge(trial["params"], sp.DEFAULT_PARAMS)
-    assert merged["sizer_params"]["trailing_mult"] == 3.0  # limitation
-    nested = resolve_via_replay(sp.optuna_search_space, trial["params"])
-    assert nested["sizer_params"]["trailing_mult"] == OPTIMIZED_TRAIL
-
-
-def test_merge_tier3_routes_bare_key_when_unambiguous():
-    defaults = {"sizer_params": {"trailing_mult": 3.0, "lots": 1}}
-    merged = resolve_via_merge({"trailing_mult": 2.222}, defaults)
-    assert merged["sizer_params"]["trailing_mult"] == 2.222
 
 
 # ---- best_trial resolution: authoritative-only, hard-fail (no lossy mapper) --
