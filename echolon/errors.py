@@ -414,6 +414,40 @@ ERROR_CATALOG: dict[str, dict] = {
             "  present_columns:    {present_columns}"
         ),
     },
+    "IND-006": {
+        "class": IndicatorError,
+        "what": "strategy_indicator_list.json has an inverted [min, max] sweep range",
+        "why": (
+            "A parameter's sweep range is written as a two-element integer list "
+            "[min, max] with min > max. Optuna's suggest_int(low, high) requires "
+            "low <= high, so the trial sampler raises on the first trial — the "
+            "range is unusable as written. Emitted by validate_indicator_list "
+            "(catalog range check), not raised at runtime."
+        ),
+        "fix_template": (
+            "Swap the bounds in strategy_indicator_list.json so min <= max for "
+            "the named field (e.g. [28, 14] -> [14, 28])."
+        ),
+    },
+    "IND-007": {
+        "class": IndicatorError,
+        "what": "Component reads an indicator column not declared in strategy_indicator_list.json",
+        "why": (
+            "A component calls self.get_indicator(\"<name>\") for a column whose "
+            "base indicator was never declared in strategy_indicator_list.json — a "
+            "rename/typo drift between the JSON and the code (e.g. code reads "
+            "'high_20' but the JSON declared 'highest_high'). The engine only "
+            "computes declared indicators, so the lookup KeyErrors at runtime. "
+            "Surfaced by the bar-0 component smoke (validate_component_smoke); not "
+            "raised at module import or signature checks."
+        ),
+        "fix_template": (
+            "Either rename the get_indicator() argument to a DECLARED column, or "
+            "add the indicator to strategy_indicator_list.json:\n"
+            "  undeclared_read: {indicator}\n"
+            "  declared:        {declared}"
+        ),
+    },
     "BT-001": {
         "class": EchelonError,
         "what": "Strategy.on_bar() raised an exception",
