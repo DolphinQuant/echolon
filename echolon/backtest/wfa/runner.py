@@ -53,6 +53,7 @@ class WFARunner:
         optuna_config: Optional[OptunaConfig] = None,
         backtest_config: Optional[BacktestConfig] = None,
         backtest_results_dir: Optional[Path] = None,
+        wfa_dir: Optional[Path] = None,
         paths: Optional["PathsConfig"] = None,  # type: ignore[name-defined]
         drs_config: Optional[DRSConfig] = None,
     ):
@@ -77,7 +78,12 @@ class WFARunner:
         if backtest_results_dir is None:
             backtest_results_dir = self._paths.backtest_results_dir
         self.output_dir = Path(backtest_results_dir)
-        self.wfa_dir = self.output_dir / "wfa_windows"
+        # wfa_dir holds the per-window archives. By default it nests under output_dir
+        # (``{backtest_results_dir}/wfa_windows``) — back-compat for host apps that keep
+        # the full backtest + WFA together. A host that separates run-types (e.g. qorka's
+        # backtest/{full,wfa,replay}/ layout) passes an explicit sibling dir so the WFA
+        # archives don't nest under the full-backtest dir.
+        self.wfa_dir = Path(wfa_dir) if wfa_dir is not None else self.output_dir / "wfa_windows"
 
         # Caller provides DRSConfig explicitly (or None to run WFA without DRS
         # scoring). Host apps build this from their own target schema — echolon
