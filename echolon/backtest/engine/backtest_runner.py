@@ -604,6 +604,7 @@ class BacktestRunner:
         backtest_config: Optional[BacktestConfig] = None,
         *,
         paths: "PathsConfig",  # type: ignore[name-defined]
+        results_dir: Optional[str] = None,
     ) -> Dict[str, Any]:
         """
         Run backtest with best parameters from optimization.
@@ -626,6 +627,15 @@ class BacktestRunner:
         backtest_config : BacktestConfig, optional
             Pydantic config with date ranges, paths, and thresholds.
             Falls back to module globals if not provided.
+        results_dir : str, optional
+            Override the output directory for ALL persisted artifacts —
+            backtest_results.json / equity_curve.csv / backtest_trades.csv AND the
+            per-bar strategy log (``strategy_logs_{context}/``), which all write under
+            this one dir. Default None → ``paths.backtest_results_dir`` (the canonical
+            ``workspace/current/backtest/``). Point a READ-ONLY probe (e.g. a windowed
+            live-fidelity replay) at a SEPARATE subdir so its windowed artifacts are
+            preserved for inspection WITHOUT clobbering the canonical full-backtest
+            files the analysis layer + evaluation read.
 
         Returns
         -------
@@ -637,6 +647,7 @@ class BacktestRunner:
             paths=paths,
             strategy_code_dir=strategy_code_dir,
             backtest_config=backtest_config,
+            config=_RunnerConfig(backtest_results_dir=results_dir),
         )
 
         # Default params path — from slot dir if provided, else from paths.
