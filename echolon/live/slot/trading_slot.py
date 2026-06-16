@@ -118,6 +118,7 @@ class TradingSlot:
             calendar_path=calendar_path,
             client=None,  # Client set later by runner
             platform="miniqmt",
+            slot_id=slot_id,
         )
         logger.info(f"[{slot_id}] QMTEngine created (deferred execution)")
 
