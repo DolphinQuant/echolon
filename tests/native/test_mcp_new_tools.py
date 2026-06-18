@@ -83,9 +83,13 @@ def test_get_skill_returns_full_body(server) -> None:
     assert out["description"]
 
 
-def test_get_skill_unknown_returns_none(server) -> None:
+def test_get_skill_unknown_returns_actionable_error(server) -> None:
+    # An unknown name returns an actionable error (with the valid list), NOT None
+    # — None serializes to empty MCP content and gets dropped for a placeholder.
     tool = _get_tool(server, "get_skill")
-    assert tool.fn(name="not_a_real_skill") is None
+    out = tool.fn(name="not_a_real_skill")
+    assert out is not None and "error" in out
+    assert "not_a_real_skill" in out["error"]
 
 
 # ---------------------------------------------------------------------------
