@@ -35,6 +35,20 @@ import echolon.native as _native
 _NATIVE_ROOT = Path(_native.__file__).parent
 
 
+def _not_found(kind: str, name: str, available: list) -> dict:
+    """Actionable not-found result for a name-lookup tool.
+
+    Returning ``None`` for an unknown name serializes to an EMPTY MCP content
+    list; a ChatCompletions client can't extract a text part and drops it for an
+    opaque placeholder (logging "tool outputs cannot be empty…"). An error dict
+    that names the valid options is non-empty AND lets the calling agent
+    self-correct in one turn instead of guessing again.
+    """
+    return {
+        "error": f"No {kind} named {name!r}. Available {kind}s: {available}",
+    }
+
+
 def build_server() -> FastMCP:
     """Construct and return the FastMCP server with all echolon tools registered."""
     server = FastMCP("echolon")
@@ -529,7 +543,7 @@ def build_server() -> FastMCP:
         """Return a pattern's structured content, or None if unknown."""
         p = _patterns.get_pattern(name)
         if p is None:
-            return None
+            return _not_found("pattern", name, _patterns.list_patterns())
         return {
             "name": p.name,
             "when_to_use": p.when_to_use,
@@ -549,7 +563,7 @@ def build_server() -> FastMCP:
         """Load a template's files. Returns {'name': ..., 'files': {filename: content}}."""
         tpl = _templates.load_template(name)
         if tpl is None:
-            return None
+            return _not_found("template", name, _templates.list_templates())
         return {"name": tpl.name, "files": tpl.files}
 
     @server.tool()
@@ -577,7 +591,7 @@ def build_server() -> FastMCP:
         """
         s = _skills.get_skill(name)
         if s is None:
-            return None
+            return _not_found("skill", name, _skills.list_skills())
         return {
             "name": s.name,
             "description": s.description,
