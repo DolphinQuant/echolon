@@ -34,45 +34,45 @@ def _write(tmp_path, entry_body, params_py=_PARAMS_PY):
     )
 
 
-def _prm005(report):
+def _prm006(report):
     return [f for f in report.findings if f.code == "PRM-006"]
 
 
-def test_missing_param_subscript_flagged_prm005(tmp_path):
+def test_missing_param_subscript_flagged_prm006(tmp_path):
     _write(tmp_path, "        self.a = self.params['present']\n"
                      "        self.b = self.params['absent_xyz']\n")
-    found = _prm005(validate_parameter_access(tmp_path))
+    found = _prm006(validate_parameter_access(tmp_path))
     assert len(found) == 1
     assert "absent_xyz" in (found[0].message + str(found[0].context))
 
 
-def test_all_present_params_no_prm005(tmp_path):
+def test_all_present_params_no_prm006(tmp_path):
     _write(tmp_path, "        self.a = self.params['present']\n")
-    assert not _prm005(validate_parameter_access(tmp_path))
+    assert not _prm006(validate_parameter_access(tmp_path))
 
 
 def test_cross_section_key_not_flagged_union(tmp_path):
     # 'shared_x' lives in exit_params but is read in entry.py — the union of all
     # sections means "declared somewhere", so no false positive.
     _write(tmp_path, "        self.a = self.params['shared_x']\n")
-    assert not _prm005(validate_parameter_access(tmp_path))
+    assert not _prm006(validate_parameter_access(tmp_path))
 
 
 def test_nonconstant_key_not_flagged(tmp_path):
     _write(tmp_path, "        k = 'present'\n        self.a = self.params[k]\n")
-    assert not _prm005(validate_parameter_access(tmp_path))
+    assert not _prm006(validate_parameter_access(tmp_path))
 
 
 def test_unloadable_params_skips_check(tmp_path):
     # If DEFAULT_PARAMS can't be loaded, skip the check (no PRM-006, no crash).
     _write(tmp_path, "        self.a = self.params['anything']\n",
            params_py="raise RuntimeError('boom')\n")
-    assert not _prm005(validate_parameter_access(tmp_path))
+    assert not _prm006(validate_parameter_access(tmp_path))
 
 
-def test_real_fixture_no_prm005():
+def test_real_fixture_no_prm006():
     # The correct aluminum baseline declares every param it reads.
-    found = _prm005(validate_parameter_access(_FIXTURE))
+    found = _prm006(validate_parameter_access(_FIXTURE))
     assert not found, [f.message for f in found]
 
 
@@ -85,5 +85,5 @@ def test_real_fixture_with_bogus_param_read_flagged(tmp_path):
         + "\n_BOGUS = lambda self: self.params['totally_not_a_real_param']\n",
         encoding="utf-8",
     )
-    found = _prm005(validate_parameter_access(dst))
+    found = _prm006(validate_parameter_access(dst))
     assert any("totally_not_a_real_param" in (f.message + str(f.context)) for f in found)
