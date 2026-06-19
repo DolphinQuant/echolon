@@ -469,6 +469,25 @@ ERROR_CATALOG: dict[str, dict] = {
             "  declared:        {declared}"
         ),
     },
+    "IND-008": {
+        "class": IndicatorError,
+        "what": "Legacy section-keyed indicator-list format",
+        "why": (
+            "strategy_indicator_list.json must be a flat dict mapping each "
+            "indicator name directly to its param spec. A top-level section "
+            "wrapper (indicators_with_lookback / indicators_without_lookback / "
+            "indicators_with_special_params / system_provided_indicators) is the "
+            "deprecated format; the catalog validator would otherwise treat each "
+            "section key as an indicator name and emit a junk IND-004 per section. "
+            "Surfaced by validate_indicator_list (IndicatorCatalog.validate)."
+        ),
+        "fix_template": (
+            "Flatten every section's entries up to the top level and drop the "
+            "section wrappers, e.g.\n"
+            '  {{"rsi": {{"timeperiod": [10, 20]}}, "obv": {{}}, "market_regime": {{}}}}\n'
+            "  legacy sections found: {field}"
+        ),
+    },
     "BT-001": {
         "class": EchelonError,
         "what": "Strategy.on_bar() raised an exception",

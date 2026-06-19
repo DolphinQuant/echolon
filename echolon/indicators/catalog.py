@@ -41,6 +41,19 @@ KIND_PER_CONTRACT_TALIB = "per_contract_talib"   # fn(df, params) -> per-bar nda
 KIND_REGIME_CLASSIFIER = "regime_classifier"     # fit_classify(df, params) -> series
 KIND_CURVE_CARRY = "curve_carry"                 # curve snapshot(s) -> per-date scalar
 
+# Deprecated section-keyed indicator-list shape. Any of these AT THE TOP LEVEL
+# means the legacy three/four-section format (a single section wrapper holds
+# {name: spec} entries) rather than the flat-dict {name: spec}. Detected as one
+# structural IND-008 so the agent gets a migration hint instead of a junk
+# per-section IND-004 "unknown indicator 'indicators_with_lookback'". Mirrors
+# qorka's coding_agent/hooks/json_schema_hook._LEGACY_SECTION_KEYS.
+_LEGACY_SECTION_KEYS = frozenset({
+    "indicators_with_lookback",
+    "indicators_without_lookback",
+    "indicators_with_special_params",
+    "system_provided_indicators",
+})
+
 # --- COMPUTE SOURCE: where the value actually comes from --------------------
 SOURCE_ECHOLON_PIPELINE = "echolon_pipeline"        # the per-contract loop
 SOURCE_ECHOLON_CURVE_STAGE = "echolon_curve_stage"  # the engine carry curve stage
@@ -268,6 +281,25 @@ def validate(flat_dict: dict) -> list[dict]:
     )
 
     errors: list[dict] = []
+
+    # Detect the deprecated section-keyed shape FIRST and return one structural
+    # migration hint, rather than treating each section key as an indicator name
+    # and emitting a junk IND-004 per section.
+    legacy = sorted(set(flat_dict) & _LEGACY_SECTION_KEYS) if isinstance(flat_dict, dict) else []
+    if legacy:
+        return [{
+            "code": "IND-008",
+            "field": ", ".join(legacy),
+            "message": (
+                f"Legacy section-keyed indicator-list format detected (top-level "
+                f"section key(s): {legacy}). Migrate to the flat-dict form "
+                f'{{"<indicator>": {{"<param>": <value or [min, max]>}}}} — e.g. '
+                f'{{"rsi": {{"timeperiod": [10, 20]}}, "market_regime": {{}}}}. '
+                f"Flatten every section's entries up to the top level and drop "
+                f"the section wrappers."
+            ),
+            "suggestion": [],
+        }]
 
     for ind_name, params in flat_dict.items():
         ind_name_lower = ind_name.lower() if isinstance(ind_name, str) else ind_name
