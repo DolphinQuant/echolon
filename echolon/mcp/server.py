@@ -640,8 +640,10 @@ def build_server() -> FastMCP:
         Composes the individual MCP validators (``validate_strategy`` /
         ``validate_component_protocol_signatures`` /
         ``validate_component_integration`` / ``validate_component_logging``
-        / ``validate_parameter_access``) so an agent gets a complete
-        validation report from a single tool call.
+        / ``validate_parameter_access`` / ``validate_indicator_names``) so an
+        agent gets a complete validation report from a single tool call —
+        including the JSON↔code indicator contract (IND-001/IND-002), so a VALID
+        verdict means the regime/indicator columns the code reads are declared.
 
         Args:
             strategy_dir: Absolute path to the strategy directory.
@@ -662,6 +664,9 @@ def build_server() -> FastMCP:
         )
         from echolon.strategy.validators.parameter_access import (
             validate_parameter_access as _vpa,
+        )
+        from echolon.native.validation.indicator_validator import (
+            validate_indicator_names as _vin,
         )
 
         invocations: list[dict] = []
@@ -685,6 +690,13 @@ def build_server() -> FastMCP:
             sub_findings = sub.get("findings", [])
             invocations.append({"validator": name, "count": len(sub_findings)})
             findings.extend(sub_findings)
+
+        ind_findings = [
+            {"code": e.code, "what": e.what, "why": e.why, "fix": e.fix, "docs_url": e.docs_url}
+            for e in _vin(Path(strategy_dir))
+        ]
+        invocations.append({"validator": "validate_indicator_names", "count": len(ind_findings)})
+        findings.extend(ind_findings)
 
         return {
             "status": "VALID" if not findings else "INVALID",

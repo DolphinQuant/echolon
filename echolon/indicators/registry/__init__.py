@@ -7,6 +7,7 @@ from echolon.indicators.registry.regime_classifiers import (
  list_classifiers,
  list_optimizers,
  is_registered_classifier,
+ KNOWN_REGIME_COLUMNS,
 )
 
 __all__ = [
@@ -17,4 +18,5 @@ __all__ = [
  "list_classifiers",
  "list_optimizers",
  "is_registered_classifier",
+ "KNOWN_REGIME_COLUMNS",
 ]

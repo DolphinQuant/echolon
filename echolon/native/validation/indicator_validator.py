@@ -10,6 +10,14 @@ _GET_INDICATOR_PATTERN = re.compile(
     r"""get_indicator\(\s*['"]([^'"]+)['"]\s*\)""",
 )
 
+# Regime/session classifier columns are read through DEDICATED accessors
+# (``self.get_market_regime()`` / ``self.get_session_phase()``), NOT through
+# ``get_indicator('...')`` — so the IND-001 scan above never sees them. The
+# trailing ``\(`` anchors the method name so ``get_session_phase_agg(`` does not
+# partial-match. The captured group is exactly the column the accessor requires
+# to be declared in strategy_indicator_list.json.
+_REGIME_ACCESSOR_PATTERN = re.compile(r"\.get_(market_regime|session_phase)\s*\(")
+
 _PY_FILES_TO_SCAN = ("entry.py", "exit.py", "risk.py", "sizer.py", "strategy.py")
 
 
@@ -74,9 +82,14 @@ def validate_indicator_names(strategy_dir: Path) -> list[EchelonError]:
     json_path = strategy_dir / "strategy_indicator_list.json"
     if not json_path.exists():
         return errors
-    # We don't need to use `declared` for IND-001 (casing check). Casing
-    # violations are detectable purely from the code (uppercase chars in the
-    # get_indicator argument). Reserved for IND-002 when implemented.
+    # `declared` is only needed for the regime-accessor check below; IND-001
+    # (casing) is detectable purely from the code (uppercase chars in the
+    # get_indicator argument).
+    declared = _get_declared_indicator_names(strategy_dir)
+    # One missing declaration == one fix: flag each undeclared regime column
+    # once (at its first call site) rather than per-call, so a single fix isn't
+    # buried under N near-identical findings.
+    regime_flagged: set[str] = set()
     for filename in _PY_FILES_TO_SCAN:
         file_path = strategy_dir / filename
         if not file_path.exists():
@@ -87,5 +100,16 @@ def validate_indicator_names(strategy_dir: Path) -> list[EchelonError]:
             if name != name.lower():
                 errors.append(_make_error(
                     "IND-001", code_name=name, json_name=name.lower(), file=filename,
+                ))
+        # IND-002: a dedicated regime/session accessor requires its column to be
+        # declared. This fires at preflight instead of as a Stage-2 backtest
+        # KeyError minutes into the run.
+        for match in _REGIME_ACCESSOR_PATTERN.finditer(content):
+            column = match.group(1)
+            if column not in declared and column not in regime_flagged:
+                regime_flagged.add(column)
+                line = content[: match.start()].count("\n") + 1
+                errors.append(_make_error(
+                    "IND-002", indicator=column, file=filename, line=line,
                 ))
     return errors

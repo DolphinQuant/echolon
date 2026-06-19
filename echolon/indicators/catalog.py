@@ -259,7 +259,13 @@ def validate(flat_dict: dict) -> list[dict]:
     # processor (engine/processor.py) dispatches them via
     # ``is_registered_classifier``; the validator must agree. Lazy-import to
     # match the ``_load_from_registry`` boundary already established here.
-    from echolon.indicators.registry import is_registered_classifier
+    # ``KNOWN_REGIME_COLUMNS`` is the registry-independent fallback: the bare
+    # MCP validator process registers no host classifiers, so the runtime
+    # registry is empty there — without the static set a correctly-declared
+    # ``market_regime`` would be a false-positive IND-004.
+    from echolon.indicators.registry import (
+        is_registered_classifier, KNOWN_REGIME_COLUMNS,
+    )
 
     errors: list[dict] = []
 
@@ -268,7 +274,10 @@ def validate(flat_dict: dict) -> list[dict]:
         indicator = _CATALOG.get(ind_name_lower)
 
         if indicator is None:
-            if isinstance(ind_name_lower, str) and is_registered_classifier(ind_name_lower):
+            if isinstance(ind_name_lower, str) and (
+                is_registered_classifier(ind_name_lower)
+                or ind_name_lower in KNOWN_REGIME_COLUMNS
+            ):
                 continue
             suggestions = suggest_similar(str(ind_name_lower))
             msg = f"Unknown indicator '{ind_name}'. Run list_all() to see valid names."

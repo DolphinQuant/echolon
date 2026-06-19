@@ -17,6 +17,21 @@ from echolon.indicators.protocols import (
 )
 
 
+# Canonical regime/session-classifier *column* names that echolon knows
+# statically. The classifier IMPLEMENTATIONS are host-registered at runtime via
+# ``register_regime_classifier`` (and are therefore ABSENT in a bare process —
+# e.g. the stdio MCP validator), but the column NAMES are stable echolon
+# vocabulary. Validators consult this set so they agree with the engine even
+# when the runtime registry is empty: otherwise a correctly-declared
+# ``market_regime`` is rejected as a false-positive "unknown indicator"
+# (IND-004) in the MCP validator process. (component_smoke._SYSTEM_INDICATORS is
+# a superset that also lists the always-available temporal columns; this set is
+# only the must-declare-when-used classifier columns.)
+KNOWN_REGIME_COLUMNS = frozenset({
+    "market_regime", "session_phase", "session_phase_agg",
+})
+
+
 _LOCK = threading.RLock()
 _CLASSIFIERS: Dict[str, RegimeClassifier] = {}
 _OPTIMIZERS: Dict[str, RegimeClassifierOptimizer] = {}
