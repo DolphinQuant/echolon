@@ -306,6 +306,28 @@ ERROR_CATALOG: dict[str, dict] = {
             "optuna_search_space so on-demand replay can reproduce the vector."
         ),
     },
+    "PRM-006": {
+        "class": ParameterError,
+        "what": "Parameter read via self.params['X'] but absent from DEFAULT_PARAMS",
+        "why": (
+            "A component reads self.params['<name>'] for a key that DEFAULT_PARAMS "
+            "(strategy_params.py) does not declare — a guaranteed KeyError at "
+            "bar-time, minutes into the backtest. Common cause: an EXPLOITATION "
+            "value-tune regenerated the params file with only the tuned subset and "
+            "dropped a fixed param the code still reads. Surfaced by "
+            "validate_parameter_access — the self.params[...] reads are AST-scanned "
+            "(all code paths); the declared key set is loaded at runtime from "
+            "DEFAULT_PARAMS (which is composed dynamically, so it can't be parsed "
+            "statically)."
+        ),
+        "fix_template": (
+            "Declare the param in strategy_params.py (or carry it forward in the "
+            "value-tune), or remove its read:\n"
+            "  param: {param}\n"
+            "  file:  {file}\n"
+            "  line:  {line}"
+        ),
+    },
     "DAT-001": {
         "class": DataError,
         "what": "Required OHLCV file not found",

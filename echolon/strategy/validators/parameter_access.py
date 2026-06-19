@@ -42,6 +42,32 @@ _COMPONENT_FILES = ("entry.py", "exit.py", "risk.py", "sizer.py")
 _STRUCTURAL_CONSTANT_ALLOWLIST: Set = {-1, 0, 1, -1.0, 0.0, 1.0}
 
 
+def _load_declared_param_keys(strategy_dir: Path) -> "set[str] | None":
+    """Union of all DEFAULT_PARAMS section keys, loaded at RUNTIME.
+
+    DEFAULT_PARAMS is composed by ``framework.compose_default_strategy()`` plus
+    cross-section copies (e.g. ``DEFAULT_PARAMS['sizer_params']['atr_period'] =
+    DEFAULT_PARAMS['exit_params']['atr_period']``), so it cannot be parsed
+    statically — we execute strategy_params.py via the same StrategyLoader the
+    backtest/smoke use. Returns ``None`` if it can't be loaded, so the PRM-006
+    check no-ops (no false positive, no crash) — that's PRM-002 territory.
+    """
+    try:
+        from echolon.strategy.loader import StrategyLoader
+
+        sp = StrategyLoader(strategy_dir).load_module("strategy_params")
+        default_params = getattr(sp, "DEFAULT_PARAMS", None)
+        if not isinstance(default_params, dict):
+            return None
+        keys: Set = set()
+        for section in default_params.values():
+            if isinstance(section, dict):
+                keys.update(str(k) for k in section.keys())
+        return keys
+    except Exception:  # noqa: BLE001 — PRM-002 territory; skip the completeness check
+        return None
+
+
 class _ParameterAccessVisitor(ast.NodeVisitor):
     """Walks a single component file, accumulating findings.
 
@@ -50,9 +76,11 @@ class _ParameterAccessVisitor(ast.NodeVisitor):
     literals seen inside those contexts are silently ignored.
     """
 
-    def __init__(self, file_path: Path, report: Report) -> None:
+    def __init__(self, file_path: Path, report: Report, declared_params=None) -> None:
         self.file_path = file_path
         self.report = report
+        # Union of DEFAULT_PARAMS keys (or None → skip the PRM-006 check).
+        self.declared_params = declared_params
         # Counter > 0 means we're inside a position where numeric literals
         # are not threshold-like (range args, subscripts, call args, defaults).
         self._allowlist_depth = 0
@@ -69,9 +97,45 @@ class _ParameterAccessVisitor(ast.NodeVisitor):
     # ----- allowlist contexts ---------------------------------------------
 
     def visit_Subscript(self, node: ast.Subscript) -> None:
+        # PRM-006: self.params['<missing>'] is a guaranteed bar-time KeyError.
+        self._check_self_params_subscript(node)
         # Both the value (expression being subscripted) and the slice are
         # structural access — any numeric literal inside is allowed.
         self._descend_allowlisted(node)
+
+    def _check_self_params_subscript(self, node: ast.Subscript) -> None:
+        """Flag ``self.params['<const>']`` whose key is absent from
+        DEFAULT_PARAMS (PRM-006). No-op when the declared set is unavailable
+        (``declared_params is None``) or the key is not a string constant (can't
+        resolve statically — never false-positive)."""
+        if self.declared_params is None:
+            return
+        value = node.value
+        if not (
+            isinstance(value, ast.Attribute)
+            and value.attr == "params"
+            and isinstance(value.value, ast.Name)
+            and value.value.id == "self"
+        ):
+            return
+        key_node = node.slice
+        if not (isinstance(key_node, ast.Constant) and isinstance(key_node.value, str)):
+            return
+        key = key_node.value
+        if key not in self.declared_params:
+            self.report.add(Finding(
+                code="PRM-006",
+                message=(
+                    f"Parameter {key!r} is read via self.params[{key!r}] in "
+                    f"{self.file_path.name} but is absent from DEFAULT_PARAMS — "
+                    f"a KeyError at bar-time. Declare it in strategy_params.py."
+                ),
+                context={
+                    "file": str(self.file_path),
+                    "line": node.lineno,
+                    "param": key,
+                },
+            ))
 
     def visit_keyword(self, node: ast.keyword) -> None:
         # keyword-argument value: allowed.
@@ -212,9 +276,10 @@ class _ParameterAccessVisitor(ast.NodeVisitor):
 
 
 def validate_parameter_access(strategy_dir: "Path | str") -> Report:
-    """Return a Report flagging hardcoded threshold literals (PRM-003)
-    and ``self.params.get()`` calls (PRM-004) across the 4 component
-    files in ``strategy_dir``.
+    """Return a Report flagging hardcoded threshold literals (PRM-003),
+    ``self.params.get()`` calls (PRM-004), and ``self.params['X']`` reads of a
+    key absent from DEFAULT_PARAMS (PRM-006) across the 4 component files in
+    ``strategy_dir``.
 
     PRM-003 findings carry ``context["severity"] = "warning"`` — callers
     decide whether to treat them as blocking. The default posture is
@@ -223,11 +288,20 @@ def validate_parameter_access(strategy_dir: "Path | str") -> Report:
     PRM-004 has no severity flag; it is always a bug per framework
     contract (parameters must be accessed via ``self.<attr>``).
 
+    PRM-006 is a hard finding: a missing param is a guaranteed bar-time
+    KeyError. The declared key set is loaded once (runtime) via StrategyLoader
+    because DEFAULT_PARAMS is composed dynamically; if it can't be loaded the
+    PRM-006 check is skipped (no false positive).
+
     Silently skips component files that don't exist — file-presence is
     preflight's responsibility (STR-001), not ours.
     """
     strategy_dir = Path(strategy_dir)
     report = Report()
+
+    # Loaded once for the whole strategy (union of all sections). None → the
+    # PRM-006 completeness check is skipped (e.g. malformed strategy_params).
+    declared_params = _load_declared_param_keys(strategy_dir)
 
     for file_name in _COMPONENT_FILES:
         file_path = strategy_dir / file_name
@@ -237,7 +311,7 @@ def validate_parameter_access(strategy_dir: "Path | str") -> Report:
             tree = ast.parse(file_path.read_text(encoding="utf-8"))
         except SyntaxError:
             continue
-        visitor = _ParameterAccessVisitor(file_path, report)
+        visitor = _ParameterAccessVisitor(file_path, report, declared_params)
         visitor.visit(tree)
 
     return report
