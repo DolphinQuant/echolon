@@ -328,6 +328,42 @@ ERROR_CATALOG: dict[str, dict] = {
             "  line:  {line}"
         ),
     },
+    "PRM-007": {
+        "class": ParameterError,
+        "what": "Search range drift between params_to_optimize.json and strategy_params.py",
+        "why": (
+            "A calculation/usage parameter's [min, max] search range in "
+            "params_to_optimize.json differs from the matching trial.suggest_int/"
+            "float range in strategy_params.py's optuna_search_space. Both are "
+            "consumed: the .json range feeds the indicator-calc + Optuna search; "
+            "optuna_search_space feeds the backtest. A value-tune that edits one "
+            "but not the other makes the indicator-calc search a different range "
+            "than the backtest optimizes — a silent inconsistency."
+        ),
+        "fix_template": (
+            "Make the two ranges identical (edit .py and .json in sync):\n"
+            "  param:      {param}\n"
+            "  json_range: {json_range}\n"
+            "  py_range:   {py_range}"
+        ),
+    },
+    "PRM-008": {
+        "class": ParameterError,
+        "what": "Param declared in params_to_optimize.json absent from optuna_search_space",
+        "why": (
+            "A parameter declared in params_to_optimize.json (calculation/usage/"
+            "fixed) has no entry in strategy_params.py's optuna_search_space — the "
+            "two are out of sync, typically because a value-tune regenerated or "
+            "edited strategy_params.py and dropped the param while the .json still "
+            "declares it."
+        ),
+        "fix_template": (
+            "Add the param to optuna_search_space (or remove it from "
+            "params_to_optimize.json if intentionally gone):\n"
+            "  param:   {param}\n"
+            "  section: {section}.{sub}"
+        ),
+    },
     "DAT-001": {
         "class": DataError,
         "what": "Required OHLCV file not found",

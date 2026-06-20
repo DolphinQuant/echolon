@@ -665,6 +665,9 @@ def build_server() -> FastMCP:
         from echolon.strategy.validators.parameter_access import (
             validate_parameter_access as _vpa,
         )
+        from echolon.strategy.validators.params_sync import (
+            validate_params_sync as _vps,
+        )
         from echolon.native.validation.indicator_validator import (
             validate_indicator_names as _vin,
         )
@@ -685,6 +688,7 @@ def build_server() -> FastMCP:
             ("validate_component_integration", _vci),
             ("validate_component_logging", _vcl),
             ("validate_parameter_access", _vpa),
+            ("validate_params_sync", _vps),
         ):
             sub = impl(strategy_dir=strategy_dir).to_dict()
             sub_findings = sub.get("findings", [])

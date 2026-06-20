@@ -15,6 +15,8 @@ showing the typical LLM-author mistake. `EchelonError.docs_url` points here.
 - [PRM-004](PRM-004.md): Defensive `.get()` on self.params
 - [PRM-005](PRM-005.md): Optimized trial parameters could not be resolved
 - [PRM-006](PRM-006.md): Parameter read via self.params['X'] but absent from DEFAULT_PARAMS
+- [PRM-007](PRM-007.md): Search range drift between params_to_optimize.json and strategy_params.py
+- [PRM-008](PRM-008.md): Param in params_to_optimize.json absent from optuna_search_space
 
 ## Component signal validation (VAL-*)
 - [VAL-001](VAL-001.md): Missing required field
