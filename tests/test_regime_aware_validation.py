@@ -134,3 +134,27 @@ def test_validate_strategy_full_catches_undeclared_regime_column(tmp_path):
     result = fn(strategy_dir=str(dst))
     assert result["status"] == "INVALID"
     assert any(f["code"] == "IND-002" for f in result["findings"]), result["findings"]
+
+
+# --- A6: validate_strategy_full composes the indicator-LIST catalog check ----
+
+def test_validate_strategy_full_runs_indicator_list():
+    fn = _get_tool_fn("validate_strategy_full")
+    result = fn(strategy_dir=str(_FIXTURE_DIR))
+    validators = {inv["validator"] for inv in result["invocations"]}
+    assert "validate_indicator_list" in validators
+    # baseline fixture's flat-dict list is clean -> still VALID
+    assert result["status"] == "VALID", result["findings"]
+
+
+def test_validate_strategy_full_catches_section_keyed_indicator_list(tmp_path):
+    dst = tmp_path / "strat"
+    shutil.copytree(_FIXTURE_DIR, dst, ignore=shutil.ignore_patterns("__pycache__"))
+    il = dst / "strategy_indicator_list.json"
+    # rewrite the flat-dict list as a legacy section-keyed payload (G3 bait shape)
+    il.write_text(json.dumps({"indicators_with_lookback": {"rsi": [14, 28]}}), encoding="utf-8")
+
+    fn = _get_tool_fn("validate_strategy_full")
+    result = fn(strategy_dir=str(dst))
+    assert result["status"] == "INVALID"
+    assert any(f["code"] == "IND-008" for f in result["findings"]), result["findings"]

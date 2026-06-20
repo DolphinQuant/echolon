@@ -702,6 +702,32 @@ def build_server() -> FastMCP:
         invocations.append({"validator": "validate_indicator_names", "count": len(ind_findings)})
         findings.extend(ind_findings)
 
+        # A6 (RCA 2026-06-18): compose the indicator-LIST catalog check so "full" implies
+        # the indicator-list contract — legacy section-keys (IND-008) + unknown indicators
+        # (IND-004) — not just the accessor scan (IND-002). Static: load
+        # strategy_indicator_list.json + catalog.validate (regime columns accepted via
+        # A1's KNOWN_REGIME_COLUMNS). Absent file → skip (mirrors validate_params_sync;
+        # some paradigms have no list at this stage). NOTE: validate_component_smoke
+        # (IND-007) is deliberately NOT composed here — it is advisory/zero-FP-by-design
+        # and swallows inconclusive runs (see its docstring: "call it explicitly as a
+        # pre-flight"); the static IND-002 + this catalog check cover the list contract.
+        _ind_list_path = Path(strategy_dir) / "strategy_indicator_list.json"
+        if _ind_list_path.exists():
+            import json as _json_il
+            try:
+                _il_data = _json_il.loads(_ind_list_path.read_text())
+                _il_errors = [
+                    {"code": c.get("code"), "message": c.get("message"),
+                     "fix": c.get("suggestion"), "field": c.get("field")}
+                    for c in _catalog.validate(_il_data)
+                ]
+            except _json_il.JSONDecodeError as e:
+                _il_errors = [{"code": "IND-000",
+                               "message": f"strategy_indicator_list.json parse error: {e}",
+                               "fix": "Fix the JSON syntax."}]
+            invocations.append({"validator": "validate_indicator_list", "count": len(_il_errors)})
+            findings.extend(_il_errors)
+
         return {
             "status": "VALID" if not findings else "INVALID",
             "any_errors": bool(findings),
