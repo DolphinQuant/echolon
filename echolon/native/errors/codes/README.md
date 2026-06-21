@@ -50,6 +50,7 @@ showing the typical LLM-author mistake. `EchelonError.docs_url` points here.
 
 ## Walk-Forward Analysis (WFA-*)
 - [WFA-001](WFA-001.md): Zero valid trials across all windows
+- [WFA-002](WFA-002.md): Incomplete WFA — some windows produced no robust trial
 
 ## Live (LIV-*)
 - [LIV-001](LIV-001.md): Broker unavailable

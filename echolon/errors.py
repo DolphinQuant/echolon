@@ -665,6 +665,26 @@ ERROR_CATALOG: dict[str, dict] = {
             "  per_window_artifacts: {suggestion}"
         ),
     },
+    "WFA-002": {
+        "class": EchelonError,
+        "what": "WFA pipeline completed only some of its walk-forward windows",
+        "why": (
+            "Some — but not all — walk-forward windows produced a robust "
+            "trial; the remaining windows found zero surviving trials and were "
+            "skipped. Proceeding would run the final full-period backtest with "
+            "the LAST-COMPLETED window's parameters silently reused over the "
+            "whole history, and score the DRS gates on the shrunken set of "
+            "completed windows — a plausible-but-wrong verdict. An incomplete "
+            "WFA cannot be scored. The failed windows carry their structured "
+            "root cause in per-window trial_failure_summary.json."
+        ),
+        "fix_template": (
+            "Inspect the failed windows' trial_failure_summary.json artifacts:\n"
+            "  windows_completed:    {n_completed} / {n_total}\n"
+            "  failed_windows:       {failed_windows}\n"
+            "  per_window_artifacts: {suggestion}"
+        ),
+    },
     "LIV-003": {
         "class": EchelonError,
         "what": "QMT async callback delivered an error",

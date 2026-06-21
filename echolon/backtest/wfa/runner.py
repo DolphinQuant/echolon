@@ -37,6 +37,56 @@ from .drs_calculator import compute_drs, DRSConfig
 logger = logging.getLogger(__name__)
 
 
+def _assert_wfa_complete(all_windows, wfa_dir):
+    """Hard-signal an INCOMPLETE WFA (B3, RCA 2026-06-21).
+
+    A window whose ``TrialSelector`` finds no robust trial is skipped (Step 3
+    ``continue``) and never overwrites ``selected_robust_trial.json``. If the
+    runner then proceeded, Step 7's final full-period backtest would silently
+    reuse the LAST-COMPLETED window's stale params over the whole history, and
+    the DRS gates would score on the shrunken set of completed windows — a
+    plausible-but-wrong verdict (No-Misleading-Fallback Policy). Refuse instead:
+
+    - 0 windows completed   -> WFA-001 (unchanged behaviour)
+    - some but not all      -> WFA-002 (the previously-silent middle case)
+    - all windows completed -> return the completed-window list
+
+    A window is "completed" iff it produced ``oos_results`` (a robust trial was
+    selected and its OOS backtest ran).
+    """
+    completed = [w for w in all_windows if w.oos_results is not None]
+    n_completed = len(completed)
+    n_total = len(all_windows)
+
+    if n_completed == 0:
+        # Every window's trial_failure_summary.json already carries the
+        # structured root cause; WFA-001 stops the pipeline and points at them.
+        logger.error("WFA: No windows completed successfully — raising WFA-001")
+        raise_error(
+            "WFA-001",
+            n_windows=n_total,
+            reason="All WFA windows produced zero valid trials",
+            suggestion=f"See per-window trial_failure_summary.json under {wfa_dir}",
+        )
+
+    if n_completed < n_total:
+        failed_windows = [w.window_id for w in all_windows if w.oos_results is None]
+        logger.error(
+            f"WFA: incomplete — only {n_completed}/{n_total} windows produced a "
+            f"robust trial (no survivors in windows {failed_windows}); refusing to "
+            f"score a DRS from stale last-completed-window params — raising WFA-002"
+        )
+        raise_error(
+            "WFA-002",
+            n_completed=n_completed,
+            n_total=n_total,
+            failed_windows=failed_windows,
+            suggestion=f"See per-window trial_failure_summary.json under {wfa_dir}",
+        )
+
+    return completed
+
+
 class WFARunner:
     """
     Orchestrates walk-forward analysis across multiple windows.
@@ -315,21 +365,11 @@ class WFARunner:
             gc.collect()
 
         # --- Step 6: Compute WFA metrics from per-window OOS results ---
-        completed_windows = [w for w in self.config.windows if w.oos_results is not None]
-
-        if not completed_windows:
-            # Every window's ``trial_failure_summary.json`` already carries
-            # the structured root cause; WFA-001 stops the pipeline and
-            # points the user/agent at those breadcrumbs.
-            logger.error("WFA: No windows completed successfully — raising WFA-001")
-            raise_error(
-                "WFA-001",
-                n_windows=len(self.config.windows),
-                reason="All WFA windows produced zero valid trials",
-                suggestion=(
-                    f"See per-window trial_failure_summary.json under {self.wfa_dir}"
-                ),
-            )
+        # B3 (RCA 2026-06-21): an INCOMPLETE WFA (some windows produced no robust
+        # trial) must hard-fail, not silently proceed — Step 7's final backtest would
+        # otherwise reuse the last-completed window's STALE params over the full period
+        # and score the DRS gates on a shrunken window set (No-Misleading-Fallback).
+        completed_windows = _assert_wfa_complete(self.config.windows, self.wfa_dir)
 
         wfa_analyzer = WalkForwardAnalyzer(completed_windows)
         wfa_summary = wfa_analyzer.compute_summary()
