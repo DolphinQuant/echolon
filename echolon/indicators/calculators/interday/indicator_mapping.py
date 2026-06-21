@@ -44,6 +44,10 @@ PER_CONTRACT_TALIB_MAP = {
     "ROCR100": {"function": "rocr100", "file": INDICATOR_FILES["talib_indicator"]},
     "RSI": {"function": "rsi", "file": INDICATOR_FILES["talib_indicator"]},
     "TRIX": {"function": "trix", "file": INDICATOR_FILES["talib_indicator"]},
+    # Scale-invariant (rolling z-score) volume indicators — pre-computed
+    # normalization of OBV/AD; have a ``period`` lookback. See ta_lib.obv_zscore.
+    "OBV_ZSCORE": {"function": "obv_zscore", "file": INDICATOR_FILES["talib_indicator"]},
+    "AD_ZSCORE": {"function": "ad_zscore", "file": INDICATOR_FILES["talib_indicator"]},
     "WILLR": {"function": "willr", "file": INDICATOR_FILES["talib_indicator"]},
     "DEMA": {"function": "dema", "file": INDICATOR_FILES["talib_indicator"]},
     "EMA": {"function": "ema", "file": INDICATOR_FILES["talib_indicator"]},

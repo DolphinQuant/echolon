@@ -21,6 +21,8 @@
     "ROCR100",
     "RSI",
     "TRIX",
+    "OBV_ZSCORE",
+    "AD_ZSCORE",
     "WILLR",
     "DEMA",
     "EMA",

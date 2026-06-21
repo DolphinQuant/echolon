@@ -511,6 +511,54 @@ def obv(df: pd.DataFrame, indicator_name: str = None) -> np.ndarray:
     return obv_values
 
 
+# Scale-invariant volume indicators (rolling z-score of a cumulative line).
+# These HAVE a lookback (``period``) — they are the pre-computed, per-contract
+# normalization of obv/ad. Prefer them over computing a rolling z-score at
+# runtime via ``get_indicator_series('obv', N)``: the runtime form raises
+# IndexError on a backtest window shorter than N (e.g. a one-year WFA OOS slice)
+# and silently reads future bars (lookahead) on longer windows. Computed per
+# contract, so the window never spans a contract rollover.
+def _rolling_zscore(series: pd.Series, period: int) -> np.ndarray:
+    """Rolling z-score of a series: (x - rollmean) / rollstd.
+
+    Warmup (first ``period - 1`` bars, insufficient history) -> NaN, the honest
+    "not yet computable" marker (matches the TA-Lib lookback convention; the
+    No-Misleading-Fallback policy forbids a fabricated 0 here). A degenerate full
+    window with zero dispersion (std == 0) -> 0.0 (value exactly at its mean).
+    """
+    mean = series.rolling(window=period).mean()
+    std = series.rolling(window=period).std()
+    zscore = (series - mean) / std
+    # std == 0 -> 0.0 (the 0/0 above is NaN); warmup (std is NaN) stays NaN.
+    return zscore.where(std != 0, 0.0).to_numpy()
+
+
+def obv_zscore(df: pd.DataFrame, period: int = 20, indicator_name: str = None) -> np.ndarray:
+    """Scale-invariant On Balance Volume — rolling z-score of OBV.
+
+    OBV is cumulative and scale-dependent, so a raw threshold is not portable
+    across contracts/price levels; the rolling z-score is. See the section
+    comment above for why this is preferred over a runtime rolling computation.
+    """
+    obv_series = pd.Series(
+        talib.OBV(df['close'].values, df['volume'].values), index=df.index,
+    )
+    return _rolling_zscore(obv_series, period)
+
+
+def ad_zscore(df: pd.DataFrame, period: int = 20, indicator_name: str = None) -> np.ndarray:
+    """Scale-invariant Chaikin A/D Line — rolling z-score of AD.
+
+    Same rationale as :func:`obv_zscore`: AD is cumulative/scale-dependent, so
+    the rolling z-score gives a portable, thresholdable signal. Per contract.
+    """
+    ad_series = pd.Series(
+        talib.AD(df['high'].values, df['low'].values,
+                 df['close'].values, df['volume'].values), index=df.index,
+    )
+    return _rolling_zscore(ad_series, period)
+
+
 # Pattern Recognition Functions (without lookback)
 def cdl2crows(df: pd.DataFrame, indicator_name: str = None) -> np.ndarray:
     """Two Crows"""
