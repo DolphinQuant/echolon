@@ -348,6 +348,7 @@ class EngineFactory:
         client: Any = None,
         platform: Optional[str] = None,
         market_data_dir: Optional[Path] = None,
+        slot_id: Optional[str] = None,
     ) -> 'ITradingEngine':
         """
         Create deployment trading engine.
@@ -358,6 +359,9 @@ class EngineFactory:
             client: Platform-specific client (e.g., MiniQMTClient)
             platform: Platform name. Only ``'miniqmt'`` is implemented today;
                 any other value raises ``ValueError``. Defaults to ``'miniqmt'``.
+            slot_id: Deployment slot identifier; forwarded to the engine so that
+                per-bar decision logs are written under ``slots/{slot_id}/``.
+                Defaults to ``ctx.instrument_code`` when absent.
 
         Returns:
             Configured deploy engine
@@ -384,7 +388,8 @@ class EngineFactory:
                 ctx=ctx,
                 market_adapter=market_adapter,
                 frequency_context=frequency_context,
-                client=client
+                client=client,
+                slot_id=slot_id,
             )
         # Only "miniqmt" is implemented today; other broker platforms
         # (e.g. ccxt for crypto live trading) are not yet wired.

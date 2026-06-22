@@ -719,7 +719,8 @@ class QMTEngine(ITradingEngine):
         ctx: TradingContext,
         market_adapter: IMarketAdapter,
         frequency_context: IFrequencyContext,
-        client: 'MiniQMTClient' = None
+        client: 'MiniQMTClient' = None,
+        slot_id: Optional[str] = None,
     ):
         """
         Initialize QMT engine.
@@ -729,12 +730,15 @@ class QMTEngine(ITradingEngine):
             market_adapter: Market-specific adapter
             frequency_context: Frequency context for time scaling
             client: MiniQMT client for API calls
+            slot_id: Deployment slot identifier; used as the log subdirectory name.
+                Defaults to ``instrument_code`` when absent.
         """
         self._ctx = ctx
         self._market_adapter = market_adapter
         self._frequency_context = frequency_context
         self._client = client
         self._symbol = ctx.instrument_code
+        self._slot_id = slot_id or self._symbol  # slot-unique log key; defaults to instrument_code
 
         # Create component instances
         self._market_data = QMTMarketData(symbol=self._symbol)
@@ -819,14 +823,17 @@ class QMTEngine(ITradingEngine):
 
         Creates a CSVStrategyLogger on first call with append_mode=True
         for live/deployment trading (accumulates logs across sessions).
+
+        Logs are written to ``workspace/deploy/slots/{slot_id}/qmt_{symbol}.csv``
+        so each deployment slot gets its own isolated log directory.
         """
         if self._strategy_logger is None:
             output_dir = str(
-                Path.cwd() / "workspace" / "deploy" / "logs"
+                Path.cwd() / "workspace" / "deploy" / "slots" / self._slot_id
             )
             self._strategy_logger = CSVStrategyLogger(
                 output_dir=output_dir,
-                strategy_name=f"qmt_{self._symbol}",
+                strategy_name=f"qmt_{self._symbol}",  # filename: qmt_{instrument_code}.csv
                 enabled=True,
                 append_mode=True,
             )
