@@ -971,6 +971,38 @@ def _compute_indicators_for_contract(
                 else series_or_array
             )
             results[classifier.name] = arr
+
+            # Optional companion: a per-bar confidence column for classifiers
+            # that expose calibrated posteriors. A classifier OPTS IN via an
+            # ``emits_confidence`` attribute (True for model-native posteriors
+            # such as HMM/GMM; a rule-based score-softmax MUST stay False — an
+            # uncalibrated proxy is not honest confidence and emitting it would
+            # violate the No-Misleading-Fallback policy).
+            #
+            # The label column above is left UNCHANGED. Confidence is the
+            # posterior of the ASSIGNED label (``proba[label]`` per bar), NOT
+            # ``max(proba)``: for a Viterbi labeller (HMM) the most-likely-
+            # sequence label can differ from the per-bar argmax of the
+            # forward/smoothed posterior, so ``proba[label]`` is the only
+            # label-consistent confidence (``max(proba)`` could name a different
+            # regime than the stored label → a misleading value).
+            #
+            # Call-order contract: ``emits_confidence`` / ``fit_classify_proba``
+            # are evaluated AFTER ``fit_classify`` on the SAME ``df`` +
+            # ``merged_params``, so a stateful host wrapper (e.g. a
+            # per-instrument pick dispatcher) can report the EFFECTIVE
+            # classifier that actually produced the label and gate the column
+            # off when it fell back to a non-confidence method.
+            if getattr(classifier, "emits_confidence", False):
+                proba_df = classifier.fit_classify_proba(df, merged_params)
+                label_map = classifier.label_map
+                col_pos = {col: j for j, col in enumerate(proba_df.columns)}
+                proba_values = proba_df.values
+                label_positions = np.array(
+                    [col_pos[label_map[int(v)]] for v in arr]
+                )
+                confidence = proba_values[np.arange(len(arr)), label_positions]
+                results[f"{classifier.name}_confidence"] = confidence
             continue
 
         function = _resolve_function(indicator_name, frequency=frequency)
