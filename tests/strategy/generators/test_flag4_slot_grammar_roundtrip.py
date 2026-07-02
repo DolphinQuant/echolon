@@ -80,8 +80,7 @@ def test_codegen_emits_component_prefixed_optuna_name(tmp_path):
     """
     py_path = _generate_params_py(tmp_path)
     code = py_path.read_text(encoding="utf-8")
-    assert f'trial.suggest_int("{OPTUNA_NAME}"' in code or \
-           f'trial.suggest_int("{OPTUNA_NAME}",'.replace(',', ',') in code, \
+    assert f'trial.suggest_int("{OPTUNA_NAME}"' in code, \
         f"Expected Optuna name '{OPTUNA_NAME}' in generated code. Snippet:\n{code}"
     # Dict key must be the raw slot name (no prefix)
     assert f'entry_params["{DICT_KEY}"]' in code, \

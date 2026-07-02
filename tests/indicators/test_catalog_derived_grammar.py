@@ -14,14 +14,14 @@ from echolon.indicators.registry import register_regime_classifier, KNOWN_REGIME
 # ---------------------------------------------------------------------------
 
 def test_fit_suffix_regime_column_passes():
-    """market_regime__fit20201231 is a valid vintage-suffixed regime column."""
-    errors = catalog.validate({"market_regime__fit20201231": {}})
+    """market_regime__fit20240101 is a valid vintage-suffixed regime column."""
+    errors = catalog.validate({"market_regime__fit20240101": {}})
     assert errors == [], f"Expected no errors, got: {errors}"
 
 
 def test_fit_suffix_session_phase_passes():
-    """session_phase__fit20210101 is a valid vintage-suffixed session column."""
-    errors = catalog.validate({"session_phase__fit20210101": {}})
+    """session_phase__fit20240630 is a valid vintage-suffixed session column."""
+    errors = catalog.validate({"session_phase__fit20240630": {}})
     assert errors == [], f"Expected no errors, got: {errors}"
 
 
@@ -53,8 +53,8 @@ def test_fit_suffix_invalid_token_fails():
 
 
 def test_fit_suffix_base_not_regime_fails():
-    """rsi__fit20201231 must fail — rsi is not a regime column."""
-    errors = catalog.validate({"rsi__fit20201231": {}})
+    """rsi__fit20240101 must fail — rsi is not a regime column."""
+    errors = catalog.validate({"rsi__fit20240101": {}})
     assert len(errors) >= 1, "Expected IND-004 because rsi is not a regime column"
 
 

@@ -1,6 +1,6 @@
 """Item 2 TDD: IND-002 must not fire for vintage-suffixed regime columns.
 
-A strategy that declares ``market_regime__fit20201231`` in its indicator list
+A strategy that declares ``market_regime__fit20240101`` in its indicator list
 and uses ``self.get_market_regime()`` in entry.py must NOT receive an IND-002
 "regime column undeclared" error, because the fit-suffix base ``market_regime``
 IS in KNOWN_REGIME_COLUMNS.
@@ -17,9 +17,9 @@ from echolon.native.validation.indicator_validator import validate_indicator_nam
 
 
 def test_ind002_no_interference_for_fit_suffix_regime_column(tmp_path: Path):
-    """market_regime__fit20201231 declared → no IND-002 for get_market_regime()."""
+    """market_regime__fit20240101 declared → no IND-002 for get_market_regime()."""
     # Write the indicator list with a vintage-suffixed regime column
-    indicator_list = {"market_regime__fit20201231": {}}
+    indicator_list = {"market_regime__fit20240101": {}}
     (tmp_path / "strategy_indicator_list.json").write_text(
         json.dumps(indicator_list), encoding="utf-8"
     )
