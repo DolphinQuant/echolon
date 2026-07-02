@@ -20,6 +20,26 @@ versions may carry breaking changes — they are clearly flagged below.
   Python identifier (e.g. names with dashes or spaces). Previously such
   columns would silently fail at first backtrader attribute access.
 
+- ``OptimizationMetrics.daily_returns: Optional[Dict[str, float]]`` — per-trial
+  daily returns carried from the backtest engine's ``timereturn`` analyzer through
+  the full pipeline: ``_extract_metrics`` → ``OptimizationMetrics`` → IPC dict
+  (ProcessPool-safe via standard pickle) → ``OptunaOptimizer._per_trial_returns``.
+  ``save_study_results`` writes ``per_trial_returns.json`` alongside the existing
+  ``optimization_trials.csv``; shape ``{trial_number: {date: return}}``, successful
+  trials only. Failed (``TrialState.FAIL``) trials are excluded entirely; the
+  ``skipped_trials`` list names COMPLETED trials whose returns data was absent,
+  so their omission is honest rather than silent.
+  Size note: 50 trials × ~4k days ≈ few MB (FLAG-2).
+
+- ``TrialSelector`` gains optional ``selection_score_fn: Callable[[pd.Series,
+  Mapping[str, Any]], float]`` and ``per_trial_returns: Optional[Mapping]``.
+  Default ``None`` → byte-identical built-in ``risk_adjusted_return.idxmax()``
+  ranking (pinned by test). When provided, the callable's score replaces the
+  built-in ranking within the winning cluster only; clustering and drawdown
+  threshold are unchanged. The second argument to the callable is
+  ``per_trial_returns`` (or ``{}``) so callers can implement OOS scoring
+  without coupling the mechanism to any specific policy (FLAG-1).
+
 ### Fixed
 
 - `__version__` in `echolon/__init__.py` updated from `0.1.3` to `0.1.9`

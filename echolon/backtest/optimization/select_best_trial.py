@@ -32,7 +32,7 @@ import numpy as np
 import json
 import logging
 from pathlib import Path
-from typing import Dict, Any, Optional, Callable
+from typing import Dict, Any, Optional, Callable, Mapping
 from sklearn.cluster import KMeans
 from sklearn.preprocessing import StandardScaler
 
@@ -111,6 +111,8 @@ class TrialSelector:
         param_classifications: Optional[Dict[str, Any]] = None,
         strategy_code_dir: Optional[Path] = None,
         search_space_fn: Optional[Callable[..., Dict[str, Any]]] = None,
+        selection_score_fn: Optional[Callable[[pd.Series, Mapping[str, Any]], float]] = None,
+        per_trial_returns: Optional[Mapping] = None,
     ):
         self.trial_data_path = trial_data_path
         self.output_dir = Path(output_dir)
@@ -124,6 +126,15 @@ class TrialSelector:
         # component dicts, replayed via FixedTrial — so consumers can bypass
         # the lossy strip-once flat-name mapping entirely.
         self.search_space_fn = search_space_fn
+        # FLAG-1: optional caller-supplied scoring function.
+        # Signature: (trial_row: pd.Series, context: Mapping[str, Any]) -> float
+        # When None, the built-in risk_adjusted_return ranking is used (byte-identical default).
+        # When provided, replaces idxmax() within the winning cluster only.
+        # The OOS selection policy itself lives in the caller — this mechanism carries no policy.
+        self.selection_score_fn = selection_score_fn
+        # Context mapping passed as second arg to selection_score_fn.
+        # Typically per_trial_returns from FLAG-2: {trial_number: {date: ret}}.
+        self.per_trial_returns = per_trial_returns
 
         # selected_robust_trial.json goes to strategy_code_dir by default
         # (stays with strategy code for hypothesis testing)
@@ -446,9 +457,20 @@ class TrialSelector:
 
         # Select best individual trial from most robust cluster
         if not best_cluster_trials.empty:
-            best_trial_in_cluster = best_cluster_trials.loc[
-                best_cluster_trials['risk_adjusted_return'].idxmax()
-            ]
+            if self.selection_score_fn is not None:
+                # FLAG-1: caller-supplied scoring replaces built-in ranking.
+                # Context (per_trial_returns or empty dict) is passed as second arg.
+                context = self.per_trial_returns or {}
+                scores = best_cluster_trials.apply(
+                    lambda row: self.selection_score_fn(row, context), axis=1
+                )
+                best_trial_in_cluster = best_cluster_trials.loc[scores.idxmax()]
+                selection_reason = 'Custom score from most robust cluster'
+            else:
+                best_trial_in_cluster = best_cluster_trials.loc[
+                    best_cluster_trials['risk_adjusted_return'].idxmax()
+                ]
+                selection_reason = 'Highest risk-adjusted return from most robust cluster'
 
             trial_number = int(best_trial_in_cluster['number'])
 
@@ -474,7 +496,7 @@ class TrialSelector:
 
             selected_trial_info = {
                 'trial_number': trial_number,
-                'selection_reason': 'Highest risk-adjusted return from most robust cluster',
+                'selection_reason': selection_reason,
                 'cluster_id': int(best_cluster),
                 'cluster_robustness_score': cluster_scores[best_cluster]['robustness_score'],
                 'parameter_stability_score': 1.0 / (1.0 + cluster_scores[best_cluster]['std_return']),

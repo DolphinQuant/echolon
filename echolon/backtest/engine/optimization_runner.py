@@ -94,6 +94,11 @@ class OptimizationMetrics:
     # per-study and renders a terminal summary + JSON artifact when
     # ``n_failed > 0``. See ``echolon.backtest.engine.failure``.
     failure: Optional['OptimizationFailure'] = None
+    # Per-trial daily returns: {date_str: return_float}.
+    # Populated when the backtest engine's 'timereturn' analyzer runs.
+    # None when the analyzer is absent or produced no data.
+    # Size note: ~4k days × 50 trials ≈ few MB across a full study.
+    daily_returns: Optional[Dict[str, float]] = None
 
     @classmethod
     def failed(cls, error_message: str) -> 'OptimizationMetrics':
@@ -417,12 +422,15 @@ class OptimizationRunner:
         if annual_return is None or np.isnan(annual_return) or np.isinf(annual_return):
             annual_return = -100.0
 
+        daily_returns: Optional[Dict[str, float]] = analyzers.get('daily_returns') or None
+
         return OptimizationMetrics(
             sharpe_ratio=float(sharpe_ratio),
             max_drawdown_pct=float(max_drawdown),
             annual_return_pct=float(annual_return),
             total_trades=results.total_trades or 0,
             success=True,
+            daily_returns=daily_returns,
         )
 
     @classmethod
@@ -476,5 +484,6 @@ def run_optimization_trial(
             'max_drawdown_pct': metrics.max_drawdown_pct,
             'annual_return_pct': metrics.annual_return_pct,
             'total_trades': metrics.total_trades,
+            'daily_returns': metrics.daily_returns,  # FLAG-2: per-trial returns (pickled across IPC)
         }
     }
