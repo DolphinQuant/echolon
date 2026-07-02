@@ -4,6 +4,8 @@ import json
 import re
 from pathlib import Path
 
+_FIT_BASE = re.compile(r'^(.+)__fit[0-9]{8}$')
+
 from echolon.errors import EchelonError, ERROR_CATALOG
 
 _GET_INDICATOR_PATTERN = re.compile(
@@ -58,10 +60,17 @@ def _get_declared_indicator_names(strategy_dir: Path) -> set[str]:
         name_lower = str(name).lower()
         if not isinstance(params, dict) or not params:
             declared.add(name_lower)
+            # Also expose the fit-suffix base so regime accessors pass IND-002
+            m = _FIT_BASE.match(name_lower)
+            if m:
+                declared.add(m.group(1))
             continue
         timeperiod = params.get("timeperiod")
         if timeperiod is None:
             declared.add(name_lower)
+            m = _FIT_BASE.match(name_lower)
+            if m:
+                declared.add(m.group(1))
             continue
         for period in expand_param(timeperiod):
             if isinstance(period, (int, float)):

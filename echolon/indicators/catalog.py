@@ -23,9 +23,16 @@ from __future__ import annotations
 import difflib
 import importlib
 import inspect
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
+
+# Derived-column grammar patterns used in validate() to bypass IND-004.
+# (a) Vintage-suffixed regime column: {base}__fit{YYYYMMDD}
+_RE_FIT_SUFFIX = re.compile(r'^(.+)__fit([0-9]{8})$')
+# (b) Windowed derived column: {base}_pctl_{N} or {base}_z_{N}
+_RE_WINDOWED_DERIVED = re.compile(r'^(.+)_(pctl|z)_(\d+)$')
 
 
 # Period-like parameter names — an indicator with one of these in its signature
@@ -311,6 +318,23 @@ def validate(flat_dict: dict) -> list[dict]:
                 or ind_name_lower in KNOWN_REGIME_COLUMNS
             ):
                 continue
+
+            # Grammar (a): {base}__fit{YYYYMMDD} — vintage-suffixed regime column
+            if isinstance(ind_name_lower, str):
+                m_fit = _RE_FIT_SUFFIX.match(ind_name_lower)
+                if m_fit:
+                    base_fit = m_fit.group(1)
+                    if base_fit in KNOWN_REGIME_COLUMNS or is_registered_classifier(base_fit):
+                        continue
+
+            # Grammar (b): {base}_pctl_{N} or {base}_z_{N} — windowed derived column
+            if isinstance(ind_name_lower, str):
+                m_win = _RE_WINDOWED_DERIVED.match(ind_name_lower)
+                if m_win:
+                    base_win = m_win.group(1)
+                    if base_win in _CATALOG:
+                        continue
+
             suggestions = suggest_similar(str(ind_name_lower))
             msg = f"Unknown indicator '{ind_name}'. Run list_all() to see valid names."
             if suggestions:
