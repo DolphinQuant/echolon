@@ -239,6 +239,9 @@ class OptunaOptimizer:
         # _objective; consumed at end of ``run()`` to render the terminal
         # block and write ``trial_failure_summary.json``.
         self._failure_groups: Dict[tuple, FailureGroup] = {}
+        # FLAG-2: collects {trial_number: {date: return}} for per_trial_returns.json.
+        # Reset at the start of each run() call (supports multi-window WFA on same instance).
+        self._per_trial_returns: Dict[int, Dict[str, float]] = {}
 
     def run(
         self,
@@ -279,6 +282,7 @@ class OptunaOptimizer:
         # may drive multiple WFA windows sequentially; each window gets a
         # fresh ``_failure_groups`` so reports don't leak across windows.
         self._failure_groups = {}
+        self._per_trial_returns = {}
 
         # Setup context-aware logging for optimization (suppresses backtest details)
         setup_backtest_logging("optimization")
@@ -516,6 +520,10 @@ class OptunaOptimizer:
                                 study.tell(trial, result['values'])
                             else:
                                 study.tell(trial, result['value'])
+                            # FLAG-2: collect per-trial daily returns from IPC dict
+                            _dr = result.get('metrics', {}).get('daily_returns')
+                            if _dr:
+                                self._per_trial_returns[trial.number] = _dr
                         else:
                             study.tell(trial, state=optuna.trial.TrialState.FAIL)
                             failed_trials += 1
@@ -610,6 +618,10 @@ class OptunaOptimizer:
         trial.set_user_attr('annual_return_pct', metrics.annual_return_pct)
         trial.set_user_attr('total_trades', metrics.total_trades)
 
+        # FLAG-2: capture per-trial daily returns
+        if metrics.daily_returns:
+            self._per_trial_returns[trial_id] = metrics.daily_returns
+
         # Return based on target
         if self.optimization_target == "multi_objective":
             return metrics.get_multi_objective_values()
@@ -675,6 +687,28 @@ class OptunaOptimizer:
             trials_path = output_path / "optimization_trials.csv"
             trials_df.to_csv(trials_path, index=False)
             logger.info(f"Saved trials to {trials_path}")
+
+        # FLAG-2: per-trial daily returns export
+        # Shape: {trial_number_str: {date_str: return_float}}
+        # Only successful trials with returns data; honest skipped_trials list.
+        # Size note: 50 trials × ~4k days ≈ few MB.
+        if self._per_trial_returns:
+            completed_nums = {
+                t.number
+                for t in study.trials
+                if t.state == optuna.trial.TrialState.COMPLETE
+            }
+            skipped = sorted(completed_nums - set(self._per_trial_returns.keys()))
+            per_trial_payload = {
+                'per_trial_returns': {
+                    str(k): v for k, v in sorted(self._per_trial_returns.items())
+                },
+                'skipped_trials': skipped,
+            }
+            ptr_path = output_path / 'per_trial_returns.json'
+            with open(ptr_path, 'w') as f:
+                json.dump(per_trial_payload, f, indent=2)
+            logger.info(f"Saved per-trial returns to {ptr_path}")
 
         if save_best_params and self.optimization_target != "multi_objective":
             if study.best_trial:
