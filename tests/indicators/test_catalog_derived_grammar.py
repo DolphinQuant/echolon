@@ -86,6 +86,17 @@ def test_windowed_non_int_suffix_fails():
     assert len(errors) >= 1, "Expected IND-004 because suffix 'abc' is not an integer"
 
 
+def test_windowed_grammar_does_not_accept_regime_column_base():
+    """market_regime_z_252 must fail — grammar (b) bases resolve against the
+    catalog only; KNOWN_REGIME_COLUMNS membership must not bleed into it."""
+    errors = catalog.validate({"market_regime_z_252": {}})
+    assert len(errors) >= 1, (
+        "Expected IND-004: 'market_regime' is a regime column, not a catalog "
+        "indicator, so the windowed-derived grammar must not accept it"
+    )
+    assert errors[0]["code"] == "IND-004"
+
+
 # ---------------------------------------------------------------------------
 # Regression: plain exact-match names still work
 # ---------------------------------------------------------------------------

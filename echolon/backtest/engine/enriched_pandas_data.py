@@ -128,6 +128,8 @@ class EnrichedPandasData(bt.feeds.PandasData):
                           and not col.lower().startswith('unnamed')]
 
         for col in filtered_columns:
+            # Validate the LOWERCASED form — that is what gets bound as the
+            # backtrader line name below (line_name = col.lower()).
             col_lower = col.lower()
             if not col_lower.isidentifier():
                 raise ValueError(

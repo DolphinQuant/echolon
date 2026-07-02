@@ -61,19 +61,18 @@ def _get_declared_indicator_names(strategy_dir: Path) -> set[str]:
     declared: set[str] = set()
     for name, params in data.items():
         name_lower = str(name).lower()
+        # A vintage-suffixed name ({base}__fitYYYYMMDD) also declares its base,
+        # so the dedicated regime accessors pass IND-002 — regardless of which
+        # param-shape branch the entry takes below.
+        m = _FIT_BASE.match(name_lower)
+        if m:
+            declared.add(m.group(1))
         if not isinstance(params, dict) or not params:
             declared.add(name_lower)
-            # Also expose the fit-suffix base so regime accessors pass IND-002
-            m = _FIT_BASE.match(name_lower)
-            if m:
-                declared.add(m.group(1))
             continue
         timeperiod = params.get("timeperiod")
         if timeperiod is None:
             declared.add(name_lower)
-            m = _FIT_BASE.match(name_lower)
-            if m:
-                declared.add(m.group(1))
             continue
         for period in expand_param(timeperiod):
             if isinstance(period, (int, float)):
