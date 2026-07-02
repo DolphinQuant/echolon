@@ -4,6 +4,27 @@ All notable changes to echolon are documented here. The format is based on
 [Keep a Changelog](https://keepachangelog.com/). Pre-1.0 minor and patch
 versions may carry breaking changes — they are clearly flagged below.
 
+## [Unreleased]
+
+### New
+
+- `catalog.validate` now accepts derived-column names matching two grammars:
+  (a) `{base}__fit{YYYYMMDD}` where `base` is a known regime column
+  (`market_regime`, `session_phase`, `session_phase_agg`) or a registered
+  classifier — vintage-suffixed regime columns bypass IND-004; (b)
+  `{base}_pctl_{N}` and `{base}_z_{N}` where `base` is a catalog indicator
+  — windowed percentile/z-score derived columns bypass IND-004. Grammar
+  documented as module-level regex pair in `echolon/indicators/catalog.py`.
+- `EnrichedPandasData.from_metadata` now hard-fails at construction with an
+  actionable `ValueError` when any `indicator_columns` entry is not a valid
+  Python identifier (e.g. names with dashes or spaces). Previously such
+  columns would silently fail at first backtrader attribute access.
+
+### Fixed
+
+- `__version__` in `echolon/__init__.py` updated from `0.1.3` to `0.1.9`
+  to match `pyproject.toml`.
+
 ## 0.1.5 — 2026-05-08
 
 Live-deploy hardening release. The ``PortfolioTradingRunner`` god-class
