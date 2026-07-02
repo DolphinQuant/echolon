@@ -14,7 +14,9 @@ versions may carry breaking changes — they are clearly flagged below.
   (ProcessPool-safe via standard pickle) → ``OptunaOptimizer._per_trial_returns``.
   ``save_study_results`` writes ``per_trial_returns.json`` alongside the existing
   ``optimization_trials.csv``; shape ``{trial_number: {date: return}}``, successful
-  trials only, with a ``skipped_trials`` list for honest omission of failed ones.
+  trials only. Failed (``TrialState.FAIL``) trials are excluded entirely; the
+  ``skipped_trials`` list names COMPLETED trials whose returns data was absent,
+  so their omission is honest rather than silent.
   Size note: 50 trials × ~4k days ≈ few MB (FLAG-2).
 
 - ``TrialSelector`` gains optional ``selection_score_fn: Callable[[pd.Series,

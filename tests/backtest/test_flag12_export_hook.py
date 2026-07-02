@@ -169,13 +169,12 @@ class TestTrialSelectorSelectionHook:
 # ---------------------------------------------------------------------------
 
 class TestSaveStudyResults:
-    def test_per_trial_returns_json_written(self, tmp_path):
-        """save_study_results writes per_trial_returns.json with correct shape."""
-        import optuna
+    @staticmethod
+    def _make_optimizer():
+        """Minimal OptunaOptimizer — only save_study_results is exercised."""
         from echolon.backtest.optimization.optuna_study import OptunaOptimizer
         from echolon.config.optuna_config import OptunaConfig
 
-        # Build a minimal OptunaOptimizer (only save_study_results is called)
         ctx = MagicMock()
         ctx.market_code = 'TEST'
         ctx.instrument_name = 'test'
@@ -184,13 +183,19 @@ class TestSaveStudyResults:
         strategy_class.__name__ = 'TestStrategy'
         cfg = OptunaConfig(n_trials=3, target='sharpe_ratio')
 
-        optim = OptunaOptimizer(
+        return OptunaOptimizer(
             ctx=ctx,
             market_adapter=adapter,
             strategy_class=strategy_class,
             search_space_fn=lambda t: {},
             optuna_config=cfg,
         )
+
+    def test_per_trial_returns_json_written(self, tmp_path):
+        """save_study_results writes per_trial_returns.json with correct shape."""
+        import optuna
+
+        optim = self._make_optimizer()
 
         # Inject synthetic per_trial_returns
         optim._per_trial_returns = {
@@ -226,3 +231,29 @@ class TestSaveStudyResults:
         assert 'skipped_trials' in data
         # Trial 5 and 7 are in per_trial_returns; no completed trials are skipped
         assert data['skipped_trials'] == []
+
+    def test_no_returns_data_writes_no_file(self, tmp_path):
+        """_per_trial_returns == {} → per_trial_returns.json is NOT written.
+
+        Honest absence over an empty artifact: a study with no returns data
+        must leave nothing behind that a consumer could mistake for data.
+        """
+        import optuna
+
+        optim = self._make_optimizer()
+        assert optim._per_trial_returns == {}  # fresh instance, nothing collected
+
+        study = MagicMock()
+        study.best_trial = None
+        complete_trial = MagicMock()
+        complete_trial.number = 0
+        complete_trial.state = optuna.trial.TrialState.COMPLETE
+        study.trials = [complete_trial]
+
+        out = str(tmp_path / "results")
+        optim.save_study_results(study, out, save_trials_csv=False, save_best_params=False)
+
+        ptr_path = tmp_path / "results" / "per_trial_returns.json"
+        assert not ptr_path.exists(), (
+            "per_trial_returns.json must not be written when no returns were collected"
+        )

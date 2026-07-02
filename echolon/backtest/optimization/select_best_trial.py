@@ -130,7 +130,7 @@ class TrialSelector:
         # Signature: (trial_row: pd.Series, context: Mapping[str, Any]) -> float
         # When None, the built-in risk_adjusted_return ranking is used (byte-identical default).
         # When provided, replaces idxmax() within the winning cluster only.
-        # The OOS selection policy itself lives in the caller (qorka) — this is mechanism only.
+        # The OOS selection policy itself lives in the caller — this mechanism carries no policy.
         self.selection_score_fn = selection_score_fn
         # Context mapping passed as second arg to selection_score_fn.
         # Typically per_trial_returns from FLAG-2: {trial_number: {date: ret}}.
