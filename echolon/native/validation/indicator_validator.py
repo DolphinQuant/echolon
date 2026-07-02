@@ -10,6 +10,11 @@ _GET_INDICATOR_PATTERN = re.compile(
     r"""get_indicator\(\s*['"]([^'"]+)['"]\s*\)""",
 )
 
+# Vintage-suffixed regime column ({base}__fit{YYYYMMDD}) — declaring the
+# suffixed name also declares its base, so the dedicated regime accessors
+# (IND-002 scan below) accept it. Mirrors catalog._RE_FIT_SUFFIX.
+_FIT_BASE = re.compile(r"^(.+)__fit[0-9]{8}$")
+
 # Regime/session classifier columns are read through DEDICATED accessors
 # (``self.get_market_regime()`` / ``self.get_session_phase()``), NOT through
 # ``get_indicator('...')`` — so the IND-001 scan above never sees them. The
@@ -56,6 +61,12 @@ def _get_declared_indicator_names(strategy_dir: Path) -> set[str]:
     declared: set[str] = set()
     for name, params in data.items():
         name_lower = str(name).lower()
+        # A vintage-suffixed name ({base}__fitYYYYMMDD) also declares its base,
+        # so the dedicated regime accessors pass IND-002 — regardless of which
+        # param-shape branch the entry takes below.
+        m = _FIT_BASE.match(name_lower)
+        if m:
+            declared.add(m.group(1))
         if not isinstance(params, dict) or not params:
             declared.add(name_lower)
             continue

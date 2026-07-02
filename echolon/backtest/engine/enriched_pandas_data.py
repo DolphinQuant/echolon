@@ -128,6 +128,18 @@ class EnrichedPandasData(bt.feeds.PandasData):
                           and not col.lower().startswith('unnamed')]
 
         for col in filtered_columns:
+            # Validate the LOWERCASED form — that is what gets bound as the
+            # backtrader line name below (line_name = col.lower()).
+            col_lower = col.lower()
+            if not col_lower.isidentifier():
+                raise ValueError(
+                    f"[ENRICHED_DATA] indicator_columns entry {col!r} is not a valid Python "
+                    f"identifier (backtrader binds indicator columns as line attributes; "
+                    f"names with dashes, spaces, or dots fail at first access). "
+                    f"Rename the column before calling from_metadata."
+                )
+
+        for col in filtered_columns:
             line_name = col.lower()
 
             if line_name not in line_to_col:
