@@ -338,6 +338,7 @@ def test_wfa_selector_writes_where_run_best_trial_reads(tmp_path):
     runner = WFARunner.__new__(WFARunner)  # bypass heavy __init__; test the seam
     runner._paths = SimpleNamespace(strategy_code_dir=tmp_path / "run_code_dir")
     runner.config = SimpleNamespace(max_drawdown_threshold=15.0)
+    runner.selection_score_fn = None
 
     selector = runner._build_selector(
         trials_csv_path=csv_path,

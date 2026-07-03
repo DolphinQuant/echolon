@@ -22,7 +22,7 @@ import json
 import logging
 import shutil
 from pathlib import Path
-from typing import Dict, Any, Optional
+from typing import Callable, Dict, Any, Mapping, Optional
 
 import pandas as pd
 
@@ -106,6 +106,7 @@ class WFARunner:
         wfa_dir: Optional[Path] = None,
         paths: Optional["PathsConfig"] = None,  # type: ignore[name-defined]
         drs_config: Optional[DRSConfig] = None,
+        selection_score_fn: Optional[Callable[[pd.Series, Mapping[str, Any]], float]] = None,
     ):
         if optuna_config is None:
             raise ValueError(
@@ -139,6 +140,12 @@ class WFARunner:
         # scoring). Host apps build this from their own target schema — echolon
         # no longer reaches into ctx.target workflow state.
         self._drs_config = drs_config
+
+        # Generic pass-through to every per-window TrialSelector (mirrors
+        # TrialSelector's own FLAG-1 hook). Default None reproduces the
+        # built-in risk_adjusted_return.idxmax() ranking byte-for-byte — this
+        # constructor carries the mechanism only, never a selection policy.
+        self.selection_score_fn = selection_score_fn
 
     def run(self) -> Dict[str, Any]:
         """
@@ -308,6 +315,15 @@ class WFARunner:
                 apply_shared_params_fn=apply_shared_params,
                 param_classifications=framework.get_param_classifications(),
                 search_space_fn=optuna_search_space,
+                # `optimizer` (Step 2, same scope) is the live OptunaOptimizer
+                # instance for THIS window — its _per_trial_returns dict is
+                # already in memory (populated during optimizer.run()), so
+                # there's no need to reload the per_trial_returns.json
+                # save_study_results just wrote to window_dir. Forwarded
+                # unconditionally: TrialSelector only reads it when
+                # selection_score_fn is set, so this is a no-op on the
+                # default (None) path.
+                per_trial_returns=optimizer._per_trial_returns,
             )
             selected_trial = selector.select()
             window.selected_trial = selected_trial
@@ -419,6 +435,7 @@ class WFARunner:
         apply_shared_params_fn,
         param_classifications,
         search_space_fn,
+        per_trial_returns: Optional[Mapping] = None,
     ) -> "TrialSelector":  # noqa: F821 — imported lazily below, like run() does
         """Construct the per-window TrialSelector.
 
@@ -434,6 +451,12 @@ class WFARunner:
         ``search_space_fn`` enables the resolved_params.json companion export
         (the optimizer-exact nested vector; consumers prefer it over the lossy
         flat-name mapping).
+
+        ``selection_score_fn`` (from the WFARunner constructor) and
+        ``per_trial_returns`` (the calling window's in-memory
+        ``OptunaOptimizer._per_trial_returns``, or ``None`` when unavailable)
+        are forwarded verbatim to TrialSelector's own FLAG-1 hook — this
+        method carries no selection policy of its own.
         """
         from echolon.backtest.optimization.select_best_trial import TrialSelector
 
@@ -446,6 +469,8 @@ class WFARunner:
             param_classifications=param_classifications,
             strategy_code_dir=self._paths.strategy_code_dir,
             search_space_fn=search_space_fn,
+            selection_score_fn=self.selection_score_fn,
+            per_trial_returns=per_trial_returns,
         )
 
     def _extract_is_sharpe(self, study) -> float:
