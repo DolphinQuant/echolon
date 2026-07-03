@@ -40,6 +40,17 @@ versions may carry breaking changes — they are clearly flagged below.
   ``per_trial_returns`` (or ``{}``) so callers can implement OOS scoring
   without coupling the mechanism to any specific policy (FLAG-1).
 
+- ``WFARunner.__init__`` gains optional ``selection_score_fn: Callable[[pd.Series,
+  Mapping[str, Any]], float]``, forwarded verbatim to every per-window
+  ``TrialSelector`` it constructs (FLAG-1 pass-through for the WFA path).
+  Default ``None`` reproduces the built-in ranking byte-for-byte (pinned by
+  test). Each window's ``TrialSelector`` also receives that window's
+  ``OptunaOptimizer._per_trial_returns`` as ``per_trial_returns`` — the
+  optimizer instance is still in scope in-process when the selector is
+  built (no reload of the ``per_trial_returns.json``
+  ``save_study_results`` already wrote), so this is a genuine in-memory
+  forward, not a re-read from disk. Task ED.
+
 - ``echolon.indicators.run.compute_indicators_from_frame(ohlcv, indicator_list,
   ctx, *, regime_params=None) -> pd.DataFrame`` — a generic injectable-frame
   indicator entry point for callers that already hold a continuous OHLCV
