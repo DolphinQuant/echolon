@@ -546,6 +546,28 @@ ERROR_CATALOG: dict[str, dict] = {
             "  legacy sections found: {field}"
         ),
     },
+    "IND-009": {
+        "class": IndicatorError,
+        "what": "curve_carry indicator requested from the single-frame compute path",
+        "why": (
+            "curve_carry indicators (carry_front_back, carry_z_3m, etc.) are built "
+            "from the full multi-contract forward curve — every listed contract's "
+            "term structure on a date — not one instrument's own OHLCV history. "
+            "compute_indicators_from_frame takes a single caller-provided continuous "
+            "OHLCV DataFrame and has no access to the other contracts on the curve, "
+            "so it cannot reproduce these indicators; silently omitting or "
+            "approximating them would be a misleading result for a caller expecting "
+            "parity with the standard per-contract pipeline."
+        ),
+        "fix_template": (
+            "Drop the curve_carry indicators from indicator_list before calling "
+            "compute_indicators_from_frame, or compute them separately from the "
+            "forward curve (echolon.indicators.calculators.interday.carry."
+            "series_builder.build_carry_indicator_frame) and merge the columns in "
+            "yourself:\n"
+            "  offending: {indicators}"
+        ),
+    },
     "BT-001": {
         "class": EchelonError,
         "what": "Strategy.on_bar() raised an exception",

@@ -34,6 +34,7 @@ showing the typical LLM-author mistake. `EchelonError.docs_url` points here.
 - [IND-006](IND-006.md): Inverted [min, max] sweep range
 - [IND-007](IND-007.md): Component reads an undeclared indicator column
 - [IND-008](IND-008.md): Legacy section-keyed indicator-list format
+- [IND-009](IND-009.md): curve_carry indicator requested from the single-frame compute path
 
 ## Data loading (DAT-*)
 - [DAT-001](DAT-001.md): Required OHLCV file not found
