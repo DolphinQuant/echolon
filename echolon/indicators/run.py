@@ -237,6 +237,10 @@ def compute_indicators_from_frame(
         regime_params: Regime-classifier params, required when
             ``indicator_list`` contains a registered classifier name on an
             interday ctx (same contract as ``run_indicator_calculation``).
+            On an intraday ctx this is forced to ``None`` regardless of what
+            the caller passes — identical to ``IndicatorProcessor.__init__``,
+            which only keeps regime_params for interday frequency (intraday
+            uses session_phase + volatility_state instead).
 
     Returns:
         A copy of ``ohlcv`` (normalized: missing open/high/low filled from
@@ -263,6 +267,15 @@ def compute_indicators_from_frame(
     curve_carry, per_contract = _split_curve_carry(indicator_list)
     if curve_carry:
         raise_error("IND-009", indicators=sorted(curve_carry))
+
+    # Regime params: caller-provided or None — same routing as
+    # IndicatorProcessor.__init__ (which keeps them only when frequency ==
+    # "day"). Intraday uses session_phase + volatility_state; regime_params
+    # unused — forwarding the caller's dict here would make the frame path
+    # compute something the standard pipeline never does, breaking the
+    # "SAME computations" identity contract.
+    if ctx.is_intraday:
+        regime_params = None
 
     df = _prepare_ohlcv_frame(ohlcv)
 

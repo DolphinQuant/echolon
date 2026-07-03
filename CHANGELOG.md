@@ -64,11 +64,21 @@ versions may carry breaking changes — they are clearly flagged below.
   **IND-009** error rather than being silently dropped or approximated.
   Registered regime classifiers are included for free (same dispatch path)
   but are out of scope for "held constant across resamples" — that's the
-  caller's job. The shared pre-compute normalization (missing OHLC fill,
+  caller's job. On an intraday ctx, a caller-passed ``regime_params`` is
+  forced to ``None`` — mirroring ``IndicatorProcessor.__init__``'s routing
+  (regime params kept only for interday frequency; intraday uses
+  session_phase + volatility_state) — so the frame path never computes
+  something the standard pipeline wouldn't; pinned by test with a spy
+  classifier. The shared pre-compute normalization (missing OHLC fill,
   date conversion, sort) used by both the per-contract path and this new
   entry point is now a single-sourced helper, ``_prepare_ohlcv_frame``, in
   ``echolon/indicators/engine/processor.py`` (previously inlined only in
-  ``process_single_contract``).
+  ``process_single_contract``). Discoverable via the new
+  ``compute_indicators_from_frame`` skill
+  (``echolon/native/skills/echolon_api/compute_indicators_from_frame/SKILL.md``,
+  indexed in ``SKILLS.md``), which documents the roll-boundary divergence,
+  the IND-009 curve_carry exclusion, and the regime-params caveats
+  prominently for MCP discoverers.
 
 ### Fixed
 

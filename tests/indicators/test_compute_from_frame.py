@@ -126,6 +126,21 @@ def test_identity_matches_standard_pipeline_away_from_roll_and_diverges_near_it(
     assert standard["contract"].iloc[0] == "al2401"
     assert standard["contract"].iloc[-1] == "al2402"
 
+    # Derive the roll index from the PIPELINE's own output rather than
+    # trusting the fixture constant blindly: exactly one transition, at the
+    # position the fixture intended. If fixture and pipeline ever disagree
+    # (e.g. a main_contract.csv lookup change shifts the effective roll
+    # date), this fails loudly instead of the zones below silently testing
+    # the wrong bars.
+    contracts = standard["contract"].reset_index(drop=True)
+    changes = contracts.ne(contracts.shift()).iloc[1:]  # row 0 is always a "change"
+    assert int(changes.sum()) == 1, f"expected exactly one roll, got {int(changes.sum())}"
+    roll_index = int(changes.idxmax())
+    assert roll_index == ROLL_INDEX, (
+        f"fixture says the roll is at index {ROLL_INDEX}, but the pipeline "
+        f"output rolls at index {roll_index}"
+    )
+
     # 2. Extract exactly the continuous OHLCV columns the standard pipeline
     #    produced — no contract/trading_date/contract_expiry/sma_5 lineage,
     #    since that's precisely what a caller-provided frame would NOT have.
@@ -150,7 +165,7 @@ def test_identity_matches_standard_pipeline_away_from_roll_and_diverges_near_it(
     # a margin far above the float-precision tolerance used below, so this
     # is a genuine falsifier rather than a masked-away zone that happened to
     # match anyway.
-    divergence_zone = slice(ROLL_INDEX, ROLL_INDEX + PERIOD - 1)
+    divergence_zone = slice(roll_index, roll_index + PERIOD - 1)
     divergence = np.abs(standard_sma[divergence_zone] - frame_sma[divergence_zone])
     assert len(divergence) == PERIOD - 1
     assert (divergence > 1.0).all(), (
@@ -170,7 +185,7 @@ def test_identity_matches_standard_pipeline_away_from_roll_and_diverges_near_it(
     # mismatch (those diffs are >1.0, ten orders of magnitude larger).
     matched_idx = np.array([
         i for i in range(PERIOD - 1, N_DAYS)
-        if not (ROLL_INDEX <= i < ROLL_INDEX + PERIOD - 1)
+        if not (roll_index <= i < roll_index + PERIOD - 1)
     ])
     np.testing.assert_allclose(
         standard_sma[matched_idx], frame_sma[matched_idx], rtol=1e-9, atol=1e-9,
@@ -272,3 +287,63 @@ def test_registered_classifier_without_regime_params_raises(interday_ctx, stub_c
     df = _make_frame()
     with pytest.raises(ValueError, match="regime_params"):
         compute_indicators_from_frame(df, {"market_regime": {}}, interday_ctx)
+
+
+# --------------------------------------------------------------------------- #
+# Intraday regime_params parity guard
+# --------------------------------------------------------------------------- #
+@pytest.fixture
+def intraday_ctx():
+    return MarketFactory.create(
+        market="SHFE", instrument="al", frequency="intraday", bar_size="15m"
+    )
+
+
+@pytest.fixture
+def spy_classifier():
+    """Registered classifier that records the params dict it actually receives."""
+    from echolon.indicators.registry import register_regime_classifier
+    from echolon.indicators.registry.regime_classifiers import _CLASSIFIERS
+
+    received: dict = {}
+
+    class _SpyRegime:
+        name = "market_regime"
+        label_map = {0: "ranging", 1: "trending_up", -1: "trending_down", 2: "volatile"}
+
+        def fit_classify(self, df, params):
+            received["params"] = dict(params)
+            return pd.Series(np.zeros(len(df), dtype=int), index=df.index, name="market_regime")
+
+    register_regime_classifier(_SpyRegime())
+    yield received
+    _CLASSIFIERS.pop("market_regime", None)
+
+
+def _make_intraday_frame(n=40):
+    return pd.DataFrame({
+        "datetime": pd.date_range("2024-01-02 09:00", periods=n, freq="15min"),
+        "open":  [100.0 + i * 0.1 for i in range(n)],
+        "high":  [101.0 + i * 0.1 for i in range(n)],
+        "low":   [99.0 + i * 0.1 for i in range(n)],
+        "close": [100.5 + i * 0.1 for i in range(n)],
+        "volume": [1000 for _ in range(n)],
+    })
+
+
+def test_intraday_ctx_ignores_caller_regime_params(intraday_ctx, spy_classifier):
+    """The standard pipeline never forwards regime_params on an intraday ctx
+    (IndicatorProcessor.__init__ keeps them only when frequency == 'day';
+    intraday sets self.regime_params = None). The frame path mirrors that
+    routing so the 'SAME computations' identity claim holds unconditionally:
+    a caller-passed dict must be IGNORED — the classifier sees {} exactly as
+    it would under run_indicator_calculation."""
+    df = _make_intraday_frame()
+    caller_params = {"fast_ma_period": 20, "slow_ma_period": 50}
+    out = compute_indicators_from_frame(
+        df, {"market_regime": {}}, intraday_ctx, regime_params=caller_params,
+    )
+    assert "market_regime" in out.columns
+    # Falsifier: without the intraday guard the spy would have received
+    # caller_params verbatim (via _auto_params_for's MARKET_REGIME branch).
+    assert spy_classifier["params"] == {}
