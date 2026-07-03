@@ -298,30 +298,8 @@ class IndicatorProcessor:
         if logger.isEnabledFor(logging.DEBUG):
             logger.debug(f"[INDICATOR_PROCESSOR] Processing contract | name={contract_name}, rows={len(df)}")
 
-        # Preprocess data: for rows with missing open/high/low values, use close price from same row
-        if 'close' in df.columns:
-            # Fill missing open values with close price from same row
-            if 'open' in df.columns:
-                df.loc[df['open'].isna(), 'open'] = df.loc[df['open'].isna(), 'close']
+        df = _prepare_ohlcv_frame(df)
 
-            # Fill missing high values with close price from same row
-            if 'high' in df.columns:
-                df.loc[df['high'].isna(), 'high'] = df.loc[df['high'].isna(), 'close']
-
-            # Fill missing low values with close price from same row
-            if 'low' in df.columns:
-                df.loc[df['low'].isna(), 'low'] = df.loc[df['low'].isna(), 'close']
-
-        # Convert date column if needed
-        if 'date' in df.columns:
-            df['date'] = pd.to_datetime(df['date'], format='%Y%m%d')
-
-        # Sort by datetime for intraday data, or by date for daily data
-        if 'datetime' in df.columns:
-            df = df.sort_values('datetime').reset_index(drop=True)
-        elif 'date' in df.columns:
-            df = df.sort_values('date').reset_index(drop=True)
-        
         # Calculate indicators using the unified flat-dict compute path
         indicator_results = _compute_indicators_for_contract(
             df,
@@ -729,6 +707,53 @@ class IndicatorProcessor:
 # ---------------------------------------------------------------------------
 # Module-level helpers for the unified compute path
 # ---------------------------------------------------------------------------
+def _prepare_ohlcv_frame(df: pd.DataFrame) -> pd.DataFrame:
+    """Apply the same pre-compute normalization to an OHLCV frame that
+    :meth:`IndicatorProcessor.process_single_contract` applies to a freshly
+    loaded per-contract file, before it reaches :func:`_compute_indicators_for_contract`.
+
+    Steps (order matters — sort is last so the fill/convert steps don't
+    depend on row order):
+
+    1. Fill missing ``open``/``high``/``low`` with that row's ``close``.
+    2. Convert ``date`` to a real datetime (no-op if already datetime-like).
+    3. Sort by ``datetime`` (intraday) or ``date`` (interday) and reset the index.
+
+    Shared by the contract-file path (``process_single_contract``) and the
+    caller-injectable frame path (``compute_indicators_from_frame`` in
+    ``echolon.indicators.run``) so both feed indicator computation the exact
+    same normalized shape — a single-sourced step instead of two copies that
+    could drift.
+    """
+    df = df.copy()
+
+    # Preprocess data: for rows with missing open/high/low values, use close price from same row
+    if 'close' in df.columns:
+        # Fill missing open values with close price from same row
+        if 'open' in df.columns:
+            df.loc[df['open'].isna(), 'open'] = df.loc[df['open'].isna(), 'close']
+
+        # Fill missing high values with close price from same row
+        if 'high' in df.columns:
+            df.loc[df['high'].isna(), 'high'] = df.loc[df['high'].isna(), 'close']
+
+        # Fill missing low values with close price from same row
+        if 'low' in df.columns:
+            df.loc[df['low'].isna(), 'low'] = df.loc[df['low'].isna(), 'close']
+
+    # Convert date column if needed
+    if 'date' in df.columns:
+        df['date'] = pd.to_datetime(df['date'], format='%Y%m%d')
+
+    # Sort by datetime for intraday data, or by date for daily data
+    if 'datetime' in df.columns:
+        df = df.sort_values('datetime').reset_index(drop=True)
+    elif 'date' in df.columns:
+        df = df.sort_values('date').reset_index(drop=True)
+
+    return df
+
+
 def _split_curve_carry(
     indicator_list: Dict[str, Dict[str, Any]],
 ):

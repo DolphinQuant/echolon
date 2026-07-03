@@ -40,6 +40,46 @@ versions may carry breaking changes — they are clearly flagged below.
   ``per_trial_returns`` (or ``{}``) so callers can implement OOS scoring
   without coupling the mechanism to any specific policy (FLAG-1).
 
+- ``echolon.indicators.run.compute_indicators_from_frame(ohlcv, indicator_list,
+  ctx, *, regime_params=None) -> pd.DataFrame`` — a generic injectable-frame
+  indicator entry point for callers that already hold a continuous OHLCV
+  ``DataFrame`` in memory (block-bootstrap resamples, synthetic data, ...) and
+  want the same per-bar computations ``run_indicator_calculation`` applies to
+  its stitched main-contract series, without touching contract files or the
+  roll table. Runs the existing per-contract compute path
+  (``_compute_indicators_for_contract``) directly over the caller's frame in a
+  single pass — genuine "post-stitch continuous-series" semantics. Identity
+  holds exactly (modulo TA-Lib's incremental-sum float non-associativity,
+  ~1e-9) for any bar whose lookback window doesn't cross a main-contract
+  change in the caller's series; bars within ``lookback - 1`` of a change
+  diverge from the standard pipeline because that pipeline used the
+  incoming contract's own pre-roll price history, which a bare continuous
+  frame does not carry — documented on the function, and proven (not just
+  asserted) by the new identity test in
+  ``tests/indicators/test_compute_from_frame.py``, which shows both the
+  match zone and the divergence zone from one real (non-mocked) two-contract
+  roll fixture. ``curve_carry``-kind indicators (built from the full
+  multi-contract forward curve, e.g. ``carry_front_back``) cannot be
+  reproduced from a single frame at all and now hard-fail with the new
+  **IND-009** error rather than being silently dropped or approximated.
+  Registered regime classifiers are included for free (same dispatch path)
+  but are out of scope for "held constant across resamples" — that's the
+  caller's job. On an intraday ctx, a caller-passed ``regime_params`` is
+  forced to ``None`` — mirroring ``IndicatorProcessor.__init__``'s routing
+  (regime params kept only for interday frequency; intraday uses
+  session_phase + volatility_state) — so the frame path never computes
+  something the standard pipeline wouldn't; pinned by test with a spy
+  classifier. The shared pre-compute normalization (missing OHLC fill,
+  date conversion, sort) used by both the per-contract path and this new
+  entry point is now a single-sourced helper, ``_prepare_ohlcv_frame``, in
+  ``echolon/indicators/engine/processor.py`` (previously inlined only in
+  ``process_single_contract``). Discoverable via the new
+  ``compute_indicators_from_frame`` skill
+  (``echolon/native/skills/echolon_api/compute_indicators_from_frame/SKILL.md``,
+  indexed in ``SKILLS.md``), which documents the roll-boundary divergence,
+  the IND-009 curve_carry exclusion, and the regime-params caveats
+  prominently for MCP discoverers.
+
 ### Fixed
 
 - `__version__` in `echolon/__init__.py` updated from `0.1.3` to `0.1.9`
