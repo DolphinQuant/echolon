@@ -8,6 +8,13 @@ versions may carry breaking changes — they are clearly flagged below.
 
 ### New
 
+- `WFARunner` accepts a generic `binding_resolver_fn` (mirrors the existing
+  `selection_score_fn` pass-through): an opaque per-window callable whose
+  returned mapping is overlaid onto the window's search-space function and
+  default params via a new schema-agnostic recursive key-overlay. Default
+  `None` is byte-identical. `BaseComponent.get_market_regime` gains an
+  optional `column` override (default `None` = unchanged) so a host app can
+  point one call at a differently-named regime column per window.
 - `catalog.validate` now accepts derived-column names matching two grammars:
   (a) `{base}__fit{YYYYMMDD}` where `base` is a known regime column
   (`market_regime`, `session_phase`, `session_phase_agg`) or a registered
