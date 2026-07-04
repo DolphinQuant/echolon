@@ -38,7 +38,7 @@ Example:
 """
 
 from abc import ABC
-from typing import Dict, Any, List, TYPE_CHECKING
+from typing import Dict, Any, List, Optional, TYPE_CHECKING
 import logging
 
 from .interfaces import (
@@ -593,7 +593,7 @@ class BaseComponent(ABC):
         """
         return self.market_data.get_indicator(name, index)
 
-    def get_market_regime(self, index: int = 0) -> str:
+    def get_market_regime(self, index: int = 0, column: Optional[str] = None) -> str:
         """
         Get market regime as string (INTERDAY ONLY).
 
@@ -604,6 +604,17 @@ class BaseComponent(ABC):
         ----------
         index : int
             Historical index (0=current, 1=previous bar, etc.)
+        column : str, optional
+            Read this feed column instead of the default ``'market_regime'``.
+            Generic per-window-injectable seam (mirrors ``get_indicator``'s
+            own ``name`` parameter): a host app that bakes multiple
+            vintage-keyed regime columns onto one feed (e.g.
+            ``market_regime__fit20201231``) can point a single component call
+            at whichever one applies THIS window, without echolon knowing
+            anything about vintages/rebinding — it just reads a different
+            numeric column through the SAME registered classifier's
+            label_map. Default ``None`` reproduces the exact prior behavior
+            byte-for-byte (reads the classifier's own default column name).
 
         Returns
         -------
@@ -627,7 +638,8 @@ class BaseComponent(ABC):
         # code must call register_regime_classifier(...) at session startup.
         from echolon.indicators.registry import get_regime_classifier
         classifier = get_regime_classifier('market_regime')
-        numeric_regime = self.market_data.get_indicator('market_regime', index)
+        read_column = column if column is not None else 'market_regime'
+        numeric_regime = self.market_data.get_indicator(read_column, index)
         return classifier.label_map.get(int(numeric_regime), 'unknown')
 
     def get_session_phase(self, index: int = 0) -> str:

@@ -37,6 +37,81 @@ from .drs_calculator import compute_drs, DRSConfig
 logger = logging.getLogger(__name__)
 
 
+def _apply_binding_overlay(
+    params: Dict[str, Any], bindings: Mapping[str, Any],
+) -> Dict[str, Any]:
+    """Generic recursive key-overlay (Task #11 Stage 2, c2 — per-window
+    rebinding pass-through).
+
+    For every key present in ``bindings``, replace that key's value WHEREVER
+    it occurs in ``params`` (at any nesting depth). Echolon carries no
+    knowledge of what the keys mean (slot ids, indicator names, column
+    names) or how ``params`` is nested (``entry_params`` / ``exit_params`` /
+    ...) — that schema is entirely host-app-authored
+    (``strategy_params.py``, dynamically loaded). This is safe precisely
+    because host-app slot-keyed param names are unique across the whole
+    param space by construction (qorka's T10 naming contract) — a recursive
+    override can never collide with an unrelated key of the same name.
+
+    Pure: returns a NEW nested dict; ``params`` is never mutated (the caller
+    may reuse the original for the next window). ``bindings`` empty/None is
+    a no-op fast path returning ``params`` unchanged (identity, not a copy)
+    so the byte-identical-when-unused guarantee holds all the way through.
+    """
+    if not bindings:
+        return params
+
+    def _walk(node):
+        if isinstance(node, dict):
+            return {
+                k: (bindings[k] if k in bindings else _walk(v))
+                for k, v in node.items()
+            }
+        return node
+
+    return _walk(params)
+
+
+def _resolve_window_param_overlay(
+    window: "WFAWindow",
+    *,
+    binding_resolver_fn: Optional[Callable[["WFAWindow"], Mapping[str, Any]]],
+    base_search_space_fn: Callable,
+    base_default_params: Dict[str, Any],
+):
+    """The ENTIRE (c2) per-window rebinding seam, extracted as a pure
+    function so it is unit-testable without driving the full ``run()``
+    Optuna/backtrader collaborator chain (mirrors the existing
+    ``per_trial_returns`` source-pin precedent for anything that big — see
+    ``test_wfa_runner_selection_passthrough.py`` — except this seam IS small
+    enough to test directly, so it gets real assertions instead of a pin).
+
+    ``binding_resolver_fn=None`` (default) -> returns the inputs UNCHANGED
+    (identity) — byte-identical to pre-Task-#11 behavior. A resolver that
+    returns an empty/falsy mapping for this window is likewise a no-op.
+    Otherwise, both the per-trial search-space function AND the FIXED
+    default-params dict used to reconstruct the winning trial's full vector
+    (``TrialSelector.default_params``) are overlaid with the SAME bindings —
+    so window k's IS-optimization (Step 2) AND the OOS backtest it hands off
+    to (Step 4, via ``TrialSelector``-written ``selected_robust_trial.json``)
+    see the identical per-window bindings; no separate Step-4 wiring needed.
+
+    Echolon holds no rebinding policy: ``binding_resolver_fn`` is an opaque
+    caller-supplied callable (mirrors ``selection_score_fn`` exactly) that
+    the host app builds from ITS OWN slot/vintage/rebinder machinery.
+    """
+    if binding_resolver_fn is None:
+        return base_search_space_fn, base_default_params
+    bindings = binding_resolver_fn(window)
+    if not bindings:
+        return base_search_space_fn, base_default_params
+
+    def _window_search_space_fn(trial, _fn=base_search_space_fn, _b=bindings):
+        return _apply_binding_overlay(_fn(trial), _b)
+
+    return _window_search_space_fn, _apply_binding_overlay(base_default_params, bindings)
+
+
 def _assert_wfa_complete(all_windows, wfa_dir):
     """Hard-signal an INCOMPLETE WFA (B3, RCA 2026-06-21).
 
@@ -107,6 +182,7 @@ class WFARunner:
         paths: Optional["PathsConfig"] = None,  # type: ignore[name-defined]
         drs_config: Optional[DRSConfig] = None,
         selection_score_fn: Optional[Callable[[pd.Series, Mapping[str, Any]], float]] = None,
+        binding_resolver_fn: Optional[Callable[["WFAWindow"], Mapping[str, Any]]] = None,
     ):
         if optuna_config is None:
             raise ValueError(
@@ -146,6 +222,17 @@ class WFARunner:
         # built-in risk_adjusted_return.idxmax() ranking byte-for-byte — this
         # constructor carries the mechanism only, never a selection policy.
         self.selection_score_fn = selection_score_fn
+
+        # Task #11 Stage 2 (c2) — generic per-window binding-resolver
+        # pass-through, mirroring selection_score_fn exactly: an opaque
+        # Callable[[WFAWindow], Mapping[str, Any]] invoked once per window,
+        # BEFORE that window's IS-optimization (see run(), Step 2). Default
+        # None reproduces prior behavior byte-for-byte — this constructor
+        # carries NO rebinding policy (hysteresis/sign-guard/churn/ranking
+        # all live in the host app; echolon only forwards the callable and
+        # applies its returned mapping via the generic, schema-agnostic
+        # _apply_binding_overlay).
+        self.binding_resolver_fn = binding_resolver_fn
 
     def run(self) -> Dict[str, Any]:
         """
@@ -247,6 +334,18 @@ class WFARunner:
             window_dir = self.wfa_dir / f"window_{window.window_id}"
             window_dir.mkdir(parents=True, exist_ok=True)
 
+            # Task #11 Stage 2 (c2): resolve this window's binding overlay
+            # BEFORE Step 2's IS-optimization (join key is window.window_id,
+            # not a re-derived is_end/fit_end arithmetic — the host app's
+            # resolver is responsible for that lookup). No-op end to end
+            # when binding_resolver_fn is None (the constructor default).
+            window_search_space_fn, window_default_params = _resolve_window_param_overlay(
+                window,
+                binding_resolver_fn=self.binding_resolver_fn,
+                base_search_space_fn=optuna_search_space,
+                base_default_params=DEFAULT_PARAMS,
+            )
+
             # --- Step 1: Filter IS data ---
             is_start_ts = pd.Timestamp(window.is_start)
             is_end_ts = pd.Timestamp(window.is_end)
@@ -270,7 +369,7 @@ class WFARunner:
                 ctx=self.ctx,
                 market_adapter=market_adapter,
                 strategy_class=strategy_class,
-                search_space_fn=optuna_search_space,
+                search_space_fn=window_search_space_fn,
                 n_trials=self.config.trials_per_window,
                 optimization_target=self.config.optimization_target,
                 run_context="optimization",
@@ -311,10 +410,10 @@ class WFARunner:
             selector = self._build_selector(
                 trials_csv_path=trials_csv_path,
                 window_dir=window_dir,
-                default_params=DEFAULT_PARAMS,
+                default_params=window_default_params,
                 apply_shared_params_fn=apply_shared_params,
                 param_classifications=framework.get_param_classifications(),
-                search_space_fn=optuna_search_space,
+                search_space_fn=window_search_space_fn,
                 # `optimizer` (Step 2, same scope) is the live OptunaOptimizer
                 # instance for THIS window — its _per_trial_returns dict is
                 # already in memory (populated during optimizer.run()), so
