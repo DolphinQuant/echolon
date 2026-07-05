@@ -635,7 +635,7 @@ class BaseStrategy(IStrategyCallbacks):
         """Get indicator value."""
         return self.market_data.get_indicator(name, index)
 
-    def get_market_regime(self, index: int = 0) -> str:
+    def get_market_regime(self, index: int = 0, column: Optional[str] = None) -> str:
         """
         Get market regime as string (INTERDAY ONLY).
 
@@ -646,6 +646,9 @@ class BaseStrategy(IStrategyCallbacks):
         ----------
         index : int
             Historical index (0=current, 1=previous bar, etc.)
+        column : str, optional
+            Read this feed column instead of the default ``'market_regime'``.
+            Default ``None`` preserves prior behavior.
 
         Returns
         -------
@@ -676,7 +679,8 @@ class BaseStrategy(IStrategyCallbacks):
         # error rather than silently returning 'unknown'.
         from echolon.indicators.registry import get_regime_classifier
         classifier = get_regime_classifier('market_regime')
-        numeric_regime = self.market_data.get_indicator('market_regime', index)
+        read_column = column if column is not None else 'market_regime'
+        numeric_regime = self.market_data.get_indicator(read_column, index)
         return classifier.label_map.get(int(numeric_regime), 'unknown')
 
     def get_session_phase(self, index: int = 0) -> str:

@@ -183,6 +183,7 @@ class WFARunner:
         drs_config: Optional[DRSConfig] = None,
         selection_score_fn: Optional[Callable[[pd.Series, Mapping[str, Any]], float]] = None,
         binding_resolver_fn: Optional[Callable[["WFAWindow"], Mapping[str, Any]]] = None,
+        market_adapter_factory: Optional[Callable[..., Any]] = None,
     ):
         if optuna_config is None:
             raise ValueError(
@@ -234,6 +235,11 @@ class WFARunner:
         # _apply_binding_overlay).
         self.binding_resolver_fn = binding_resolver_fn
 
+        # Generic host-app adapter construction hook. Default None preserves
+        # Echolon's EngineFactory path; callers that need extra setup can return
+        # any object satisfying the normal market-adapter interface.
+        self.market_adapter_factory = market_adapter_factory
+
     def run(self) -> Dict[str, Any]:
         """
         Run complete WFA pipeline.
@@ -245,6 +251,7 @@ class WFARunner:
         from echolon.backtest.optimization.optuna_study import OptunaOptimizer
         from echolon.backtest.optimization.select_best_trial import TrialSelector
         from echolon.backtest.runner import run_best_trial
+        from echolon.backtest.engine.backtest_runner import unlink_optional_series_artifacts
         from echolon.engine.factory import EngineFactory
         from echolon.backtest.engine.backtrader_strategy import get_strategy_class
         from echolon.data.loaders.backtest_data_loader import (
@@ -301,11 +308,17 @@ class WFARunner:
         # without raising CFG-003) and the bridge strategy params (so
         # _register_indicators finds its indicators dir and
         # _initialize_strategy doesn't fall back to from_env()).
-        market_adapter = EngineFactory.create_market_adapter(
-            ctx=self.ctx,
-            mode="backtest",
-            market_data_dir=self._paths.market_data_dir,
-        )
+        if self.market_adapter_factory is not None:
+            market_adapter = self.market_adapter_factory(
+                ctx=self.ctx,
+                paths=self._paths,
+            )
+        else:
+            market_adapter = EngineFactory.create_market_adapter(
+                ctx=self.ctx,
+                mode="backtest",
+                market_data_dir=self._paths.market_data_dir,
+            )
         strategy_class = get_strategy_class(
             ctx=self.ctx,
             strategy_code_dir=str(self._paths.strategy_code_dir),
@@ -444,6 +457,7 @@ class WFARunner:
             # explicit strategy_code_dir kwarg above is load-bearing: the
             # env-based default resolves to a DIFFERENT dir under run
             # isolation (the stale-read defect).
+            unlink_optional_series_artifacts(self.output_dir)
             oos_results = run_best_trial(
                 ctx=self.ctx,
                 start_date=window.oos_start,

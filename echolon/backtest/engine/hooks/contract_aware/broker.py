@@ -73,7 +73,7 @@ class ContractPriceCache:
         self._indicators_dir: Optional[Path] = None
         ContractPriceCache._initialized = True
 
-    def preload(self, indicators_dir: str) -> int:
+    def preload(self, indicators_dir: str, *, reset: bool = True) -> int:
         """
         Pre-load all contract prices from disk.
 
@@ -83,12 +83,19 @@ class ContractPriceCache:
         ----------
         indicators_dir : str
             Path to indicators directory containing 'by_contract' subdirectory
+        reset : bool
+            Clear any previously loaded contract prices before loading this
+            directory. Defaults to True so sequential backtests cannot retain
+            prices from an earlier indicators root.
 
         Returns
         -------
         int
             Number of contracts loaded
         """
+        if reset:
+            self.clear()
+
         self._indicators_dir = Path(indicators_dir)
         contract_dir = self._indicators_dir / "by_contract"
 
@@ -183,7 +190,7 @@ class ContractPriceCache:
 _contract_price_cache = ContractPriceCache()
 
 
-def preload_contract_prices(indicators_dir: str) -> int:
+def preload_contract_prices(indicators_dir: str, *, reset: bool = True) -> int:
     """
     Pre-load all contract prices for optimization performance.
 
@@ -193,13 +200,15 @@ def preload_contract_prices(indicators_dir: str) -> int:
     ----------
     indicators_dir : str
         Path to indicators directory
+    reset : bool
+        Clear existing cached prices before loading this directory.
 
     Returns
     -------
     int
         Number of contracts loaded
     """
-    return _contract_price_cache.preload(indicators_dir)
+    return _contract_price_cache.preload(indicators_dir, reset=reset)
 
 
 def get_cached_contract_price(contract_name: str, trading_date: datetime.date) -> Optional[float]:

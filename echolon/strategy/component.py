@@ -609,7 +609,7 @@ class BaseComponent(ABC):
             Generic per-window-injectable seam (mirrors ``get_indicator``'s
             own ``name`` parameter): a host app that bakes multiple
             vintage-keyed regime columns onto one feed (e.g.
-            ``market_regime__fit20201231``) can point a single component call
+            ``market_regime__fit20150630``) can point a single component call
             at whichever one applies THIS window, without echolon knowing
             anything about vintages/rebinding — it just reads a different
             numeric column through the SAME registered classifier's

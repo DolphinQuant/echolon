@@ -48,7 +48,11 @@ import psutil
 from typing import Dict, Any, Tuple, Optional, Union, Callable, TYPE_CHECKING
 from functools import partial
 from pathlib import Path
-from concurrent.futures import ProcessPoolExecutor, as_completed
+from concurrent.futures import (
+    ProcessPoolExecutor,
+    TimeoutError as FuturesTimeoutError,
+    as_completed,
+)
 import multiprocessing
 from tqdm import tqdm
 
@@ -82,6 +86,73 @@ logger = logging.getLogger(__name__)
 
 # Suppress Optuna's verbose logging during optimization
 optuna.logging.set_verbosity(optuna.logging.WARNING)
+
+
+def _context_spawn_spec(ctx: TradingContext) -> Dict[str, Any]:
+    return {
+        "market": ctx.market_code,
+        "instrument": ctx.instrument_code,
+        "frequency": ctx.frequency,
+        "bar_size": ctx.bar_size,
+        "initial_capital": ctx.initial_capital,
+    }
+
+
+def _spawn_shared_data_payload(shared_data: Dict[str, Any]) -> Dict[str, Any]:
+    payload = dict(shared_data)
+    payload["ctx_spec"] = _context_spawn_spec(shared_data["ctx"])
+    market_adapter = shared_data["market_adapter"]
+    payload["contract_specs"] = getattr(market_adapter, "_contract_specs", None)
+    payload["ctx"] = None
+    payload["market_adapter"] = None
+    return payload
+
+
+def _initialize_optimization_worker(shared_data: Dict[str, Any]) -> None:
+    """Hydrate worker-local OptimizationRunner shared data under spawn."""
+    from echolon.config.markets.factory import MarketFactory
+    from echolon.engine.factory import EngineFactory
+
+    ctx_spec = shared_data["ctx_spec"]
+    ctx = MarketFactory.create(
+        market=ctx_spec["market"],
+        instrument=ctx_spec["instrument"],
+        frequency=ctx_spec["frequency"],
+        bar_size=ctx_spec["bar_size"],
+        initial_capital=ctx_spec["initial_capital"],
+    )
+    market_adapter = EngineFactory.create_market_adapter(
+        ctx=ctx,
+        mode="backtest",
+        market_data_dir=shared_data["market_data_dir"],
+    )
+    contract_specs = shared_data["contract_specs"]
+    if contract_specs is not None:
+        market_adapter._contract_specs = dict(contract_specs)
+
+    hydrated = dict(shared_data)
+    hydrated["ctx"] = ctx
+    hydrated["market_adapter"] = market_adapter
+    hydrated.pop("ctx_spec")
+    hydrated.pop("contract_specs")
+    OptimizationRunner._shared_data = hydrated
+    setup_backtest_logging("optimization")
+
+
+_FIRST_TRIAL_LIVENESS_MESSAGES = (
+    "shared data not initialized",
+    "indicator_metadata not set",
+)
+
+
+def _is_first_trial_liveness_failure(failure: OptimizationFailure) -> bool:
+    if failure.error_type != "PreconditionError":
+        return False
+    message = failure.message.lower()
+    return any(
+        expected in message
+        for expected in _FIRST_TRIAL_LIVENESS_MESSAGES
+    )
 
 
 # ===============================================================================
@@ -166,8 +237,9 @@ class OptunaOptimizer:
         Target metric: "sharpe_ratio", "total_return", "multi_objective", etc.
     timeout : int, optional
         Timeout in seconds for optimization
-    use_sequential : bool
-        Use sequential mode for debugging (default False)
+    use_sequential : bool, optional
+        Explicit sequential-mode override. When omitted, derives from
+        ``optuna_config.n_jobs == 1``.
     run_context : str
         Execution context for logging: "optimization", "debug", "best_trial"
     """
@@ -181,7 +253,7 @@ class OptunaOptimizer:
         n_trials: Optional[int] = None,
         optimization_target: Optional[str] = None,
         timeout: Optional[int] = None,
-        use_sequential: bool = False,
+        use_sequential: Optional[bool] = None,
         run_context: str = "optimization",
         optuna_config: Optional[OptunaConfig] = None,
         indicator_dir: Optional[Path] = None,
@@ -205,7 +277,11 @@ class OptunaOptimizer:
             else self._optuna_config.target
         )
         self.timeout = timeout if timeout is not None else self._optuna_config.timeout
-        self.use_sequential = use_sequential
+        self.use_sequential = (
+            self._optuna_config.n_jobs == 1
+            if use_sequential is None
+            else use_sequential
+        )
         self.run_context = run_context
         self.start_time: Optional[float] = None
 
@@ -484,23 +560,16 @@ class OptunaOptimizer:
                 trial_params = self.search_space_fn(trial)
                 trials_to_run.append((trial, trial_params))
 
-            # Execute batch in parallel
-            # CRITICAL: Use module-level run_optimization_trial function, NOT bound method
-            # self._run_trial_in_process would require pickling self, which contains ctx
-            # (TradingContext with unpicklable lambdas). The module-level function avoids
-            # this by using OptimizationRunner._shared_data which is inherited via fork().
-            # mp_context="fork": workers read OptimizationRunner._shared_data
-            # (indicators DataFrame + ctx with unpicklable lambdas) via
-            # copy-on-write inheritance — the design this module depends on
-            # (see the comment above + setup_shared_data). macOS / Python 3.8+
-            # default to "spawn", which gives each worker a FRESH class with
-            # _shared_data unset → every trial fails "Shared data not
-            # initialized" (WFA-001). Forcing fork restores inheritance on
-            # macOS. Pair with OBJC_DISABLE_INITIALIZE_FORK_SAFETY=YES in the
-            # caller's env to avoid the macOS Objective-C fork-crash guard.
+            # Execute batch in parallel. Use module-level functions and a
+            # spawn initializer: workers start from a clean interpreter and
+            # hydrate OptimizationRunner._shared_data explicitly instead of
+            # inheriting it from a threaded parent process via fork.
+            shared_data = _spawn_shared_data_payload(OptimizationRunner._shared_data)
             with ProcessPoolExecutor(
                 max_workers=min(current_batch, max_workers),
-                mp_context=multiprocessing.get_context("fork"),
+                mp_context=multiprocessing.get_context("spawn"),
+                initializer=_initialize_optimization_worker,
+                initargs=(shared_data,),
             ) as executor:
                 future_to_trial = {
                     executor.submit(
@@ -511,53 +580,77 @@ class OptunaOptimizer:
                     for trial, trial_params in trials_to_run
                 }
 
-                for future in as_completed(future_to_trial):
-                    trial = future_to_trial[future]
-                    try:
-                        result = future.result()
-                        if result['success']:
-                            if self.optimization_target == "multi_objective":
-                                study.tell(trial, result['values'])
+                try:
+                    completed_futures = as_completed(
+                        future_to_trial,
+                        timeout=self.timeout,
+                    )
+                    for future in completed_futures:
+                        trial = future_to_trial[future]
+                        try:
+                            result = future.result()
+                            if result['success']:
+                                if self.optimization_target == "multi_objective":
+                                    study.tell(trial, result['values'])
+                                else:
+                                    study.tell(trial, result['value'])
+                                # FLAG-2: collect per-trial daily returns from IPC dict
+                                _dr = result.get('metrics', {}).get('daily_returns')
+                                if _dr:
+                                    self._per_trial_returns[trial.number] = _dr
                             else:
-                                study.tell(trial, result['value'])
-                            # FLAG-2: collect per-trial daily returns from IPC dict
-                            _dr = result.get('metrics', {}).get('daily_returns')
-                            if _dr:
-                                self._per_trial_returns[trial.number] = _dr
-                        else:
-                            study.tell(trial, state=optuna.trial.TrialState.FAIL)
-                            failed_trials += 1
-                            # Aggregate structured failure for end-of-study
-                            # reporting. ``failure`` is the dict form of
-                            # OptimizationFailure — reconstruct and fold in.
-                            failure_dict = result.get('failure')
-                            if failure_dict is not None:
-                                failure = OptimizationFailure(**failure_dict)
-                                _aggregate_failure(
-                                    self._failure_groups, failure, trial.number,
-                                )
-                            if result.get('critical_error'):
+                                study.tell(trial, state=optuna.trial.TrialState.FAIL)
+                                failed_trials += 1
+                                # Aggregate structured failure for end-of-study
+                                # reporting. ``failure`` is the dict form of
+                                # OptimizationFailure — reconstruct and fold in.
+                                failure_dict = result.get('failure')
+                                if failure_dict is not None:
+                                    failure = OptimizationFailure(**failure_dict)
+                                    if (
+                                        completed_trials == 0
+                                        and pbar.n == 0
+                                        and _is_first_trial_liveness_failure(failure)
+                                    ):
+                                        pbar.close()
+                                        raise RuntimeError(
+                                            "CRITICAL first trial liveness failure: "
+                                            f"{failure.message}"
+                                        )
+                                    _aggregate_failure(
+                                        self._failure_groups, failure, trial.number,
+                                    )
+                                if result.get('critical_error'):
+                                    pbar.close()
+                                    # Print critical error directly to terminal
+                                    failure_repr = result.get('failure') or {}
+                                    err_msg = failure_repr.get('message', 'Unknown error')
+                                    print(f"\n{'='*60}")
+                                    print(f"CRITICAL ERROR in trial {trial.number}")
+                                    print(f"Error: {err_msg}")
+                                    print(f"{'='*60}\n")
+                                    raise RuntimeError(err_msg)
+                        except Exception as e:
+                            if "CRITICAL" in str(e):
                                 pbar.close()
-                                # Print critical error directly to terminal
-                                failure_repr = result.get('failure') or {}
-                                err_msg = failure_repr.get('message', 'Unknown error')
-                                print(f"\n{'='*60}")
-                                print(f"CRITICAL ERROR in trial {trial.number}")
-                                print(f"Error: {err_msg}")
-                                print(f"{'='*60}\n")
-                                raise RuntimeError(err_msg)
-                    except Exception as e:
-                        if "CRITICAL" in str(e):
-                            pbar.close()
-                            raise
-                        failed_trials += 1
-                        study.tell(trial, state=optuna.trial.TrialState.FAIL)
+                                raise
+                            failed_trials += 1
+                            study.tell(trial, state=optuna.trial.TrialState.FAIL)
 
-                    # Update progress bar — postfix without ``refresh=True``
-                    # so tqdm batches the redraw with the throttled update
-                    # cycle instead of forcing one render per trial.
-                    pbar.update(1)
-                    pbar.set_postfix({'failed': failed_trials})
+                        # Update progress bar — postfix without ``refresh=True``
+                        # so tqdm batches the redraw with the throttled update
+                        # cycle instead of forcing one render per trial.
+                        pbar.update(1)
+                        pbar.set_postfix({'failed': failed_trials})
+                except FuturesTimeoutError as exc:
+                    for pending in future_to_trial:
+                        pending.cancel()
+                    pbar.close()
+                    raise TimeoutError(
+                        "Optimization batch timed out after "
+                        f"{self.timeout}s with {len(future_to_trial)} trial(s) "
+                        "still outstanding"
+                    ) from exc
 
             completed_trials += current_batch
 

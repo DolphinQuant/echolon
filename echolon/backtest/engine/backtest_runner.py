@@ -77,6 +77,16 @@ from echolon.backtest.logging_utils import (
 
 logger = logging.getLogger(__name__)
 
+_OPTIONAL_SERIES_ARTIFACTS = ("backtest_trades.csv", "equity_curve.csv")
+
+
+def unlink_optional_series_artifacts(output_dir: Path) -> None:
+    """Remove optional per-run series before saving a fresh result."""
+    for name in _OPTIONAL_SERIES_ARTIFACTS:
+        path = Path(output_dir) / name
+        if path.exists():
+            path.unlink()
+
 
 # =============================================================================
 # Configuration
@@ -552,6 +562,8 @@ class BacktestRunner:
             json.dump(validated.model_dump(), f, indent=4, default=str)
 
         logger.info(f"[BACKTEST_RUNNER] Results saved | path={results_path}")
+
+        unlink_optional_series_artifacts(output_dir)
 
         # Save trade log using reporting utility
         if 'trades' in results and results['trades']:

@@ -19,9 +19,16 @@ _FIT_BASE = re.compile(r"^(.+)__fit[0-9]{8}$")
 # (``self.get_market_regime()`` / ``self.get_session_phase()``), NOT through
 # ``get_indicator('...')`` — so the IND-001 scan above never sees them. The
 # trailing ``\(`` anchors the method name so ``get_session_phase_agg(`` does not
-# partial-match. The captured group is exactly the column the accessor requires
-# to be declared in strategy_indicator_list.json.
-_REGIME_ACCESSOR_PATTERN = re.compile(r"\.get_(market_regime|session_phase)\s*\(")
+# partial-match. Literal ``column='...'`` kwargs are validated when present;
+# dynamic column variables are outside this static regex's scope.
+_REGIME_ACCESSOR_PATTERN = re.compile(
+    r"""\.get_(market_regime|session_phase)\s*\((?P<args>[^)]*)\)""",
+    re.DOTALL,
+)
+_COLUMN_KWARG_PATTERN = re.compile(
+    r"""(?:^|,)\s*column\s*=\s*['"]([^'"]+)['"]""",
+    re.DOTALL,
+)
 
 _PY_FILES_TO_SCAN = ("entry.py", "exit.py", "risk.py", "sizer.py", "strategy.py")
 
@@ -82,6 +89,14 @@ def _get_declared_indicator_names(strategy_dir: Path) -> set[str]:
     return declared
 
 
+def _declares_column_or_fit_base(column: str, declared: set[str]) -> bool:
+    column_lower = column.lower()
+    if column_lower in declared:
+        return True
+    fit_base = _FIT_BASE.match(column_lower)
+    return bool(fit_base and fit_base.group(1) in declared)
+
+
 def validate_indicator_names(strategy_dir: Path) -> list[EchelonError]:
     """Check that all indicator names used in code are lowercase.
 
@@ -116,8 +131,17 @@ def validate_indicator_names(strategy_dir: Path) -> list[EchelonError]:
         # declared. This fires at preflight instead of as a Stage-2 backtest
         # KeyError minutes into the run.
         for match in _REGIME_ACCESSOR_PATTERN.finditer(content):
-            column = match.group(1)
-            if column not in declared and column not in regime_flagged:
+            accessor_column = match.group(1)
+            column_kwarg = _COLUMN_KWARG_PATTERN.search(match.group("args"))
+            column = (
+                column_kwarg.group(1).lower()
+                if column_kwarg is not None
+                else accessor_column
+            )
+            if (
+                not _declares_column_or_fit_base(column, declared)
+                and column not in regime_flagged
+            ):
                 regime_flagged.add(column)
                 line = content[: match.start()].count("\n") + 1
                 errors.append(_make_error(

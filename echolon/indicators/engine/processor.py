@@ -12,6 +12,7 @@ Indicator calculation workflow:
    ``VOLATILITY_STATE``).
 """
 import os
+import re
 import pandas as pd
 import numpy as np
 from typing import List, Dict, Any, Optional
@@ -35,11 +36,27 @@ from echolon.data.loaders.session_availability_loader import (
 )
 from ..registry.utils import get_function
 from echolon.config.markets.core.context import TradingContext
-from echolon.errors import raise_error
+from echolon.errors import IndicatorError, raise_error
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+
+_RE_FIT_SUFFIX = re.compile(r"^(.+)__fit([0-9]{8})$")
+_RE_WINDOWED_DERIVED = re.compile(r"^(.+)_(pctl|z)_(\d+)$")
+
+
+def _derived_column_base(indicator_name: str):
+    fit_match = _RE_FIT_SUFFIX.match(indicator_name)
+    if fit_match:
+        return fit_match.group(1)
+
+    window_match = _RE_WINDOWED_DERIVED.match(indicator_name)
+    if window_match:
+        return window_match.group(1)
+
+    return None
 
 
 def _resolve_function(indicator_name: str, frequency: str = "day"):
@@ -50,6 +67,30 @@ def _resolve_function(indicator_name: str, frequency: str = "day"):
     """
     function = get_function(indicator_name.upper(), frequency=frequency)
     if function is None:
+        base_indicator = _derived_column_base(indicator_name)
+        if base_indicator is not None:
+            raise IndicatorError(
+                code="IND-002",
+                what="Derived/vintage column requested for indicator dispatch",
+                why=(
+                    f"{indicator_name!r} is a derived/vintage column. The "
+                    "indicator processor dispatches base catalog indicators; "
+                    "feed-bake stages produce derived/vintage columns."
+                ),
+                fix=(
+                    f"declare the BASE indicator {base_indicator!r} in "
+                    "strategy_indicator_list.json and let the feed bake "
+                    f"produce {indicator_name!r}. Do not list a "
+                    "derived/vintage column as a computable indicator."
+                ),
+                context={
+                    "indicator": indicator_name,
+                    "base_indicator": base_indicator,
+                    "file": __file__,
+                    "line": "<indicator dispatch>",
+                },
+            )
+
         raise_error(
             "IND-002",
             indicator=indicator_name,

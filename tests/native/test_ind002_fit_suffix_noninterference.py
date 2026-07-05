@@ -37,3 +37,40 @@ def test_ind002_no_interference_for_fit_suffix_regime_column(tmp_path: Path):
         f"Expected no IND-002 for a vintage-suffixed declaration, got: "
         + "\n".join(str(e) for e in ind002_errors)
     )
+
+
+def test_ind002_accepts_literal_fit_suffix_column_kwarg(tmp_path: Path):
+    indicator_list = {"market_regime__fit20240101": {}}
+    (tmp_path / "strategy_indicator_list.json").write_text(
+        json.dumps(indicator_list), encoding="utf-8"
+    )
+    (tmp_path / "entry.py").write_text(
+        "class Entry:\n"
+        "    def run(self):\n"
+        "        return self.get_market_regime(column='market_regime__fit20240101')\n",
+        encoding="utf-8",
+    )
+
+    errors = validate_indicator_names(tmp_path)
+
+    assert not [e for e in errors if getattr(e, "code", None) == "IND-002"]
+
+
+def test_ind002_flags_undeclared_literal_column_kwarg(tmp_path: Path):
+    indicator_list = {"market_regime": {}}
+    (tmp_path / "strategy_indicator_list.json").write_text(
+        json.dumps(indicator_list), encoding="utf-8"
+    )
+    (tmp_path / "entry.py").write_text(
+        "class Entry:\n"
+        "    def run(self):\n"
+        "        return self.get_market_regime(column='custom_regime')\n",
+        encoding="utf-8",
+    )
+
+    errors = validate_indicator_names(tmp_path)
+
+    assert any(
+        e.code == "IND-002" and "custom_regime" in (e.fix or "")
+        for e in errors
+    )

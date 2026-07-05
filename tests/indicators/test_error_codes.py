@@ -83,3 +83,27 @@ def test_unknown_indicator_raises_ind_002():
                 except TypeError:
                     resolver(None, indicator_name="definitely_not_real")
     assert exc.value.code == "IND-002"
+
+
+def test_derived_column_dispatch_error_names_base_declaration():
+    from echolon.indicators.engine import processor as proc_mod
+
+    with pytest.raises(IndicatorError) as exc:
+        proc_mod._resolve_function("cmo_pctl_252")
+
+    assert exc.value.code == "IND-002"
+    assert "derived/vintage column" in str(exc.value)
+    assert "declare the BASE" in str(exc.value)
+    assert "cmo" in str(exc.value)
+
+
+def test_vintage_column_dispatch_error_names_base_declaration():
+    from echolon.indicators.engine import processor as proc_mod
+
+    with pytest.raises(IndicatorError) as exc:
+        proc_mod._resolve_function("market_regime__fit20240131")
+
+    assert exc.value.code == "IND-002"
+    assert "derived/vintage column" in str(exc.value)
+    assert "declare the BASE" in str(exc.value)
+    assert "market_regime" in str(exc.value)
