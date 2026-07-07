@@ -140,6 +140,7 @@ class InstrumentSpec:
     margin_rate: float                  # Margin requirement (decimal, e.g., 0.08 = 8%)
     commission: float                   # Commission amount or rate
     commission_type: str                # 'per_contract' or 'percentage'
+    close_today_commission: Optional[float] = None  # Same unit/mode as commission
 
     # Trading details
     currency: str = 'CNY'
@@ -150,13 +151,23 @@ class InstrumentSpec:
     has_night_session: bool = False
     sessions: List[SessionWindow] = field(default_factory=list)
 
-    def calculate_commission(self, price: float, size: int) -> float:
+    def calculate_commission(
+        self,
+        price: float,
+        size: int,
+        close_today: bool = False,
+    ) -> float:
         """Calculate commission for a trade."""
+        commission = (
+            self.close_today_commission
+            if close_today and self.close_today_commission is not None
+            else self.commission
+        )
         if self.commission_type == 'per_contract':
-            return abs(size) * self.commission
+            return abs(size) * commission
         elif self.commission_type == 'percentage':
             contract_value = abs(size) * price * self.multiplier
-            return contract_value * self.commission
+            return contract_value * commission
         return 0.0
 
     def calculate_margin(self, price: float, size: int) -> float:

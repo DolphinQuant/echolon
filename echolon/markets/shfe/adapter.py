@@ -68,6 +68,7 @@ def instrument_spec_to_contract_spec(spec: InstrumentSpec) -> ContractSpec:
         margin_rate=spec.margin_rate,
         commission=spec.commission,
         commission_type=spec.commission_type,
+        close_today_commission=spec.close_today_commission,
         currency=spec.currency,
         trading_unit=spec.trading_unit,
         min_order_size=spec.min_order_size,
@@ -459,7 +460,8 @@ class SHFEAdapter(BaseMarketAdapter):
         self,
         symbol: str,
         size: int,
-        price: float
+        price: float,
+        close_today: bool = False,
     ) -> float:
         """
         Calculate commission for a trade.
@@ -476,7 +478,7 @@ class SHFEAdapter(BaseMarketAdapter):
             Commission amount in CNY
         """
         spec = self.get_contract_spec(symbol)
-        return spec.calculate_commission(price, size)
+        return spec.calculate_commission(price, size, close_today=close_today)
 
     def calculate_margin(
         self,

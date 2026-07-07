@@ -719,6 +719,17 @@ class MiniQMTClient:
             trade_list = []
             for trade in trades:
                 try:
+                    commission = None
+                    for attr in (
+                        "commission",
+                        "m_dCommission",
+                        "traded_commission",
+                        "business_commission",
+                    ):
+                        value = getattr(trade, attr, None)
+                        if isinstance(value, (int, float)):
+                            commission = float(value)
+                            break
                     trade_dict = {
                         "order_id": getattr(trade, "order_id", "N/A"),
                         "stock_code": getattr(trade, "stock_code", "N/A"),
@@ -728,6 +739,7 @@ class MiniQMTClient:
                         "traded_price": getattr(trade, "traded_price", 0.0),
                         "traded_volume": getattr(trade, "traded_volume", 0),
                         "traded_amount": getattr(trade, "traded_amount", 0.0),
+                        "commission": commission,
                         "strategy_name": getattr(trade, "strategy_name", ""),
                         "order_remark": getattr(trade, "order_remark", ""),
                     }
@@ -856,4 +868,3 @@ class MiniQMTClient:
         self.trade_callback = trade_callback
         self.market_data_callback = market_data_callback
         self.async_response_callback = async_response_callback
-
