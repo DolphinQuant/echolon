@@ -452,6 +452,17 @@ class OrderRouter:
         with self._lock:
             self._health = HealthMetrics()
 
+    def trip_circuit(self, reason: str) -> None:
+        """Trip the persisted circuit breaker from an external safety check.
+
+        Used by portfolio-level risk overlays so all submission blocking and
+        restart persistence stay owned by the OrderRouter circuit mechanism.
+        """
+        with self._lock:
+            if self._tripped:
+                return
+            self._trip(reason)
+
     @property
     def is_tripped(self) -> bool:
         return self._tripped

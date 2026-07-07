@@ -22,6 +22,7 @@ logger = logging.getLogger(__name__)
 
 if TYPE_CHECKING:
     from .trading_slot import TradingSlot
+    from ..platforms.miniqmt.order_router import OrderRouter
     from ..platforms.miniqmt.qmt_client import MiniQMTClient
 
 
@@ -104,6 +105,30 @@ class PortfolioRiskOverlay:
             f"equity={total_equity:.2f}, peak={self._peak_portfolio_equity:.2f}"
         )
         return True
+
+    def enforce_portfolio_drawdown(
+        self,
+        slots: List['TradingSlot'],
+        order_router: Optional['OrderRouter'],
+    ) -> bool:
+        """Check drawdown and trip the OrderRouter circuit on breach.
+
+        Returns True when the portfolio is within limits. On breach, the
+        router's persisted circuit state is tripped so restart cannot resume
+        order submission until an operator resets the circuit after review.
+        """
+        ok = self.check_portfolio_drawdown(slots)
+        if ok:
+            return True
+
+        if order_router is None:
+            logger.critical(
+                "PORTFOLIO DRAWDOWN BREACHED but no OrderRouter exists to trip"
+            )
+            return False
+
+        order_router.trip_circuit("portfolio_drawdown")
+        return False
 
     # =========================================================================
     # Level 1: Verify today's trades

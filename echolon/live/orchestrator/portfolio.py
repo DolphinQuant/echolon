@@ -651,10 +651,24 @@ class PortfolioTradingRunner:
                 self.log.error(f"Reconciliation failed: {e}")
 
         # Phase 4: Portfolio risk check
-        dd_ok = self.risk_overlay.check_portfolio_drawdown(self.slots)
+        dd_ok = self.risk_overlay.enforce_portfolio_drawdown(
+            self.slots,
+            order_router=self.order_router,
+        )
         if not dd_ok:
-            self.log.error("PORTFOLIO DRAWDOWN LIMIT BREACHED — manual intervention required")
+            self.log.critical(
+                "PORTFOLIO DRAWDOWN LIMIT BREACHED — trading cycle halted; "
+                "OrderRouter circuit tripped"
+            )
             results["drawdown_breached"] = True
+            results["status"] = "halted"
+            self.running = False
+            self.shutdown_event.set()
+            self.risk_overlay.save()
+            duration = (datetime.now() - cycle_start).total_seconds()
+            results["duration_seconds"] = duration
+            self._save_health_report(cycle_start, results)
+            return results
 
         # Phase 5: Save trading data snapshot + state + health report
         from ..io.data_logger import save_trading_data_snapshot
