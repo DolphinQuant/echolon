@@ -10,8 +10,8 @@ Schema mapping:
     volume     → volume
     hold       → open_interest
 
-Synthesized (akshare doesn't expose these):
-    settlement       = close
+Synthesized when akshare doesn't expose them:
+    settlement       = settle when present, otherwise close
     prev_close       = close.shift(1) per contract
     prev_settlement  = settlement.shift(1)
     price_change     = close - prev_close
@@ -112,7 +112,10 @@ class SHFEAkshareExtractor(BaseExtractor):
                     continue
                 df = df.sort_values("date").reset_index(drop=True)
                 df["prev_close"] = df["close"].shift(1).fillna(df["close"])
-                df["settlement"] = df["close"]
+                if "settle" in df.columns:
+                    df["settlement"] = df["settle"].fillna(df["close"])
+                else:
+                    df["settlement"] = df["close"]
                 df["prev_settlement"] = df["settlement"].shift(1).fillna(df["settlement"])
                 df["price_change"] = df["close"] - df["prev_close"]
                 df["settlement_change"] = df["settlement"] - df["prev_settlement"]

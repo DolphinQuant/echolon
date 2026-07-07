@@ -23,6 +23,7 @@ _FAKE_DAILY = pd.DataFrame({
     "close": [19030.0, 19060.0, 19010.0],
     "volume": [5000.0, 6000.0, 5500.0],
     "hold":  [30000.0, 31000.0, 30500.0],
+    "settle": [19020.0, 19040.0, 19025.0],
 })
 
 
@@ -63,6 +64,23 @@ def test_maps_akshare_to_canonical_schema(tmp_path, monkeypatch):
                 "price_change", "settlement_change", "turnover"):
         assert col in df.columns
     assert (df["contract"] == "al2401").all()
+    assert df["settlement"].tolist() == [19020.0, 19040.0, 19025.0]
+    assert df["prev_settlement"].tolist() == [19020.0, 19020.0, 19040.0]
+
+
+def test_falls_back_to_close_when_akshare_settle_missing(tmp_path, monkeypatch):
+    no_settle = _FAKE_DAILY.drop(columns=["settle"])
+    _install_fake_akshare(monkeypatch, [no_settle])
+    extractor = SHFEAkshareExtractor("SHFE", "aluminum")
+    monkeypatch.setattr(extractor, "_list_contracts_in_range",
+                        lambda *_args, **_kw: ["al2401"])
+
+    df = extractor.extract_raw(
+        start_date="2024-01-01", end_date="2024-01-31",
+        output_dir=str(tmp_path), save=False,
+    )
+
+    assert df["settlement"].tolist() == no_settle["close"].tolist()
 
 
 def test_skips_empty_contracts(tmp_path, monkeypatch):
