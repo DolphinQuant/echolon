@@ -49,7 +49,7 @@ class Constructor:
             price = float(bars.iloc[-1]["settle"])
             meta = view.meta(instrument)
             vol_ann = _annualized_vol(bars["settle"])
-            if denom == 0.0 or vol_ann <= 0.0:
+            if denom <= 1e-12 or vol_ann <= 0.0:
                 pre_round = 0.0
             else:
                 notional = (
