@@ -31,14 +31,14 @@ class TradeRecord(BaseModel):
     instrument: str
     contract: str
     side: str
-    lots: int
+    lots: float
     intended_price: float
     fill_price: float
     slippage_rmb: float
     commission_rmb: float
     close_today: bool
     realized_pnl_rmb: float
-    position_after: int
+    position_after: float
 
 
 class Summary(BaseModel):
@@ -62,4 +62,3 @@ class BookResult(BaseModel):
     daily_returns: list[dict] = Field(default_factory=list)
     events: list[dict] = Field(default_factory=list)
     summary: Summary
-

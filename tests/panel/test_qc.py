@@ -101,7 +101,7 @@ def test_qc_warns_on_zero_volume_and_settle_close_divergence():
     }
 
 
-def test_qc_treats_price_outliers_as_warnings_and_skips_roll_return():
+def test_qc_fails_unadjusted_roll_gap_above_hard_return_threshold():
     bars = {
         "fu": pd.DataFrame(
             [
@@ -128,9 +128,77 @@ def test_qc_treats_price_outliers_as_warnings_and_skips_roll_return():
                 {
                     "open": 2610.0,
                     "high": 2620.0,
-                    "low": 2100.0,
-                    "close": 2100.0,
+                    "low": 2360.0,
+                    "close": 2360.0,
                     "settle": 2600.0,
+                    "volume": 1000,
+                    "open_interest": 1000,
+                    "contract": "fu2405",
+                },
+            ],
+            index=[dt.date(2024, 1, 2), dt.date(2024, 1, 3), dt.date(2024, 1, 4)],
+        )
+    }
+
+    report = run_panel_qc(snapshot="synthetic", bars=bars, curves={})
+
+    assert report.status == "FAIL"
+    assert any(
+        check.check_id == "daily_return_threshold"
+        and check.severity == "ERROR"
+        and check.date == dt.date(2024, 1, 3)
+        for check in report.checks
+    )
+
+
+def test_qc_allows_adjusted_roll_series_and_still_flags_real_outliers():
+    bars = {
+        "fu": pd.DataFrame(
+            [
+                {
+                    "open": 2530.0,
+                    "high": 2541.0,
+                    "low": 2519.0,
+                    "close": 2530.0,
+                    "settle": 2530.0,
+                    "open_raw": 2300.0,
+                    "high_raw": 2310.0,
+                    "low_raw": 2290.0,
+                    "close_raw": 2300.0,
+                    "settle_raw": 2300.0,
+                    "adj_factor": 1.1,
+                    "volume": 1000,
+                    "open_interest": 1000,
+                    "contract": "fu2401",
+                },
+                {
+                    "open": 2540.0,
+                    "high": 2550.0,
+                    "low": 2530.0,
+                    "close": 2540.0,
+                    "settle": 2540.0,
+                    "open_raw": 2600.0,
+                    "high_raw": 2610.0,
+                    "low_raw": 2590.0,
+                    "close_raw": 2600.0,
+                    "settle_raw": 2600.0,
+                    "adj_factor": 1.0,
+                    "volume": 1000,
+                    "open_interest": 1000,
+                    "contract": "fu2405",
+                },
+                {
+                    "open": 2550.0,
+                    "high": 2560.0,
+                    "low": 2360.0,
+                    "close": 2360.0,
+                    "settle": 2540.0,
+                    "open_raw": 2610.0,
+                    "high_raw": 2620.0,
+                    "low_raw": 2360.0,
+                    "close_raw": 2360.0,
+                    "settle_raw": 2600.0,
+                    "adj_factor": 1.0,
                     "volume": 1000,
                     "open_interest": 1000,
                     "contract": "fu2405",
@@ -152,3 +220,47 @@ def test_qc_treats_price_outliers_as_warnings_and_skips_roll_return():
         check.check_id == "daily_return_threshold" and check.date == dt.date(2024, 1, 3)
         for check in report.checks
     )
+
+
+def test_qc_specific_waiver_keeps_hard_error_visible_but_nonblocking():
+    date = dt.date(2024, 1, 3)
+    bars = {
+        "ni": pd.DataFrame(
+            [
+                {
+                    "open": 100.0,
+                    "high": 100.0,
+                    "low": 100.0,
+                    "close": 100.0,
+                    "settle": 100.0,
+                    "volume": 1000,
+                    "open_interest": 1000,
+                    "contract": "ni2401",
+                },
+                {
+                    "open": 130.0,
+                    "high": 130.0,
+                    "low": 130.0,
+                    "close": 130.0,
+                    "settle": 130.0,
+                    "volume": 1000,
+                    "open_interest": 1000,
+                    "contract": "ni2401",
+                },
+            ],
+            index=[dt.date(2024, 1, 2), date],
+        )
+    }
+
+    report = run_panel_qc(
+        snapshot="synthetic",
+        bars=bars,
+        curves={},
+        waivers={("ni", date, "daily_return_threshold"): "exchange stress day retained"},
+    )
+
+    assert report.status == "PASS_WITH_WARNINGS"
+    hard = [check for check in report.checks if check.severity == "ERROR"]
+    assert len(hard) == 1
+    assert hard[0].waived is True
+    assert hard[0].waiver_reason == "exchange stress day retained"

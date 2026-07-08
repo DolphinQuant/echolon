@@ -3,7 +3,7 @@ from __future__ import annotations
 
 import datetime as dt
 import warnings
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -55,6 +55,8 @@ class QCCheck(BaseModel):
     severity: Literal["ERROR", "WARN"]
     message: str
     value: float | None = None
+    waived: bool = False
+    waiver_reason: str | None = None
 
 
 class QCReport(BaseModel):
@@ -62,3 +64,4 @@ class QCReport(BaseModel):
     snapshot: str
     status: Literal["PASS", "PASS_WITH_WARNINGS", "FAIL"]
     checks: list[QCCheck] = Field(default_factory=list)
+    roll_gap_stats: dict[str, Any] = Field(default_factory=dict)

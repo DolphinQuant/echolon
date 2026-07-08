@@ -4,6 +4,7 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 from collections.abc import Mapping
+from typing import Literal
 
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
@@ -25,6 +26,7 @@ class ConstructorConfig(BaseModel):
     sector_caps_pct: dict[str, float]
     max_margin_utilization_pct: float
     min_abs_score_for_position: float
+    sizing_mode: Literal["implementation", "research"] = "implementation"
 
 
 class Constructor:
@@ -51,7 +53,7 @@ class Constructor:
                 vol_ann = 0.0
                 pre_round = 0.0
             else:
-                price = float(bars.iloc[-1]["settle"])
+                price = _raw_price(bars.iloc[-1], "settle")
                 vol_ann = _annualized_vol(bars["settle"])
             if bars.empty or denom <= 1e-12 or vol_ann <= 0.0:
                 pre_round = 0.0
@@ -79,7 +81,10 @@ class Constructor:
         self._apply_sector_caps(view, book, lots_float, rows)
         self._apply_margin_cap(view, book, lots_float, rows)
 
-        final_targets = {instrument: _toward_zero(lots) for instrument, lots in lots_float.items()}
+        if self.config.sizing_mode == "research":
+            final_targets = {instrument: float(lots) for instrument, lots in lots_float.items()}
+        else:
+            final_targets = {instrument: _toward_zero(lots) for instrument, lots in lots_float.items()}
         for instrument, lots in final_targets.items():
             rows[instrument].post_round_lots = lots
         return (
@@ -91,7 +96,7 @@ class Constructor:
         self,
         view: PanelView,
         book: BookState,
-        targets: Mapping[str, int],
+        targets: Mapping[str, float],
     ) -> BookRiskSnapshot:
         gross_by_sector: dict[str, float] = defaultdict(float)
         margin = 0.0
@@ -104,7 +109,7 @@ class Constructor:
             if bars.empty:
                 continue
             bar = bars.iloc[-1]
-            price = float(bar["settle"])
+            price = _raw_price(bar, "settle")
             meta = view.meta(instrument)
             notional = lots * price * float(meta.multiplier)
             margin += abs(notional) * float(meta.margin_rate)
@@ -137,7 +142,7 @@ class Constructor:
             bars = view.bars(instrument, 1)
             if bars.empty:
                 continue
-            price = float(bars.iloc[-1]["settle"])
+            price = _raw_price(bars.iloc[-1], "settle")
             notional = abs(lots) * price * float(meta.multiplier)
             sector_to_instruments[meta.sector].append(instrument)
             sector_gross[meta.sector] += notional
@@ -169,7 +174,7 @@ class Constructor:
             bars = view.bars(instrument, 1)
             if bars.empty:
                 continue
-            price = float(bars.iloc[-1]["settle"])
+            price = _raw_price(bars.iloc[-1], "settle")
             margin += abs(lots) * price * float(meta.multiplier) * float(meta.margin_rate)
         cap_rmb = book.equity_rmb * self.config.max_margin_utilization_pct / 100.0
         if margin <= cap_rmb or margin == 0.0:
@@ -192,3 +197,10 @@ def _annualized_vol(settles: pd.Series) -> float:
 
 def _toward_zero(value: float) -> int:
     return math.ceil(value) if value < 0 else math.floor(value)
+
+
+def _raw_price(row: pd.Series, column: str) -> float:
+    raw_column = f"{column}_raw"
+    if raw_column in row:
+        return float(row[raw_column])
+    return float(row[column])
