@@ -28,9 +28,16 @@ class _Position:
 class DailyBookBacktester(IBookBacktester):
     """Daily book simulator with one cash account and futures margin."""
 
-    def __init__(self, *, output_dir: Path, slippage_bps: float = 3.0) -> None:
+    def __init__(
+        self,
+        *,
+        output_dir: Path,
+        slippage_bps: float = 3.0,
+        rebalance_weekday: int | None = 4,
+    ) -> None:
         self.output_dir = Path(output_dir)
         self.slippage_bps = float(slippage_bps)
+        self.rebalance_weekday = rebalance_weekday
 
     def run(
         self,
@@ -76,7 +83,7 @@ class DailyBookBacktester(IBookBacktester):
                     margin_used_rmb=round(margin, 10),
                 )
             )
-            if index < len(dates) - 1:
+            if index < len(dates) - 1 and self._is_rebalance_date(date):
                 book = BookState(
                     date=date,
                     equity_rmb=equity,
@@ -109,6 +116,9 @@ class DailyBookBacktester(IBookBacktester):
         )
         self._write_outputs(result)
         return result
+
+    def _is_rebalance_date(self, date: dt.date) -> bool:
+        return self.rebalance_weekday is None or date.weekday() == self.rebalance_weekday
 
     def _execute_targets(
         self,

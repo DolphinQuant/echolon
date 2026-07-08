@@ -92,7 +92,7 @@ def _bars(prices: list[float], contract: str) -> pd.DataFrame:
 
 def test_book_backtester_applies_s11_slippage_and_commission(tmp_path: Path):
     panel = _Panel()
-    backtester = DailyBookBacktester(output_dir=tmp_path, slippage_bps=3.0)
+    backtester = DailyBookBacktester(output_dir=tmp_path, slippage_bps=3.0, rebalance_weekday=None)
 
     result = backtester.run(
         _StaticStrategy({"al": 1, "cu": 1}),
@@ -119,7 +119,7 @@ def test_book_backtester_applies_s11_slippage_and_commission(tmp_path: Path):
 
 def test_book_backtester_forced_liquidation_event(tmp_path: Path):
     panel = _Panel()
-    backtester = DailyBookBacktester(output_dir=tmp_path, slippage_bps=0.0)
+    backtester = DailyBookBacktester(output_dir=tmp_path, slippage_bps=0.0, rebalance_weekday=None)
 
     result = backtester.run(
         _StaticStrategy({"cu": 100}),
@@ -148,12 +148,12 @@ def test_book_backtester_artifacts_are_deterministic(tmp_path: Path):
     first_dir = tmp_path / "first"
     second_dir = tmp_path / "second"
 
-    first = DailyBookBacktester(output_dir=first_dir, slippage_bps=3.0).run(
+    first = DailyBookBacktester(output_dir=first_dir, slippage_bps=3.0, rebalance_weekday=None).run(
         _StaticStrategy({"al": 1, "cu": -1}),
         panel,
         config,
     )
-    second = DailyBookBacktester(output_dir=second_dir, slippage_bps=3.0).run(
+    second = DailyBookBacktester(output_dir=second_dir, slippage_bps=3.0, rebalance_weekday=None).run(
         _StaticStrategy({"al": 1, "cu": -1}),
         panel,
         config,
