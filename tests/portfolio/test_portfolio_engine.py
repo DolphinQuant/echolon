@@ -109,6 +109,32 @@ def test_constructor_zero_score_book_is_flat():
     assert all(row.post_round_lots == 0 for row in record.instruments.values())
 
 
+def test_constructor_sets_zero_when_instrument_has_no_visible_bars():
+    view = _View(
+        date=dt.date(2024, 3, 20),
+        bars_by_instrument={"al": _bars(100.0), "cu": _bars(200.0).iloc[0:0]},
+        meta_by_instrument={"al": _meta("al", "base"), "cu": _meta("cu", "base")},
+    )
+    constructor = Constructor(
+        ConstructorConfig(
+            vol_target_ann_pct=10.0,
+            sector_caps_pct={"base": 50.0},
+            max_margin_utilization_pct=20.0,
+            min_abs_score_for_position=0.0,
+        )
+    )
+
+    target, record = constructor.construct(
+        view=view,
+        book=_book(),
+        blended_scores={"al": 1.0, "cu": 1.0},
+        raw_scores={"al": {}, "cu": {}},
+    )
+
+    assert target.targets["cu"] == 0
+    assert record.instruments["cu"].vol_ann == 0.0
+
+
 @given(
     al_score=st.floats(min_value=-3.0, max_value=3.0, allow_nan=False, allow_infinity=False),
     cu_score=st.floats(min_value=-3.0, max_value=3.0, allow_nan=False, allow_infinity=False),

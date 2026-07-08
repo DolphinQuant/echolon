@@ -46,10 +46,14 @@ class Constructor:
         denom = sum(abs(score) for score in blended_scores.values())
         for instrument, blended in blended_scores.items():
             bars = view.bars(instrument, 64)
-            price = float(bars.iloc[-1]["settle"])
             meta = view.meta(instrument)
-            vol_ann = _annualized_vol(bars["settle"])
-            if denom <= 1e-12 or vol_ann <= 0.0:
+            if bars.empty:
+                vol_ann = 0.0
+                pre_round = 0.0
+            else:
+                price = float(bars.iloc[-1]["settle"])
+                vol_ann = _annualized_vol(bars["settle"])
+            if bars.empty or denom <= 1e-12 or vol_ann <= 0.0:
                 pre_round = 0.0
             else:
                 notional = (
@@ -96,7 +100,10 @@ class Constructor:
         for instrument, lots in targets.items():
             if lots == 0:
                 continue
-            bar = view.bars(instrument, 1).iloc[-1]
+            bars = view.bars(instrument, 1)
+            if bars.empty:
+                continue
+            bar = bars.iloc[-1]
             price = float(bar["settle"])
             meta = view.meta(instrument)
             notional = lots * price * float(meta.multiplier)
@@ -127,7 +134,10 @@ class Constructor:
         sector_gross: dict[str, float] = defaultdict(float)
         for instrument, lots in lots_float.items():
             meta = view.meta(instrument)
-            price = float(view.bars(instrument, 1).iloc[-1]["settle"])
+            bars = view.bars(instrument, 1)
+            if bars.empty:
+                continue
+            price = float(bars.iloc[-1]["settle"])
             notional = abs(lots) * price * float(meta.multiplier)
             sector_to_instruments[meta.sector].append(instrument)
             sector_gross[meta.sector] += notional
@@ -156,7 +166,10 @@ class Constructor:
         margin = 0.0
         for instrument, lots in lots_float.items():
             meta = view.meta(instrument)
-            price = float(view.bars(instrument, 1).iloc[-1]["settle"])
+            bars = view.bars(instrument, 1)
+            if bars.empty:
+                continue
+            price = float(bars.iloc[-1]["settle"])
             margin += abs(lots) * price * float(meta.multiplier) * float(meta.margin_rate)
         cap_rmb = book.equity_rmb * self.config.max_margin_utilization_pct / 100.0
         if margin <= cap_rmb or margin == 0.0:
