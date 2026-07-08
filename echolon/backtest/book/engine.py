@@ -60,8 +60,11 @@ class DailyBookBacktester(IBookBacktester):
         for index, date in enumerate(dates):
             view = panel.view(date)
             if pending_targets is not None:
+                cash += self._roll_changed_main_contracts(view, positions, trades, pending_targets)
                 cash += self._execute_targets(view, positions, pending_targets, trades)
                 pending_targets = None
+            else:
+                cash += self._roll_changed_main_contracts(view, positions, trades)
 
             margin = _margin_used(view, positions)
             equity = cash + _unrealized_pnl(view, positions)
@@ -156,6 +159,88 @@ class DailyBookBacktester(IBookBacktester):
                     close_today=False,
                     realized_pnl_rmb=round(realized, 10),
                     position_after=new_position.lots,
+                )
+            )
+        return round(cash_delta, 10)
+
+    def _roll_changed_main_contracts(
+        self,
+        view: Any,
+        positions: dict[str, _Position],
+        trades: list[TradeRecord],
+        targets: Mapping[str, int] | None = None,
+    ) -> float:
+        """Close and reopen positions whose held contract no longer matches main.
+
+        The P2 panel stores one main bar per instrument-date. Without an explicit
+        roll, a held contract can be marked using the next main contract's price.
+        We avoid that silent overwrite by materializing a synthetic roll at the
+        first open of the new main contract. If a rebalance target is pending for
+        the same date, the roll opens only that target on the new contract.
+        """
+        cash_delta = 0.0
+        for instrument, position in list(positions.items()):
+            if position.lots == 0:
+                continue
+            bar = view.bars(instrument, 1).iloc[-1]
+            today_contract = str(bar["contract"])
+            if not position.contract or position.contract == today_contract:
+                continue
+            meta = view.meta(instrument)
+            close_diff = -position.lots
+            # The snapshot does not retain the old contract's roll-day bar. Use
+            # the held basis for the old-contract close instead of silently
+            # marking it with the new main contract price.
+            close_intended = float(position.avg_price)
+            fill = _slipped_price(close_intended, close_diff, self.slippage_bps, float(meta.tick))
+            commission_close = _commission_rmb(meta, fill, abs(close_diff))
+            realized = _realized_pnl(position, close_diff, fill, float(meta.multiplier))
+            cash_delta += realized - commission_close
+            target_lots = int(targets.get(instrument, position.lots)) if targets is not None else position.lots
+            positions[instrument] = _Position()
+            trades.append(
+                TradeRecord(
+                    date=view.date,
+                    instrument=instrument,
+                    contract=position.contract,
+                    side="BUY" if close_diff > 0 else "SELL",
+                    lots=abs(close_diff),
+                    intended_price=round(close_intended, 10),
+                    fill_price=round(fill, 10),
+                    slippage_rmb=round(abs(fill - close_intended) * abs(close_diff) * float(meta.multiplier), 10),
+                    commission_rmb=round(commission_close, 10),
+                    close_today=False,
+                    realized_pnl_rmb=round(realized, 10),
+                    position_after=0,
+                )
+            )
+
+            if target_lots == 0:
+                continue
+            open_diff = target_lots
+            open_intended = float(bar["open"])
+            open_fill = _slipped_price(open_intended, open_diff, self.slippage_bps, float(meta.tick))
+            commission_open = _commission_rmb(meta, open_fill, abs(open_diff))
+            cash_delta -= commission_open
+            positions[instrument] = _Position(
+                lots=target_lots,
+                avg_price=open_fill,
+                contract=today_contract,
+            )
+            trades.append(
+                TradeRecord(
+                    date=view.date,
+                    instrument=instrument,
+                    contract=today_contract,
+                    side="BUY" if open_diff > 0 else "SELL",
+                    lots=abs(open_diff),
+                    intended_price=round(open_intended, 10),
+                    fill_price=round(open_fill, 10),
+                    slippage_rmb=round(abs(open_fill - open_intended) * abs(open_diff) * float(meta.multiplier), 10),
+                    commission_rmb=round(commission_open, 10),
+                    close_today=False,
+                    realized_pnl_rmb=0.0,
+                    position_after=target_lots,
                 )
             )
         return round(cash_delta, 10)

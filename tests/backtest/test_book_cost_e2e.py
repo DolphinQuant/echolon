@@ -73,6 +73,15 @@ class _StaticStrategy:
         return TargetBook(date=view.date, targets=dict(self.targets)), RebalanceRecord(date=view.date, instruments={})
 
 
+class _DatedStrategy:
+    def __init__(self, targets_by_date: dict[dt.date, dict[str, int]]) -> None:
+        self.targets_by_date = targets_by_date
+
+    def rebalance(self, view, book: BookState):
+        targets = self.targets_by_date.get(view.date, {})
+        return TargetBook(date=view.date, targets=dict(targets)), RebalanceRecord(date=view.date, instruments={})
+
+
 def _bars(prices: list[float], contract: str) -> pd.DataFrame:
     dates = [dt.date(2024, 1, 2) + dt.timedelta(days=i) for i in range(len(prices))]
     return pd.DataFrame(
@@ -162,3 +171,92 @@ def test_book_backtester_artifacts_are_deterministic(tmp_path: Path):
     assert first.summary.determinism_hash == second.summary.determinism_hash
     for name in ("equity_curve.csv", "trades.csv", "daily_returns.csv", "events.jsonl", "summary.json"):
         assert (first_dir / name).read_bytes() == (second_dir / name).read_bytes()
+
+
+def test_book_backtester_rolls_position_when_main_contract_changes(tmp_path: Path):
+    class RollingPanel(_Panel):
+        def __init__(self) -> None:
+            super().__init__()
+            dates = self.calendar
+            self._bars["al"] = pd.DataFrame(
+                {
+                    "open": [100.0, 100.0, 200.0, 200.0, 200.0],
+                    "high": [100.0, 100.0, 200.0, 200.0, 200.0],
+                    "low": [100.0, 100.0, 200.0, 200.0, 200.0],
+                    "close": [100.0, 100.0, 200.0, 200.0, 200.0],
+                    "settle": [100.0, 100.0, 200.0, 200.0, 200.0],
+                    "volume": [1000] * 5,
+                    "open_interest": [5000] * 5,
+                    "contract": ["AL2401", "AL2401", "AL2402", "AL2402", "AL2402"],
+                },
+                index=dates,
+            )
+
+    panel = RollingPanel()
+
+    result = DailyBookBacktester(
+        output_dir=tmp_path,
+        slippage_bps=0.0,
+        rebalance_weekday=None,
+    ).run(
+        _StaticStrategy({"al": 1}),
+        panel,
+        BookBacktestConfig(
+            start=dt.date(2024, 1, 2),
+            end=dt.date(2024, 1, 6),
+            initial_equity_rmb=100_000.0,
+            panel_snapshot="rolling_synthetic",
+        ),
+    )
+
+    assert [trade.contract for trade in result.trades] == ["AL2401", "AL2401", "AL2402"]
+    assert [trade.position_after for trade in result.trades] == [1, 0, 1]
+    assert result.trades[1].realized_pnl_rmb == pytest.approx(0.0)
+    assert result.equity_curve[-1].equity_rmb == pytest.approx(
+        100_000.0
+        - sum(trade.commission_rmb for trade in result.trades)
+    )
+
+
+def test_book_backtester_closes_held_contract_when_flattening_on_roll_date(tmp_path: Path):
+    class RollingPanel(_Panel):
+        def __init__(self) -> None:
+            super().__init__()
+            dates = self.calendar
+            self._bars["al"] = pd.DataFrame(
+                {
+                    "open": [100.0, 100.0, 200.0, 200.0, 200.0],
+                    "high": [100.0, 100.0, 200.0, 200.0, 200.0],
+                    "low": [100.0, 100.0, 200.0, 200.0, 200.0],
+                    "close": [100.0, 100.0, 200.0, 200.0, 200.0],
+                    "settle": [100.0, 100.0, 200.0, 200.0, 200.0],
+                    "volume": [1000] * 5,
+                    "open_interest": [5000] * 5,
+                    "contract": ["AL2401", "AL2401", "AL2402", "AL2402", "AL2402"],
+                },
+                index=dates,
+            )
+
+    result = DailyBookBacktester(
+        output_dir=tmp_path,
+        slippage_bps=0.0,
+        rebalance_weekday=None,
+    ).run(
+        _DatedStrategy(
+            {
+                dt.date(2024, 1, 2): {"al": 1},
+                dt.date(2024, 1, 3): {"al": 0},
+            }
+        ),
+        RollingPanel(),
+        BookBacktestConfig(
+            start=dt.date(2024, 1, 2),
+            end=dt.date(2024, 1, 6),
+            initial_equity_rmb=100_000.0,
+            panel_snapshot="rolling_synthetic",
+        ),
+    )
+
+    assert [trade.contract for trade in result.trades] == ["AL2401", "AL2401"]
+    assert [trade.position_after for trade in result.trades] == [1, 0]
+    assert result.trades[1].realized_pnl_rmb == pytest.approx(0.0)
