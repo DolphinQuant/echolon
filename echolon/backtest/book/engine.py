@@ -61,11 +61,11 @@ class DailyBookBacktester(IBookBacktester):
         for index, date in enumerate(dates):
             view = panel.view(date)
             if pending_targets is not None:
-                cash += self._roll_changed_main_contracts(view, positions, trades, pending_targets)
-                cash += self._execute_targets(view, positions, pending_targets, trades)
+                cash += self._roll_changed_main_contracts(view, positions, trades, config, pending_targets)
+                cash += self._execute_targets(view, positions, pending_targets, trades, config)
                 pending_targets = None
             else:
-                cash += self._roll_changed_main_contracts(view, positions, trades)
+                cash += self._roll_changed_main_contracts(view, positions, trades, config)
 
             margin = _margin_used(view, positions)
             equity = cash + _unrealized_pnl(view, positions)
@@ -130,6 +130,7 @@ class DailyBookBacktester(IBookBacktester):
         positions: dict[str, _Position],
         targets: Mapping[str, int],
         trades: list[TradeRecord],
+        config: BookBacktestConfig,
     ) -> float:
         cash_delta = 0.0
         for instrument, target in targets.items():
@@ -140,7 +141,12 @@ class DailyBookBacktester(IBookBacktester):
             bar = view.bars(instrument, 1).iloc[-1]
             meta = view.meta(instrument)
             intended = _raw_price(bar, "open")
-            fill = _slipped_price(intended, diff, self.slippage_bps, float(meta.tick))
+            fill = _slipped_price(
+                intended,
+                diff,
+                self._slippage_bps_for(instrument, config),
+                float(meta.tick),
+            )
             close_today = _is_close_today(positions[instrument], diff, view.date)
             commission = _commission_rmb(meta, fill, abs(diff), close_today=close_today)
             realized = _realized_pnl(positions[instrument], diff, fill, float(meta.multiplier))
@@ -170,6 +176,7 @@ class DailyBookBacktester(IBookBacktester):
         view: Any,
         positions: dict[str, _Position],
         trades: list[TradeRecord],
+        config: BookBacktestConfig,
         targets: Mapping[str, int] | None = None,
     ) -> float:
         """Materialize contract rolls before mark-to-market can drift contracts.
@@ -188,10 +195,11 @@ class DailyBookBacktester(IBookBacktester):
             if not position.contract or position.contract == today_contract:
                 continue
             meta = view.meta(instrument)
+            slippage_bps = self._slippage_bps_for(instrument, config)
             close_bar = _contract_or_main_bar(view, instrument, position.contract)
             close_diff = -position.lots
             close_intended = _raw_price(close_bar, "open")
-            close_fill = _slipped_price(close_intended, close_diff, self.slippage_bps, float(meta.tick))
+            close_fill = _slipped_price(close_intended, close_diff, slippage_bps, float(meta.tick))
             close_today = _is_close_today(position, close_diff, view.date)
             commission_close = _commission_rmb(meta, close_fill, abs(close_diff), close_today=close_today)
             realized = _realized_pnl(position, close_diff, close_fill, float(meta.multiplier))
@@ -218,7 +226,7 @@ class DailyBookBacktester(IBookBacktester):
                 continue
             open_diff = target_lots
             open_intended = _raw_price(main_bar, "open")
-            open_fill = _slipped_price(open_intended, open_diff, self.slippage_bps, float(meta.tick))
+            open_fill = _slipped_price(open_intended, open_diff, slippage_bps, float(meta.tick))
             commission_open = _commission_rmb(meta, open_fill, abs(open_diff), close_today=False)
             cash_delta -= commission_open
             positions[instrument] = _Position(
@@ -244,6 +252,16 @@ class DailyBookBacktester(IBookBacktester):
                 )
             )
         return round(cash_delta, 10)
+
+    def _slippage_bps_for(self, instrument: str, config: BookBacktestConfig) -> float:
+        """Return the configured transaction-cost charge for one instrument.
+
+        P5R uses this daily book as the release-candidate evaluator. A single
+        book-wide bps value is too easy to undercharge thin contracts, so the
+        campaign config may pin conservative per-instrument tiers while older
+        callers continue to receive the historical fallback.
+        """
+        return float(config.slippage_bps_by_instrument.get(instrument, self.slippage_bps))
 
     def _write_outputs(self, result: BookResult) -> None:
         self.output_dir.mkdir(parents=True, exist_ok=True)

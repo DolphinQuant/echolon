@@ -13,6 +13,7 @@ class BookBacktestConfig(BaseModel):
     end: dt.date
     initial_equity_rmb: float
     panel_snapshot: str
+    slippage_bps_by_instrument: dict[str, float] = Field(default_factory=dict)
 
 
 class EquityPoint(BaseModel):

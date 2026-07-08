@@ -139,6 +139,30 @@ def test_book_backtester_applies_s11_slippage_and_commission(tmp_path: Path):
     assert json.loads((tmp_path / "summary.json").read_text())["determinism_hash"] == result.summary.determinism_hash
 
 
+def test_book_backtester_uses_per_instrument_slippage_tiers(tmp_path: Path):
+    panel = _Panel()
+    backtester = DailyBookBacktester(output_dir=tmp_path, slippage_bps=3.0, rebalance_weekday=None)
+
+    result = backtester.run(
+        _StaticStrategy({"al": 1, "cu": 1}),
+        panel,
+        BookBacktestConfig(
+            start=dt.date(2024, 1, 2),
+            end=dt.date(2024, 1, 6),
+            initial_equity_rmb=700_000.0,
+            panel_snapshot="synthetic_book",
+            slippage_bps_by_instrument={"al": 10.0, "cu": 1.0},
+        ),
+    )
+
+    al_trade = next(trade for trade in result.trades if trade.instrument == "al")
+    cu_trade = next(trade for trade in result.trades if trade.instrument == "cu")
+    assert al_trade.fill_price == 19029.01
+    assert cu_trade.fill_price == 70010.0
+    assert al_trade.slippage_rmb == pytest.approx((19029.01 - 19010.0) * 5.0)
+    assert cu_trade.slippage_rmb == pytest.approx((70010.0 - 70000.0) * 5.0)
+
+
 def test_book_backtester_forced_liquidation_event(tmp_path: Path):
     panel = _Panel()
     backtester = DailyBookBacktester(output_dir=tmp_path, slippage_bps=0.0, rebalance_weekday=None)
