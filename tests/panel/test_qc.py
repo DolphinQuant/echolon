@@ -99,3 +99,56 @@ def test_qc_warns_on_zero_volume_and_settle_close_divergence():
         "volume_nonzero",
         "settle_close_divergence",
     }
+
+
+def test_qc_treats_price_outliers_as_warnings_and_skips_roll_return():
+    bars = {
+        "fu": pd.DataFrame(
+            [
+                {
+                    "open": 2300.0,
+                    "high": 2310.0,
+                    "low": 2290.0,
+                    "close": 2300.0,
+                    "settle": 2300.0,
+                    "volume": 1000,
+                    "open_interest": 1000,
+                    "contract": "fu2401",
+                },
+                {
+                    "open": 2600.0,
+                    "high": 2610.0,
+                    "low": 2590.0,
+                    "close": 2600.0,
+                    "settle": 2600.0,
+                    "volume": 1000,
+                    "open_interest": 1000,
+                    "contract": "fu2405",
+                },
+                {
+                    "open": 2610.0,
+                    "high": 2620.0,
+                    "low": 2100.0,
+                    "close": 2100.0,
+                    "settle": 2600.0,
+                    "volume": 1000,
+                    "open_interest": 1000,
+                    "contract": "fu2405",
+                },
+            ],
+            index=[dt.date(2024, 1, 2), dt.date(2024, 1, 3), dt.date(2024, 1, 4)],
+        )
+    }
+
+    report = run_panel_qc(snapshot="synthetic", bars=bars, curves={})
+
+    assert report.status == "PASS_WITH_WARNINGS"
+    assert {check.severity for check in report.checks} == {"WARN"}
+    assert {check.check_id for check in report.checks} == {
+        "settle_close_divergence",
+        "daily_return_threshold",
+    }
+    assert not any(
+        check.check_id == "daily_return_threshold" and check.date == dt.date(2024, 1, 3)
+        for check in report.checks
+    )

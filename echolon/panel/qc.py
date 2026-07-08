@@ -91,17 +91,11 @@ def _check_bars(instrument: str, frame: pd.DataFrame, checks: list[QCCheck]) -> 
         settle = float(row["settle"])
         if close > 0:
             divergence = abs(settle - close) / close
-            if divergence > 0.08:
-                severity = "ERROR"
-            elif divergence > 0.03:
-                severity = "WARN"
-            else:
-                severity = None
-            if severity is not None:
+            if divergence > 0.03:
                 _add_check(
                     checks,
                     check_id="settle_close_divergence",
-                    severity=severity,
+                    severity="WARN",
                     message="settle-close divergence exceeds threshold",
                     instrument=instrument,
                     date=date_value,
@@ -110,18 +104,20 @@ def _check_bars(instrument: str, frame: pd.DataFrame, checks: list[QCCheck]) -> 
 
     closes = pd.to_numeric(frame["close"], errors="coerce")
     returns = closes.pct_change().dropna().abs()
+    contracts = frame["contract"].astype(str) if "contract" in frame else None
     for date, value in returns.items():
+        if contracts is not None:
+            position = frame.index.get_loc(date)
+            if isinstance(position, int) and position > 0:
+                if contracts.iloc[position] != contracts.iloc[position - 1]:
+                    continue
         date_value = date if isinstance(date, dt.date) else pd.Timestamp(date).date()
-        if value > 0.12:
-            severity = "ERROR"
-        elif value > 0.07:
-            severity = "WARN"
-        else:
+        if value <= 0.07:
             continue
         _add_check(
             checks,
             check_id="daily_return_threshold",
-            severity=severity,
+            severity="WARN",
             message="daily absolute return exceeds threshold",
             instrument=instrument,
             date=date_value,
