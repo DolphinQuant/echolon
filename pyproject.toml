@@ -41,6 +41,7 @@ dependencies = [
     "pytz>=2023.3",
     "scipy>=1.11.0",
     "typer>=0.9.0",
+    "hypothesis>=6.100.0",
     # Batteries-included as of v0.1.x: these used to live behind extras
     # ([shfe], [mcp], [platformdirs]) but each is on the first-impression
     # path — `echolon hello` needs akshare, the AI-native pitch needs the
