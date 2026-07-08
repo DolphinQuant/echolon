@@ -256,7 +256,12 @@ def test_qc_specific_waiver_keeps_hard_error_visible_but_nonblocking():
         snapshot="synthetic",
         bars=bars,
         curves={},
-        waivers={("ni", date, "daily_return_threshold"): "exchange stress day retained"},
+        waivers={
+            ("ni", date, "daily_return_threshold"): {
+                "reason": "exchange stress day retained",
+                "approved_by": "owner",
+            }
+        },
     )
 
     assert report.status == "PASS_WITH_WARNINGS"
@@ -264,3 +269,49 @@ def test_qc_specific_waiver_keeps_hard_error_visible_but_nonblocking():
     assert len(hard) == 1
     assert hard[0].waived is True
     assert hard[0].waiver_reason == "exchange stress day retained"
+    assert hard[0].waiver_approved_by == "owner"
+
+
+def test_qc_waiver_without_approver_remains_blocking():
+    date = dt.date(2024, 1, 3)
+    bars = {
+        "ni": pd.DataFrame(
+            [
+                {
+                    "open": 100.0,
+                    "high": 100.0,
+                    "low": 100.0,
+                    "close": 100.0,
+                    "settle": 100.0,
+                    "volume": 1000,
+                    "open_interest": 1000,
+                    "contract": "ni2401",
+                },
+                {
+                    "open": 130.0,
+                    "high": 130.0,
+                    "low": 130.0,
+                    "close": 130.0,
+                    "settle": 130.0,
+                    "volume": 1000,
+                    "open_interest": 1000,
+                    "contract": "ni2401",
+                },
+            ],
+            index=[dt.date(2024, 1, 2), date],
+        )
+    }
+
+    report = run_panel_qc(
+        snapshot="synthetic",
+        bars=bars,
+        curves={},
+        waivers={("ni", date, "daily_return_threshold"): "reason without approver"},
+    )
+
+    assert report.status == "FAIL"
+    hard = [check for check in report.checks if check.severity == "ERROR"]
+    assert len(hard) == 1
+    assert hard[0].waived is False
+    assert hard[0].waiver_reason == "reason without approver"
+    assert hard[0].waiver_approved_by is None

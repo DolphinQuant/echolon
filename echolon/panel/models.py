@@ -57,6 +57,7 @@ class QCCheck(BaseModel):
     value: float | None = None
     waived: bool = False
     waiver_reason: str | None = None
+    waiver_approved_by: str | None = None
 
 
 class QCReport(BaseModel):
