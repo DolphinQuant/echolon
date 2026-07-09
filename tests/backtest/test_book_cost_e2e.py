@@ -112,6 +112,24 @@ def _bars(prices: list[float], contract: str) -> pd.DataFrame:
     )
 
 
+def test_book_backtester_rebalance_interval_skips_alternate_weeks(tmp_path: Path):
+    backtester = DailyBookBacktester(
+        output_dir=tmp_path,
+        rebalance_weekday=4,
+        rebalance_interval_weeks=2,
+    )
+    start = dt.date(2024, 1, 1)
+
+    assert backtester._is_rebalance_date(dt.date(2024, 1, 5), start)
+    assert not backtester._is_rebalance_date(dt.date(2024, 1, 12), start)
+    assert backtester._is_rebalance_date(dt.date(2024, 1, 19), start)
+
+
+def test_book_backtester_rejects_invalid_rebalance_interval(tmp_path: Path):
+    with pytest.raises(ValueError, match="rebalance_interval_weeks"):
+        DailyBookBacktester(output_dir=tmp_path, rebalance_interval_weeks=0)
+
+
 def test_book_backtester_applies_s11_slippage_and_commission(tmp_path: Path):
     panel = _Panel()
     backtester = DailyBookBacktester(output_dir=tmp_path, slippage_bps=3.0, rebalance_weekday=None)

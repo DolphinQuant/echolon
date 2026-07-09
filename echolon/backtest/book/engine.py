@@ -35,10 +35,14 @@ class DailyBookBacktester(IBookBacktester):
         output_dir: Path,
         slippage_bps: float = 3.0,
         rebalance_weekday: int | None = 4,
+        rebalance_interval_weeks: int = 1,
     ) -> None:
         self.output_dir = Path(output_dir)
         self.slippage_bps = float(slippage_bps)
         self.rebalance_weekday = rebalance_weekday
+        if rebalance_interval_weeks < 1:
+            raise ValueError("rebalance_interval_weeks must be >= 1")
+        self.rebalance_interval_weeks = int(rebalance_interval_weeks)
 
     def run(
         self,
@@ -87,7 +91,7 @@ class DailyBookBacktester(IBookBacktester):
                     margin_used_rmb=round(margin, 10),
                 )
             )
-            if index < len(dates) - 1 and self._is_rebalance_date(date):
+            if index < len(dates) - 1 and self._is_rebalance_date(date, dates[0]):
                 book = BookState(
                     date=date,
                     equity_rmb=equity,
@@ -121,8 +125,13 @@ class DailyBookBacktester(IBookBacktester):
         self._write_outputs(result)
         return result
 
-    def _is_rebalance_date(self, date: dt.date) -> bool:
-        return self.rebalance_weekday is None or date.weekday() == self.rebalance_weekday
+    def _is_rebalance_date(self, date: dt.date, start: dt.date) -> bool:
+        if self.rebalance_weekday is not None and date.weekday() != self.rebalance_weekday:
+            return False
+        if self.rebalance_interval_weeks <= 1:
+            return True
+        weeks_since_start = (date - start).days // 7
+        return weeks_since_start % self.rebalance_interval_weeks == 0
 
     def _execute_targets(
         self,
