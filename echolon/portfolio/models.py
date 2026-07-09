@@ -9,7 +9,7 @@ from pydantic import BaseModel, ConfigDict, Field
 class PositionState(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    lots: int
+    lots: float
     avg_price: float
     contract: str
     margin_rmb: float
@@ -29,7 +29,7 @@ class TargetBook(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     date: dt.date
-    targets: dict[str, int]
+    targets: dict[str, float]
 
 
 class InstrumentRebalance(BaseModel):
@@ -39,7 +39,7 @@ class InstrumentRebalance(BaseModel):
     blended: float
     vol_ann: float
     pre_round_lots: float
-    post_round_lots: int
+    post_round_lots: float
     caps_applied: list[dict[str, float | str]]
 
 
@@ -58,4 +58,3 @@ class BookRiskSnapshot(BaseModel):
     gross_exposure_pct: float
     net_exposure_pct: float
     sector_gross_notional_pct: dict[str, float]
-

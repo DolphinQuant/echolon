@@ -20,9 +20,10 @@ from .models import BookBacktestConfig, BookResult, EquityPoint, Summary, TradeR
 
 @dataclass
 class _Position:
-    lots: int = 0
+    lots: float = 0.0
     avg_price: float = 0.0
     contract: str = ""
+    opened_date: dt.date | None = None
 
 
 class DailyBookBacktester(IBookBacktester):
@@ -34,10 +35,14 @@ class DailyBookBacktester(IBookBacktester):
         output_dir: Path,
         slippage_bps: float = 3.0,
         rebalance_weekday: int | None = 4,
+        rebalance_interval_weeks: int = 1,
     ) -> None:
         self.output_dir = Path(output_dir)
         self.slippage_bps = float(slippage_bps)
         self.rebalance_weekday = rebalance_weekday
+        if rebalance_interval_weeks < 1:
+            raise ValueError("rebalance_interval_weeks must be >= 1")
+        self.rebalance_interval_weeks = int(rebalance_interval_weeks)
 
     def run(
         self,
@@ -60,8 +65,11 @@ class DailyBookBacktester(IBookBacktester):
         for index, date in enumerate(dates):
             view = panel.view(date)
             if pending_targets is not None:
-                cash += self._execute_targets(view, positions, pending_targets, trades)
+                cash += self._roll_changed_main_contracts(view, positions, trades, config, pending_targets)
+                cash += self._execute_targets(view, positions, pending_targets, trades, config)
                 pending_targets = None
+            else:
+                cash += self._roll_changed_main_contracts(view, positions, trades, config)
 
             margin = _margin_used(view, positions)
             equity = cash + _unrealized_pnl(view, positions)
@@ -83,7 +91,7 @@ class DailyBookBacktester(IBookBacktester):
                     margin_used_rmb=round(margin, 10),
                 )
             )
-            if index < len(dates) - 1 and self._is_rebalance_date(date):
+            if index < len(dates) - 1 and self._is_rebalance_date(date, dates[0]):
                 book = BookState(
                     date=date,
                     equity_rmb=equity,
@@ -117,8 +125,13 @@ class DailyBookBacktester(IBookBacktester):
         self._write_outputs(result)
         return result
 
-    def _is_rebalance_date(self, date: dt.date) -> bool:
-        return self.rebalance_weekday is None or date.weekday() == self.rebalance_weekday
+    def _is_rebalance_date(self, date: dt.date, start: dt.date) -> bool:
+        if self.rebalance_weekday is not None and date.weekday() != self.rebalance_weekday:
+            return False
+        if self.rebalance_interval_weeks <= 1:
+            return True
+        weeks_since_start = (date - start).days // 7
+        return weeks_since_start % self.rebalance_interval_weeks == 0
 
     def _execute_targets(
         self,
@@ -126,21 +139,28 @@ class DailyBookBacktester(IBookBacktester):
         positions: dict[str, _Position],
         targets: Mapping[str, int],
         trades: list[TradeRecord],
+        config: BookBacktestConfig,
     ) -> float:
         cash_delta = 0.0
         for instrument, target in targets.items():
             current = positions[instrument].lots
-            diff = int(target) - current
-            if diff == 0:
+            diff = float(target) - current
+            if abs(diff) <= 1e-12:
                 continue
             bar = view.bars(instrument, 1).iloc[-1]
             meta = view.meta(instrument)
-            intended = float(bar["open"])
-            fill = _slipped_price(intended, diff, self.slippage_bps, float(meta.tick))
-            commission = _commission_rmb(meta, fill, abs(diff))
+            intended = _raw_price(bar, "open")
+            fill = _slipped_price(
+                intended,
+                diff,
+                self._slippage_bps_for(instrument, config),
+                float(meta.tick),
+            )
+            close_today = _is_close_today(positions[instrument], diff, view.date)
+            commission = _commission_rmb(meta, fill, abs(diff), close_today=close_today)
             realized = _realized_pnl(positions[instrument], diff, fill, float(meta.multiplier))
             cash_delta += realized - commission
-            new_position = _updated_position(positions[instrument], diff, fill, str(bar["contract"]))
+            new_position = _updated_position(positions[instrument], diff, fill, str(bar["contract"]), view.date)
             positions[instrument] = new_position
             trades.append(
                 TradeRecord(
@@ -153,12 +173,104 @@ class DailyBookBacktester(IBookBacktester):
                     fill_price=round(fill, 10),
                     slippage_rmb=round(abs(fill - intended) * abs(diff) * float(meta.multiplier), 10),
                     commission_rmb=round(commission, 10),
-                    close_today=False,
+                    close_today=close_today,
                     realized_pnl_rmb=round(realized, 10),
                     position_after=new_position.lots,
                 )
             )
         return round(cash_delta, 10)
+
+    def _roll_changed_main_contracts(
+        self,
+        view: Any,
+        positions: dict[str, _Position],
+        trades: list[TradeRecord],
+        config: BookBacktestConfig,
+        targets: Mapping[str, int] | None = None,
+    ) -> float:
+        """Materialize contract rolls before mark-to-market can drift contracts.
+
+        A position belongs to the contract that opened it. On the first session
+        where the main contract changes, close that held contract using its own
+        raw contract row, then open the current main contract only for the
+        target lot count that should remain after the pending rebalance.
+        """
+        cash_delta = 0.0
+        for instrument, position in list(positions.items()):
+            if position.lots == 0:
+                continue
+            main_bar = view.bars(instrument, 1).iloc[-1]
+            today_contract = str(main_bar["contract"])
+            if not position.contract or position.contract == today_contract:
+                continue
+            meta = view.meta(instrument)
+            slippage_bps = self._slippage_bps_for(instrument, config)
+            close_bar = _contract_or_main_bar(view, instrument, position.contract)
+            close_diff = -position.lots
+            close_intended = _raw_price(close_bar, "open")
+            close_fill = _slipped_price(close_intended, close_diff, slippage_bps, float(meta.tick))
+            close_today = _is_close_today(position, close_diff, view.date)
+            commission_close = _commission_rmb(meta, close_fill, abs(close_diff), close_today=close_today)
+            realized = _realized_pnl(position, close_diff, close_fill, float(meta.multiplier))
+            cash_delta += realized - commission_close
+            target_lots = float(targets.get(instrument, position.lots)) if targets is not None else position.lots
+            positions[instrument] = _Position()
+            trades.append(
+                TradeRecord(
+                    date=view.date,
+                    instrument=instrument,
+                    contract=position.contract,
+                    side="BUY" if close_diff > 0 else "SELL",
+                    lots=abs(close_diff),
+                    intended_price=round(close_intended, 10),
+                    fill_price=round(close_fill, 10),
+                    slippage_rmb=round(abs(close_fill - close_intended) * abs(close_diff) * float(meta.multiplier), 10),
+                    commission_rmb=round(commission_close, 10),
+                    close_today=close_today,
+                    realized_pnl_rmb=round(realized, 10),
+                    position_after=0,
+                )
+            )
+            if abs(target_lots) <= 1e-12:
+                continue
+            open_diff = target_lots
+            open_intended = _raw_price(main_bar, "open")
+            open_fill = _slipped_price(open_intended, open_diff, slippage_bps, float(meta.tick))
+            commission_open = _commission_rmb(meta, open_fill, abs(open_diff), close_today=False)
+            cash_delta -= commission_open
+            positions[instrument] = _Position(
+                lots=target_lots,
+                avg_price=open_fill,
+                contract=today_contract,
+                opened_date=view.date,
+            )
+            trades.append(
+                TradeRecord(
+                    date=view.date,
+                    instrument=instrument,
+                    contract=today_contract,
+                    side="BUY" if open_diff > 0 else "SELL",
+                    lots=abs(open_diff),
+                    intended_price=round(open_intended, 10),
+                    fill_price=round(open_fill, 10),
+                    slippage_rmb=round(abs(open_fill - open_intended) * abs(open_diff) * float(meta.multiplier), 10),
+                    commission_rmb=round(commission_open, 10),
+                    close_today=False,
+                    realized_pnl_rmb=0.0,
+                    position_after=target_lots,
+                )
+            )
+        return round(cash_delta, 10)
+
+    def _slippage_bps_for(self, instrument: str, config: BookBacktestConfig) -> float:
+        """Return the configured transaction-cost charge for one instrument.
+
+        P5R uses this daily book as the release-candidate evaluator. A single
+        book-wide bps value is too easy to undercharge thin contracts, so the
+        campaign config may pin conservative per-instrument tiers while older
+        callers continue to receive the historical fallback.
+        """
+        return float(config.slippage_bps_by_instrument.get(instrument, self.slippage_bps))
 
     def _write_outputs(self, result: BookResult) -> None:
         self.output_dir.mkdir(parents=True, exist_ok=True)
@@ -179,33 +291,38 @@ class DailyBookBacktester(IBookBacktester):
         )
 
 
-def _slipped_price(price: float, lots: int, slippage_bps: float, tick: float) -> float:
+def _slipped_price(price: float, lots: float, slippage_bps: float, tick: float) -> float:
     direction = 1.0 if lots > 0 else -1.0
     raw = price * (1.0 + direction * slippage_bps / 10_000.0)
     return round(raw / tick) * tick if tick > 0 else raw
 
 
-def _commission_rmb(meta: Any, price: float, lots_abs: int) -> float:
+def _commission_rmb(meta: Any, price: float, lots_abs: float, *, close_today: bool = False) -> float:
+    commission = (
+        float(meta.close_today_commission)
+        if close_today and meta.close_today_commission is not None
+        else float(meta.commission)
+    )
     if meta.commission_type == "percentage":
-        return float(meta.commission) * price * float(meta.multiplier) * lots_abs
-    return float(meta.commission) * lots_abs
+        return commission * price * float(meta.multiplier) * lots_abs
+    return commission * lots_abs
 
 
-def _updated_position(position: _Position, diff: int, fill: float, contract: str) -> _Position:
+def _updated_position(position: _Position, diff: float, fill: float, contract: str, date: dt.date) -> _Position:
     target = position.lots + diff
-    if target == 0:
+    if abs(target) <= 1e-12:
         return _Position()
     if position.lots == 0 or (position.lots > 0) != (target > 0):
-        return _Position(lots=target, avg_price=fill, contract=contract)
+        return _Position(lots=target, avg_price=fill, contract=contract, opened_date=date)
     if abs(target) > abs(position.lots):
         old_abs = abs(position.lots)
         diff_abs = abs(diff)
         avg = (position.avg_price * old_abs + fill * diff_abs) / (old_abs + diff_abs)
-        return _Position(lots=target, avg_price=avg, contract=contract)
-    return _Position(lots=target, avg_price=position.avg_price, contract=position.contract)
+        return _Position(lots=target, avg_price=avg, contract=contract, opened_date=position.opened_date)
+    return _Position(lots=target, avg_price=position.avg_price, contract=position.contract, opened_date=position.opened_date)
 
 
-def _realized_pnl(position: _Position, diff: int, fill: float, multiplier: float) -> float:
+def _realized_pnl(position: _Position, diff: float, fill: float, multiplier: float) -> float:
     if position.lots == 0 or (position.lots > 0) == (diff > 0):
         return 0.0
     closing_lots = min(abs(position.lots), abs(diff))
@@ -218,9 +335,9 @@ def _margin_used(view: Any, positions: Mapping[str, _Position]) -> float:
     for instrument, position in positions.items():
         if position.lots == 0:
             continue
-        bar = view.bars(instrument, 1).iloc[-1]
+        bar = _contract_or_main_bar(view, instrument, position.contract)
         meta = view.meta(instrument)
-        total += abs(position.lots) * float(bar["settle"]) * float(meta.multiplier) * float(meta.margin_rate)
+        total += abs(position.lots) * _raw_price(bar, "settle") * float(meta.multiplier) * float(meta.margin_rate)
     return round(total, 10)
 
 
@@ -229,10 +346,31 @@ def _unrealized_pnl(view: Any, positions: Mapping[str, _Position]) -> float:
     for instrument, position in positions.items():
         if position.lots == 0:
             continue
-        bar = view.bars(instrument, 1).iloc[-1]
+        bar = _contract_or_main_bar(view, instrument, position.contract)
         meta = view.meta(instrument)
-        total += position.lots * (float(bar["settle"]) - position.avg_price) * float(meta.multiplier)
+        total += position.lots * (_raw_price(bar, "settle") - position.avg_price) * float(meta.multiplier)
     return round(total, 10)
+
+
+def _contract_or_main_bar(view: Any, instrument: str, contract: str) -> Any:
+    if contract and hasattr(view, "contract_bar"):
+        row = view.contract_bar(instrument, contract)
+        if row is not None:
+            return row
+    return view.bars(instrument, 1).iloc[-1]
+
+
+def _raw_price(row: Any, column: str) -> float:
+    raw_column = f"{column}_raw"
+    if raw_column in row:
+        return float(row[raw_column])
+    return float(row[column])
+
+
+def _is_close_today(position: _Position, diff: float, date: dt.date) -> bool:
+    if position.lots == 0 or (position.lots > 0) == (diff > 0):
+        return False
+    return position.opened_date == date
 
 
 def _daily_returns(equity_curve: list[EquityPoint]) -> list[dict]:

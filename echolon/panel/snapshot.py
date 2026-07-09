@@ -18,6 +18,29 @@ BAR_COLUMNS = [
     "low",
     "close",
     "settle",
+    "open_raw",
+    "high_raw",
+    "low_raw",
+    "close_raw",
+    "settle_raw",
+    "open_adj",
+    "high_adj",
+    "low_adj",
+    "close_adj",
+    "settle_adj",
+    "adj_factor",
+    "volume",
+    "open_interest",
+    "contract",
+]
+
+CONTRACT_COLUMNS = [
+    "symbol",
+    "open",
+    "high",
+    "low",
+    "close",
+    "settle",
     "volume",
     "open_interest",
     "contract",
@@ -59,6 +82,18 @@ class PanelView:
         visible = bars.loc[bars.index <= self.date, BAR_COLUMNS]
         return visible.tail(lookback).copy()
 
+    def contract_bar(self, instrument: str, contract: str) -> pd.Series | None:
+        """Return the raw row for a specific listed contract on the view date."""
+        instrument_id = instrument.lower()
+        contracts = self._panel._contracts.get(instrument_id)
+        if contracts is None or self.date not in contracts.index:
+            return None
+        rows = contracts.loc[[self.date]]
+        match = rows[rows["contract"].astype(str) == str(contract)]
+        if match.empty:
+            return None
+        return match.iloc[0].copy()
+
     def curve(self, instrument: str) -> CurvePoint | None:
         instrument_id = instrument.lower()
         curves = self._panel._curves.get(instrument_id)
@@ -90,6 +125,7 @@ class PanelData:
         manifest: PanelManifest,
         bars: dict[str, pd.DataFrame],
         curves: dict[str, pd.DataFrame],
+        contracts: dict[str, pd.DataFrame],
         meta: dict[str, InstrumentMeta],
     ) -> None:
         self.snapshot_dir = snapshot_dir
@@ -98,6 +134,7 @@ class PanelData:
         self.snapshot_version = manifest.version
         self._bars = bars
         self._curves = curves
+        self._contracts = contracts
         self._meta = meta
         self.calendar = self._build_calendar()
 
@@ -109,14 +146,18 @@ class PanelData:
         cls._verify_manifest_hashes(snapshot_path, manifest)
 
         bars = {
-            instrument: _read_csv_with_date(snapshot_path / "bars" / f"{instrument}.csv")
+            instrument: _normalize_bar_frame(_read_csv_with_date(snapshot_path / "bars" / f"{instrument}.csv"))
             for instrument in manifest.instruments
         }
         curves: dict[str, pd.DataFrame] = {}
+        contracts: dict[str, pd.DataFrame] = {}
         for instrument in manifest.instruments:
             curve_path = snapshot_path / "curves" / f"{instrument}.csv"
             if curve_path.exists():
                 curves[instrument] = _read_csv_with_date(curve_path)
+            contracts_path = snapshot_path / "contracts" / f"{instrument}.csv"
+            if contracts_path.exists():
+                contracts[instrument] = _normalize_contract_frame(_read_csv_with_date(contracts_path))
 
         meta = cls._load_meta(snapshot_path / "meta" / "instruments.csv")
         for instrument in manifest.instruments:
@@ -128,6 +169,7 @@ class PanelData:
             manifest=manifest,
             bars=bars,
             curves=curves,
+            contracts=contracts,
             meta=meta,
         )
 
@@ -187,3 +229,27 @@ def _none_if_nan(value: Any) -> Any:
     if value == "":
         return None
     return value
+
+
+def _normalize_bar_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    out = frame.copy()
+    for column in ("open", "high", "low", "close", "settle"):
+        raw = f"{column}_raw"
+        adj = f"{column}_adj"
+        if raw not in out:
+            out[raw] = out[column]
+        if adj not in out:
+            out[adj] = out[column]
+        out[column] = out[adj]
+    if "adj_factor" not in out:
+        out["adj_factor"] = 1.0
+    return out
+
+
+def _normalize_contract_frame(frame: pd.DataFrame) -> pd.DataFrame:
+    out = frame.copy()
+    if "contract" not in out and "symbol" in out:
+        out["contract"] = out["symbol"]
+    if "symbol" not in out and "contract" in out:
+        out["symbol"] = out["contract"]
+    return out

@@ -77,6 +77,23 @@ def _book(equity: float = 100_000.0) -> BookState:
     return BookState(date=dt.date(2024, 3, 20), equity_rmb=equity, cash_rmb=equity, margin_used_rmb=0.0)
 
 
+def _book_with_position(instrument: str, lots: float, equity: float = 100_000.0) -> BookState:
+    return BookState(
+        date=dt.date(2024, 3, 20),
+        equity_rmb=equity,
+        cash_rmb=equity,
+        margin_used_rmb=0.0,
+        positions={
+            instrument: PositionState(
+                lots=lots,
+                avg_price=100.0,
+                contract="T2401",
+                margin_rmb=0.0,
+            )
+        },
+    )
+
+
 def test_combiner_renormalizes_weights_for_missing_scores():
     vectors = [
         ScoreVector(signal_id="a", family="tsmom", date=dt.date(2024, 1, 1), scores={"al": 1.0, "cu": None}),
@@ -133,6 +150,71 @@ def test_constructor_sets_zero_when_instrument_has_no_visible_bars():
 
     assert target.targets["cu"] == 0
     assert record.instruments["cu"].vol_ann == 0.0
+
+
+def test_constructor_rebalance_band_holds_small_same_direction_increase():
+    base = Constructor(
+        ConstructorConfig(
+            vol_target_ann_pct=10.0,
+            sector_caps_pct={"base": 100.0},
+            max_margin_utilization_pct=100.0,
+            min_abs_score_for_position=0.0,
+            sizing_mode="research",
+        )
+    )
+    desired, _ = base.construct(
+        view=_view(),
+        book=_book(),
+        blended_scores={"al": 1.0, "cu": 0.0},
+        raw_scores={"al": {}, "cu": {}},
+    )
+    current = desired.targets["al"] - 0.10
+    banded = Constructor(
+        ConstructorConfig(
+            vol_target_ann_pct=10.0,
+            sector_caps_pct={"base": 100.0},
+            max_margin_utilization_pct=100.0,
+            min_abs_score_for_position=0.0,
+            sizing_mode="research",
+            rebalance_band_lots=0.25,
+        )
+    )
+
+    target, record = banded.construct(
+        view=_view(),
+        book=_book_with_position("al", current),
+        blended_scores={"al": 1.0, "cu": 0.0},
+        raw_scores={"al": {}, "cu": {}},
+    )
+
+    assert target.targets["al"] == pytest.approx(current)
+    band_record = record.instruments["al"].caps_applied[-1]
+    assert band_record["cap"] == "rebalance_band_lots"
+    assert band_record["before"] == pytest.approx(desired.targets["al"])
+    assert band_record["after"] == pytest.approx(current)
+
+
+def test_constructor_rebalance_band_does_not_block_exit():
+    constructor = Constructor(
+        ConstructorConfig(
+            vol_target_ann_pct=10.0,
+            sector_caps_pct={"base": 100.0},
+            max_margin_utilization_pct=100.0,
+            min_abs_score_for_position=0.5,
+            sizing_mode="research",
+            rebalance_band_lots=10.0,
+        )
+    )
+
+    target, record = constructor.construct(
+        view=_view(),
+        book=_book_with_position("al", 1.0),
+        blended_scores={"al": 0.1, "cu": 0.0},
+        raw_scores={"al": {}, "cu": {}},
+    )
+
+    assert target.targets["al"] == 0.0
+    assert record.instruments["al"].caps_applied == []
 
 
 @given(

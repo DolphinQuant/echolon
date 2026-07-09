@@ -4,6 +4,7 @@ from __future__ import annotations
 import math
 from collections import defaultdict
 from collections.abc import Mapping
+from typing import Literal
 
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
@@ -25,6 +26,8 @@ class ConstructorConfig(BaseModel):
     sector_caps_pct: dict[str, float]
     max_margin_utilization_pct: float
     min_abs_score_for_position: float
+    sizing_mode: Literal["implementation", "research"] = "implementation"
+    rebalance_band_lots: float = Field(default=0.0, ge=0.0)
 
 
 class Constructor:
@@ -51,7 +54,7 @@ class Constructor:
                 vol_ann = 0.0
                 pre_round = 0.0
             else:
-                price = float(bars.iloc[-1]["settle"])
+                price = _raw_price(bars.iloc[-1], "settle")
                 vol_ann = _annualized_vol(bars["settle"])
             if bars.empty or denom <= 1e-12 or vol_ann <= 0.0:
                 pre_round = 0.0
@@ -79,7 +82,11 @@ class Constructor:
         self._apply_sector_caps(view, book, lots_float, rows)
         self._apply_margin_cap(view, book, lots_float, rows)
 
-        final_targets = {instrument: _toward_zero(lots) for instrument, lots in lots_float.items()}
+        if self.config.sizing_mode == "research":
+            final_targets = {instrument: float(lots) for instrument, lots in lots_float.items()}
+        else:
+            final_targets = {instrument: _toward_zero(lots) for instrument, lots in lots_float.items()}
+        final_targets = self._apply_rebalance_band(view, book, final_targets, rows)
         for instrument, lots in final_targets.items():
             rows[instrument].post_round_lots = lots
         return (
@@ -87,11 +94,70 @@ class Constructor:
             RebalanceRecord(date=view.date, instruments=rows),
         )
 
+    def _apply_rebalance_band(
+        self,
+        view: PanelView,
+        book: BookState,
+        targets: dict[str, float],
+        rows: dict[str, InstrumentRebalance],
+    ) -> dict[str, float]:
+        """Hold small same-direction target changes to reduce churn.
+
+        The band deliberately does not block exits, sign flips, or cap-driven
+        de-risking. A proposed banded book must still pass current sector and
+        margin caps, so stale positions cannot be preserved by accident.
+        """
+        band = float(self.config.rebalance_band_lots)
+        if band <= 0.0:
+            return targets
+        banded = dict(targets)
+        for instrument, target in targets.items():
+            position = book.positions.get(instrument)
+            current = 0.0 if position is None else float(position.lots)
+            if current == 0.0 or target == 0.0:
+                continue
+            if _sign(current) != _sign(target):
+                continue
+            if abs(target) < abs(current):
+                continue
+            if abs(float(target) - current) > band:
+                continue
+            banded[instrument] = current
+        if banded == targets or not self._targets_within_caps(view, book, banded):
+            return targets
+        for instrument, target in targets.items():
+            after = banded[instrument]
+            if after == target:
+                continue
+            rows[instrument].caps_applied.append(
+                {
+                    "cap": "rebalance_band_lots",
+                    "before": float(target),
+                    "after": float(after),
+                }
+            )
+        return banded
+
+    def _targets_within_caps(
+        self,
+        view: PanelView,
+        book: BookState,
+        targets: Mapping[str, float],
+    ) -> bool:
+        risk = self.book_risk(view, book, targets)
+        if risk.margin_utilization_pct > self.config.max_margin_utilization_pct + 1e-9:
+            return False
+        for sector, exposure in risk.sector_gross_notional_pct.items():
+            cap = self.config.sector_caps_pct.get(sector)
+            if cap is not None and exposure > cap + 1e-9:
+                return False
+        return True
+
     def book_risk(
         self,
         view: PanelView,
         book: BookState,
-        targets: Mapping[str, int],
+        targets: Mapping[str, float],
     ) -> BookRiskSnapshot:
         gross_by_sector: dict[str, float] = defaultdict(float)
         margin = 0.0
@@ -104,7 +170,7 @@ class Constructor:
             if bars.empty:
                 continue
             bar = bars.iloc[-1]
-            price = float(bar["settle"])
+            price = _raw_price(bar, "settle")
             meta = view.meta(instrument)
             notional = lots * price * float(meta.multiplier)
             margin += abs(notional) * float(meta.margin_rate)
@@ -137,7 +203,7 @@ class Constructor:
             bars = view.bars(instrument, 1)
             if bars.empty:
                 continue
-            price = float(bars.iloc[-1]["settle"])
+            price = _raw_price(bars.iloc[-1], "settle")
             notional = abs(lots) * price * float(meta.multiplier)
             sector_to_instruments[meta.sector].append(instrument)
             sector_gross[meta.sector] += notional
@@ -169,7 +235,7 @@ class Constructor:
             bars = view.bars(instrument, 1)
             if bars.empty:
                 continue
-            price = float(bars.iloc[-1]["settle"])
+            price = _raw_price(bars.iloc[-1], "settle")
             margin += abs(lots) * price * float(meta.multiplier) * float(meta.margin_rate)
         cap_rmb = book.equity_rmb * self.config.max_margin_utilization_pct / 100.0
         if margin <= cap_rmb or margin == 0.0:
@@ -192,3 +258,14 @@ def _annualized_vol(settles: pd.Series) -> float:
 
 def _toward_zero(value: float) -> int:
     return math.ceil(value) if value < 0 else math.floor(value)
+
+
+def _sign(value: float) -> int:
+    return 1 if value > 0 else -1
+
+
+def _raw_price(row: pd.Series, column: str) -> float:
+    raw_column = f"{column}_raw"
+    if raw_column in row:
+        return float(row[raw_column])
+    return float(row[column])
