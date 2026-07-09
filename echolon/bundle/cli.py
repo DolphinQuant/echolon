@@ -8,6 +8,9 @@ from .manifest import load_bundle
 
 
 def main(argv: list[str] | None = None) -> int:
+    from echolon._internal.structured_logging import install_structured_logging
+
+    install_structured_logging()
     parser = argparse.ArgumentParser(prog="echolon-bundle")
     subparsers = parser.add_subparsers(dest="command", required=True)
     verify = subparsers.add_parser("verify")
