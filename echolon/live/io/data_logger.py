@@ -95,6 +95,7 @@ class TradeExecution:
     direction: str  # 'ENTRY_LONG', 'EXIT_LONG', etc.
     order_type: str  # 'MARKET', 'LIMIT'
     status: str = 'FILLED'
+    schema: str = 'trade_execution/v1'
 
     # Submission details
     submitted_price: float = 0.0
@@ -104,6 +105,7 @@ class TradeExecution:
     executed_price: float = 0.0
     executed_size: int = 0
     commission: float = 0.0
+    commission_source: Optional[str] = None
 
     # Position impact
     position_before: int = 0
@@ -273,9 +275,15 @@ def save_trade_execution(
     Returns:
         True if successful, False otherwise
     """
+    status = execution_details.get('status', 'FILLED')
+    commission_source = execution_details.get('commission_source')
+    if status == 'FILLED' and commission_source not in {'broker', 'computed'}:
+        raise ValueError(
+            "commission_source must be 'broker' or 'computed' for FILLED executions"
+        )
+
     try:
         os.makedirs(trading_data_dir, exist_ok=True)
-
         trade_record = TradeExecution(
             timestamp=datetime.now().isoformat(),
             symbol=symbol,
@@ -290,6 +298,7 @@ def save_trade_execution(
             executed_price=execution_details.get('executed_price', 0.0),
             executed_size=execution_details.get('executed_size', 0),
             commission=execution_details.get('commission', 0.0),
+            commission_source=commission_source,
             # Position impact
             position_before=position_impact.get('position_before', 0),
             position_after=position_impact.get('position_after', 0),

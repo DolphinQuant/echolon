@@ -1,10 +1,25 @@
 """Unit tests for PortfolioRiskOverlay — peak tracking and drawdown breach."""
+import sys
 from dataclasses import dataclass
+from unittest.mock import MagicMock
 
 import pytest
 
 from echolon.live.slot.capital_slot import CapitalSlot
 from echolon.live.slot.risk_overlay import PortfolioRiskOverlay
+
+# Stub xtquant before importing the real router; CI/dev machines need not
+# have the Windows QMT package installed for this dry-run safety test.
+for _mod_name in (
+    "xtquant", "xtquant.xtconstant", "xtquant.xtdata",
+    "xtquant.xttrader", "xtquant.xttype",
+):
+    sys.modules.setdefault(_mod_name, MagicMock())
+
+from echolon.live.platforms.miniqmt.order_router import (  # noqa: E402
+    OrderRouter,
+    OrderRouterTripped,
+)
 
 
 @dataclass
@@ -74,7 +89,7 @@ def test_overlay_drawdown_ok_below_threshold(tmp_path):
 
 def test_overlay_save_load_roundtrip(tmp_path):
     ov = PortfolioRiskOverlay(max_portfolio_drawdown_pct=15.0,
-                              deploy_data_dir=str(tmp_path))
+                               deploy_data_dir=str(tmp_path))
     slots = [_make_slot("al", 110000), _make_slot("cu", 100000), _make_slot("zn", 100000)]
     ov.check_portfolio_drawdown(slots)  # peak = 310k
     ov.save()
@@ -83,3 +98,33 @@ def test_overlay_save_load_roundtrip(tmp_path):
                                deploy_data_dir=str(tmp_path))
     ov2.load(active_slot_ids=["al", "cu", "zn"])
     assert ov2.peak_equity == 310000.0
+
+
+def test_drawdown_breach_trips_order_router_and_persists_across_restart(tmp_path):
+    state_dir = tmp_path / "portfolio"
+    router = OrderRouter(client=MagicMock(), state_dir=state_dir, deadline_s=30.0)
+    ov = PortfolioRiskOverlay(
+        max_portfolio_drawdown_pct=10.0,
+        deploy_data_dir=str(state_dir),
+    )
+    ov.check_portfolio_drawdown([
+        _make_slot("al", 100000),
+        _make_slot("cu", 100000),
+        _make_slot("zn", 100000),
+    ])
+
+    ok = ov.enforce_portfolio_drawdown([
+        _make_slot("al", 89000),
+        _make_slot("cu", 89000),
+        _make_slot("zn", 89000),
+    ], order_router=router)
+
+    assert ok is False
+    assert router.is_tripped
+    assert router.tripped_reason == "portfolio_drawdown"
+    with pytest.raises(OrderRouterTripped):
+        router.submit_order("ENTRY_SHORT", "al2606.SF", 1, "al_s1")
+
+    restarted = OrderRouter(client=MagicMock(), state_dir=state_dir, deadline_s=30.0)
+    assert restarted.is_tripped
+    assert restarted.tripped_reason == "portfolio_drawdown"

@@ -92,7 +92,7 @@ def test_save_trade_execution_creates_csv(tmp_path):
         },
         execution_details={
             "executed_price": 24605.0, "executed_size": 1,
-            "commission": 0.5, "status": "FILLED",
+            "commission": 0.5, "commission_source": "broker", "status": "FILLED",
         },
         position_impact={
             "position_before": 0, "position_after": 1,
@@ -108,3 +108,32 @@ def test_save_trade_execution_creates_csv(tmp_path):
     assert len(rows) == 1
     assert rows[0]["direction"] == "ENTRY_LONG"
     assert float(rows[0]["executed_price"]) == 24605.0
+    assert rows[0]["commission_source"] == "broker"
+
+
+def test_save_trade_execution_requires_commission_source_for_filled_rows(tmp_path):
+    with pytest.raises(ValueError, match="commission_source"):
+        save_trade_execution(
+            trading_data_dir=str(tmp_path),
+            order_info={
+                "order_id": "ord-1",
+                "direction": "ENTRY_LONG",
+                "order_type": "MARKET",
+                "submitted_price": 24600.0,
+                "submitted_size": 1,
+            },
+            execution_details={
+                "executed_price": 24605.0,
+                "executed_size": 1,
+                "commission": 0.5,
+                "status": "FILLED",
+            },
+            position_impact={
+                "position_before": 0,
+                "position_after": 1,
+                "avg_price_before": 0.0,
+                "avg_price_after": 24605.0,
+            },
+            pnl_impact={"realized_pnl": 0.0, "unrealized_pnl": 0.0},
+            symbol="aluminum",
+        )

@@ -51,6 +51,7 @@ class ContractSpec:
     margin_rate: float  # Initial margin as percentage (e.g., 0.10 = 10%)
     commission: float  # Commission per contract or rate (depends on commission_type)
     commission_type: str = "per_contract"  # "per_contract" or "percentage"
+    close_today_commission: Optional[float] = None  # Same unit/mode as commission
     currency: str = "CNY"
     expiry_date: Optional[date] = None
     trading_unit: str = "lots"  # "lots", "contracts", "coins"
@@ -108,12 +109,22 @@ class ContractSpec:
         """Calculate required margin for position."""
         return self.calculate_contract_value(price, size) * self.margin_rate
 
-    def calculate_commission(self, price: float, size: float) -> float:
+    def calculate_commission(
+        self,
+        price: float,
+        size: float,
+        close_today: bool = False,
+    ) -> float:
         """Calculate commission for trade."""
+        commission = (
+            self.close_today_commission
+            if close_today and self.close_today_commission is not None
+            else self.commission
+        )
         if self.commission_type == "per_contract":
-            return abs(size) * self.commission
+            return abs(size) * commission
         else:  # percentage
-            return self.calculate_contract_value(price, size) * self.commission
+            return self.calculate_contract_value(price, size) * commission
 
     def calculate_pnl(
         self,
@@ -349,7 +360,8 @@ class IMarketAdapter(ABC):
         self,
         symbol: str,
         size: float,
-        price: float
+        price: float,
+        close_today: bool = False,
     ) -> float:
         """
         Calculate commission for a trade.

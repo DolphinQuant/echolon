@@ -1,6 +1,6 @@
 """Echolon — See what others can't. Market-agnostic quantitative trading engine."""
 
-__version__ = "0.1.9"
+__version__ = "0.2.0"
 
 # Errors
 from echolon.errors import EchelonError

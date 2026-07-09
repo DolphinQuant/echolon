@@ -1174,6 +1174,43 @@ class BacktraderEngine(ITradingEngine):
         hook.on_init(self)
         logger.debug(f"Hook added: {hook.name}")
 
+    def _derive_slippage_typical_price(self) -> float:
+        """Derive a deterministic fallback price from the active data feed."""
+        if self._data_feed is None:
+            raise RuntimeError("Cannot derive slippage price before data feed is configured")
+
+        dataname = getattr(getattr(self._data_feed, "p", None), "dataname", None)
+        if isinstance(dataname, pd.DataFrame):
+            for column in ("close", "open"):
+                if column in dataname.columns:
+                    series = pd.to_numeric(dataname[column], errors="coerce").dropna()
+                    series = series[series > 0]
+                    if not series.empty:
+                        return float(series.iloc[0])
+
+        raise RuntimeError(
+            "Cannot derive tick-size slippage fallback: data feed does not expose "
+            "a positive open/close price. Provide calibrated_slippage_bps instead."
+        )
+
+    def _apply_scalar_slippage_config(self, contract_spec: Any) -> None:
+        """Apply scalar slippage tiers to the final broker after hooks run."""
+        if self._cerebro is None or contract_spec is None:
+            return
+
+        if contract_spec.calibrated_slippage_bps_by_intent is not None:
+            return
+
+        if contract_spec.calibrated_slippage_bps is not None:
+            slippage_pct = contract_spec.calibrated_slippage_bps / 10000.0
+            self._cerebro.broker.set_slippage_perc(slippage_pct)
+            return
+
+        if contract_spec.tick_size > 0:
+            typical_price = self._derive_slippage_typical_price()
+            slippage_pct = contract_spec.tick_size / typical_price
+            self._cerebro.broker.set_slippage_perc(slippage_pct)
+
     def setup(
         self,
         data_feed: 'bt.feeds.DataBase',
@@ -1279,15 +1316,6 @@ class BacktraderEngine(ITradingEngine):
                 contract_spec.high_vol_pct_threshold,
                 contract_spec.high_vol_slippage_multiplier,
             )
-        elif contract_spec is not None and contract_spec.calibrated_slippage_bps is not None:
-            # v1 path — scalar override
-            slippage_pct = contract_spec.calibrated_slippage_bps / 10000.0
-            self._cerebro.broker.set_slippage_perc(slippage_pct)
-        elif contract_spec is not None and contract_spec.tick_size > 0:
-            # Legacy fallback — tick-derived default
-            typical_price = 20000.0  # Typical aluminum price
-            slippage_pct = contract_spec.tick_size / typical_price
-            self._cerebro.broker.set_slippage_perc(slippage_pct)
 
         # =====================================================================
         # Hook lifecycle: on_setup (before strategy added)
@@ -1295,6 +1323,10 @@ class BacktraderEngine(ITradingEngine):
         # =====================================================================
         for hook in self._hooks:
             hook.on_setup(self._cerebro, self)
+
+        # Hooks may replace the broker. Scalar slippage must be applied to the
+        # final broker, not to the provisional default broker configured above.
+        self._apply_scalar_slippage_config(contract_spec)
 
         # Initialize strategy logger
         log_strategy_name = strategy_name or strategy_class.__name__

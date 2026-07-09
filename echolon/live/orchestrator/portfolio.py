@@ -24,6 +24,7 @@ Phases per daily cycle:
 
 import json
 import os
+import re
 import signal
 import threading
 import time
@@ -61,6 +62,54 @@ from echolon.data.loaders.calendar_loader import is_night_market_open
 import logging
 
 logger = logging.getLogger(__name__)
+
+
+def _numeric_attr(obj: Any, names: tuple[str, ...]) -> Optional[float]:
+    for name in names:
+        value = getattr(obj, name, None)
+        if isinstance(value, (int, float)):
+            return float(value)
+    return None
+
+
+def _instrument_code_for_fill(slot: "TradingSlot", order: "Order") -> str:
+    slot_code = getattr(slot.slot_config, "instrument_code", None)
+    if slot_code:
+        return str(slot_code).lower()
+    match = re.match(r"([A-Za-z]+)", order.symbol or "")
+    if match:
+        return match.group(1).lower()
+    raise ValueError(f"Cannot resolve instrument code for fill symbol={order.symbol!r}")
+
+
+def _resolve_execution_commission(
+    *,
+    slot: "TradingSlot",
+    order: "Order",
+    handle: Any,
+    traded_price: float,
+    traded_volume: int,
+) -> tuple[float, str]:
+    broker_commission = _numeric_attr(
+        handle,
+        (
+            "commission",
+            "filled_commission",
+            "broker_commission",
+            "traded_commission",
+        ),
+    )
+    if broker_commission is not None:
+        return broker_commission, "broker"
+
+    from echolon.config.markets.shfe.instruments import get_instrument
+
+    instrument_code = _instrument_code_for_fill(slot, order)
+    spec = get_instrument(instrument_code)
+    return (
+        spec.calculate_commission(price=traded_price, size=traded_volume),
+        "computed",
+    )
 
 
 def book_terminal_record(
@@ -184,6 +233,13 @@ def book_terminal_record(
             cur_size = int(cur_pos.size) if cur_pos else 0
             cur_avg = cur_pos.avg_price if cur_pos else 0.0
             trade_realized_pnl = slot.capital_slot.realized_pnl - prev_realized
+            commission, commission_source = _resolve_execution_commission(
+                slot=slot,
+                order=order,
+                handle=handle,
+                traded_price=traded_price,
+                traded_volume=traded_volume,
+            )
 
             slot.todays_processed_fills.append({
                 'qmt_order_id': real_id,
@@ -191,6 +247,8 @@ def book_terminal_record(
                 'intent': intent_str,
                 'price': traded_price,
                 'volume': traded_volume,
+                'commission': commission,
+                'commission_source': commission_source,
                 'timestamp': datetime.now().isoformat(),
             })
 
@@ -230,7 +288,8 @@ def book_terminal_record(
                 execution_details={
                     'executed_price': traded_price,
                     'executed_size': traded_volume,
-                    'commission': 0.0,
+                    'commission': commission,
+                    'commission_source': commission_source,
                     'status': QMT_STATUS_MAP[56],
                 },
                 position_impact={
@@ -651,10 +710,24 @@ class PortfolioTradingRunner:
                 self.log.error(f"Reconciliation failed: {e}")
 
         # Phase 4: Portfolio risk check
-        dd_ok = self.risk_overlay.check_portfolio_drawdown(self.slots)
+        dd_ok = self.risk_overlay.enforce_portfolio_drawdown(
+            self.slots,
+            order_router=self.order_router,
+        )
         if not dd_ok:
-            self.log.error("PORTFOLIO DRAWDOWN LIMIT BREACHED — manual intervention required")
+            self.log.critical(
+                "PORTFOLIO DRAWDOWN LIMIT BREACHED — trading cycle halted; "
+                "OrderRouter circuit tripped"
+            )
             results["drawdown_breached"] = True
+            results["status"] = "halted"
+            self.running = False
+            self.shutdown_event.set()
+            self.risk_overlay.save()
+            duration = (datetime.now() - cycle_start).total_seconds()
+            results["duration_seconds"] = duration
+            self._save_health_report(cycle_start, results)
+            return results
 
         # Phase 5: Save trading data snapshot + state + health report
         from ..io.data_logger import save_trading_data_snapshot

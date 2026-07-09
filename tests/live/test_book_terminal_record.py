@@ -42,7 +42,7 @@ def _make_handle(filled_volume=1, filled_avg_price=24600.0, qmt_order_id=11111):
 def _make_slot(tmp_path: Path):
     slot = MagicMock()
     slot.slot_id = "al_s1"
-    slot.slot_config = MagicMock(instrument="aluminum")
+    slot.slot_config = MagicMock(instrument="aluminum", instrument_code="al")
     slot.todays_processed_fills = []
     slot.strategy = MagicMock(strategy_logger=MagicMock())
     slot.portfolio = MagicMock(
@@ -51,6 +51,15 @@ def _make_slot(tmp_path: Path):
     )
     slot.capital_slot = MagicMock(realized_pnl=0.0)
     return slot
+
+
+def _trade_execution_rows(tmp_path: Path):
+    files = list((tmp_path / "slots" / "al_s1").glob("trade_executions_*.csv"))
+    assert len(files) == 1
+    import csv
+
+    with open(files[0], "r", encoding="utf-8") as f:
+        return list(csv.DictReader(f))
 
 
 def test_book_filled_appends_fill_record_and_logs_executed(tmp_path):
@@ -81,6 +90,24 @@ def test_book_filled_appends_fill_record_and_logs_executed(tmp_path):
     assert notify_kwargs["side"] == "LONG"
     assert notify_kwargs["size"] == 1
     assert notify_kwargs["price"] == 24600.0
+
+
+def test_book_filled_writes_computed_commission_source_when_broker_missing(tmp_path):
+    slot = _make_slot(tmp_path)
+    order = _make_order()
+    handle = _make_handle(filled_volume=1, filled_avg_price=24600.0)
+
+    book_terminal_record(
+        slot=slot, order=order, handle=handle,
+        kind="filled", reason="",
+        slots_dir=str(tmp_path / "slots"),
+        log=MagicMock(),
+    )
+
+    rows = _trade_execution_rows(tmp_path)
+    assert len(rows) == 1
+    assert float(rows[0]["commission"]) == pytest.approx(3.01)
+    assert rows[0]["commission_source"] == "computed"
 
 
 def test_book_canceled_marks_order_and_appends_canceled_intent(tmp_path):

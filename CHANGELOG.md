@@ -6,6 +6,37 @@ versions may carry breaking changes — they are clearly flagged below.
 
 ## [Unreleased]
 
+## 0.2.0 — 2026-07-07
+
+### New
+
+- Added `echolon.panel` immutable multi-instrument panel loading, manifest hash
+  verification, no-lookahead `PanelView`, curve access, metadata access, and QC
+  reports.
+- Added `echolon.signals` public `SignalEngine` / `ScoreVector` contract plus
+  validation for score caps, explicit `None` missing-data scores, deterministic
+  compute, and identity-literal rejection.
+- Added `echolon.portfolio` book-state models, score combiner, volatility
+  constructor, sector and margin caps, book-risk snapshots, and pure
+  `PortfolioStrategy` composition.
+- Added `echolon.backtest.book` purpose-built daily futures book backtester with
+  one cash account, next-session fills, slippage/commission costs, futures
+  margin, forced-liquidation events, and deterministic artifacts.
+- Added `echolon.bundle` manifest schema, total file-hash coverage, hash
+  verification loader, and `echolon-bundle verify`.
+
+### Changed
+
+- Panel QC now keeps structural data defects blocking while treating
+  settlement/close divergence and daily-return outliers as review warnings for
+  broad futures panels.
+
+### Deferred
+
+- `native/`, `mcp`, and `backtest/portfolio_runner.py` archival is deferred:
+  qorka still imports `echolon.backtest.portfolio_runner`, and qorka agent
+  tooling still references `echolon.native` / `echolon.mcp`.
+
 ### New
 
 - `WFARunner` accepts a generic `binding_resolver_fn` (mirrors the existing
