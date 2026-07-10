@@ -10,6 +10,7 @@ from .models import (
     TargetBook,
 )
 from .strategy import PortfolioStrategy
+from .two_sleeve import TwoSleeveStrategy
 
 __all__ = [
     "BookRiskSnapshot",
@@ -22,5 +23,6 @@ __all__ = [
     "PositionState",
     "RebalanceRecord",
     "TargetBook",
+    "TwoSleeveStrategy",
 ]
 
