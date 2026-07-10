@@ -250,6 +250,64 @@ def test_guards_reject_bad_composition():
         )
 
 
+def test_slow_only_mode_runs_baseline_through_the_same_cadence_rule():
+    # fast=None: the certification baseline path — identical elapsed-time rule,
+    # combined targets equal the slow sleeve alone.
+    strategy = TwoSleeveStrategy(
+        slow=_slow_strategy(), fast=None,
+        slow_capital_fraction=1.0, fast_capital_fraction=0.0,
+        slow_interval_weeks=4,
+    )
+    panel = _panel()
+    date = _weekly_dates(1)[0]
+
+    combined, record = strategy.rebalance(panel.view(date), _book(date))
+
+    slow_alone, _ = _slow_strategy().rebalance(panel.view(date), _book(date))
+    assert combined.targets == pytest.approx(slow_alone.targets)
+    assert "slow_sig" in record.instruments["aa"].raw_scores
+    with pytest.raises(ValueError, match="must be 0.0 when fast is None"):
+        TwoSleeveStrategy(
+            slow=_slow_strategy(), fast=None,
+            slow_capital_fraction=0.8, fast_capital_fraction=0.2,
+        )
+
+
+def test_reset_makes_instance_reuse_equal_fresh_instance():
+    # Review M2 falsifier: without reset, a reused instance seeds the second
+    # window's band with the first window's held lots; reset() must restore
+    # fresh-instance behavior exactly.
+    panel = _panel(drift_per_day=-0.001)
+    banded_cfg = _cfg().model_copy(update={"rebalance_band_lots": 10_000.0})
+
+    def build():
+        return TwoSleeveStrategy(
+            slow=PortfolioStrategy(
+                [_StubSignal("slow_sig", lambda d, i: 1.0)], {"slow_sig": 1.0}, banded_cfg),
+            fast=PortfolioStrategy(
+                [_StubSignal("fast_sig", lambda d, i: -1.0)], {"fast_sig": 1.0}, banded_cfg),
+            slow_capital_fraction=0.8, fast_capital_fraction=0.2,
+            slow_interval_weeks=2,
+        )
+
+    window_a = _weekly_dates(2)
+    window_b = [date + dt.timedelta(days=21) for date in window_a]
+
+    reused = build()
+    for date in window_a:
+        reused.rebalance(panel.view(date), _book(date))
+    dirty_targets, _ = reused.rebalance(panel.view(window_b[0]), _book(window_b[0]))
+
+    reused.reset()
+    reset_targets, _ = reused.rebalance(panel.view(window_b[0]), _book(window_b[0]))
+    fresh_targets, _ = build().rebalance(panel.view(window_b[0]), _book(window_b[0]))
+
+    assert reset_targets.targets == pytest.approx(fresh_targets.targets)
+    # And the falsifier half: the un-reset instance really was contaminated
+    # (band held it at window A's lots on falling prices).
+    assert dirty_targets.targets != pytest.approx(fresh_targets.targets)
+
+
 def test_engine_run_is_deterministic_with_two_sleeve_strategy():
     from echolon.backtest.book import BookBacktestConfig, DailyBookBacktester
 

@@ -27,24 +27,36 @@ class TwoSleeveStrategy:
         self,
         *,
         slow: PortfolioStrategy,
-        fast: PortfolioStrategy,
+        fast: PortfolioStrategy | None,
         slow_capital_fraction: float,
         fast_capital_fraction: float,
         slow_interval_weeks: int = 4,
     ) -> None:
-        if slow_capital_fraction <= 0.0 or fast_capital_fraction <= 0.0:
+        if slow_capital_fraction <= 0.0:
+            raise ValueError("sleeve capital fractions must be positive")
+        if fast is None:
+            # Slow-only mode: the elapsed-time cadence rule applied to a single
+            # sleeve. Certification baselines run through THIS mode so baseline
+            # and two-sleeve books share an identical refresh rule (review M1:
+            # the engine's modulo schedule skips holiday-hit refresh weeks, the
+            # elapsed rule delays them — comparing across the two rules would
+            # confound the pre-registered comparison).
+            if fast_capital_fraction != 0.0:
+                raise ValueError("fast_capital_fraction must be 0.0 when fast is None")
+        elif fast_capital_fraction <= 0.0:
             raise ValueError("sleeve capital fractions must be positive")
         if slow_capital_fraction + fast_capital_fraction > 1.0 + 1e-9:
             raise ValueError("sleeve capital fractions must not exceed 1.0 combined")
         if slow_interval_weeks < 1:
             raise ValueError("slow_interval_weeks must be >= 1")
-        slow_ids = set(slow.combiner.weights)
-        fast_ids = set(fast.combiner.weights)
-        overlap = slow_ids & fast_ids
-        if overlap:
-            raise ValueError(
-                f"sleeves must not share signal ids (ambiguous records): {sorted(overlap)}"
-            )
+        if fast is not None:
+            slow_ids = set(slow.combiner.weights) | {e.signal_id for e in slow.engines}
+            fast_ids = set(fast.combiner.weights) | {e.signal_id for e in fast.engines}
+            overlap = slow_ids & fast_ids
+            if overlap:
+                raise ValueError(
+                    f"sleeves must not share signal ids (ambiguous records): {sorted(overlap)}"
+                )
         self.slow = slow
         self.fast = fast
         self.slow_capital_fraction = float(slow_capital_fraction)
@@ -54,6 +66,20 @@ class TwoSleeveStrategy:
         self._fast_targets: dict[str, float] = {}
         self._slow_record: RebalanceRecord | None = None
         self._last_slow_refresh: dt.date | None = None
+
+    def reset(self) -> None:
+        """Clear held sleeve state.
+
+        This strategy is STATEFUL. Harnesses that run multiple backtest
+        windows must construct a fresh instance (or call reset()) per window —
+        reusing an instance seeds each sleeve's rebalance band with the prior
+        window's held lots while the engine starts the window flat
+        (review M2).
+        """
+        self._slow_targets = {}
+        self._fast_targets = {}
+        self._slow_record = None
+        self._last_slow_refresh = None
 
     def rebalance(self, view: PanelView, book: BookState) -> tuple[TargetBook, RebalanceRecord]:
         # Elapsed-time rule, not a modulo schedule: a holiday-skipped week
@@ -71,14 +97,19 @@ class TwoSleeveStrategy:
             self._slow_record = slow_record
             self._last_slow_refresh = view.date
 
-        fast_book = _sleeve_book(book, self.fast_capital_fraction, self._fast_targets)
-        fast_target, fast_record = self.fast.rebalance(view, fast_book)
-        self._fast_targets = dict(fast_target.targets)
+        if self.fast is not None:
+            fast_book = _sleeve_book(book, self.fast_capital_fraction, self._fast_targets)
+            fast_target, fast_record = self.fast.rebalance(view, fast_book)
+            self._fast_targets = dict(fast_target.targets)
+            fast_targets = fast_target.targets
+        else:
+            fast_record = None
+            fast_targets = {}
 
-        instruments = sorted(set(self._slow_targets) | set(fast_target.targets))
+        instruments = sorted(set(self._slow_targets) | set(fast_targets))
         combined = {
             instrument: float(self._slow_targets.get(instrument, 0.0))
-            + float(fast_target.targets.get(instrument, 0.0))
+            + float(fast_targets.get(instrument, 0.0))
             for instrument in instruments
         }
         record = RebalanceRecord(
@@ -128,7 +159,7 @@ def _merged_row(
     instrument: str,
     *,
     slow_record: RebalanceRecord | None,
-    fast_record: RebalanceRecord,
+    fast_record: RebalanceRecord | None,
     slow_lots: float,
     combined_lots: float,
     slow_refreshed: bool,
@@ -136,7 +167,7 @@ def _merged_row(
     fast_fraction: float,
 ) -> InstrumentRebalance:
     slow_row = slow_record.instruments.get(instrument) if slow_record is not None else None
-    fast_row = fast_record.instruments.get(instrument)
+    fast_row = fast_record.instruments.get(instrument) if fast_record is not None else None
     raw_scores: dict[str, float | None] = {}
     if slow_row is not None:
         raw_scores.update(slow_row.raw_scores)
@@ -155,7 +186,7 @@ def _merged_row(
     return InstrumentRebalance(
         raw_scores=raw_scores,
         blended=(slow_blend * slow_fraction + fast_blend * fast_fraction) / total_fraction,
-        vol_ann=fast_row.vol_ann if fast_row is not None else 0.0,
+        vol_ann=fast_row.vol_ann if fast_row is not None else (slow_row.vol_ann if slow_row is not None else 0.0),
         pre_round_lots=slow_lots + (fast_row.pre_round_lots if fast_row is not None else 0.0),
         post_round_lots=combined_lots,
         caps_applied=caps,
