@@ -15,12 +15,12 @@ N_DAYS = 120
 START = dt.date(2024, 1, 1)
 
 
-def _panel() -> PanelData:
+def _panel(drift_per_day: float = 0.001) -> PanelData:
     dates = [START + dt.timedelta(days=index) for index in range(N_DAYS)]
     specs = {"aa": 100.0, "bb": 200.0, "cc": 150.0}
     bars = {}
     for instrument, base in specs.items():
-        settles = [base * (1.0 + 0.001 * index) for index in range(N_DAYS)]
+        settles = [base * (1.0 + drift_per_day * index) for index in range(N_DAYS)]
         bars[instrument] = pd.DataFrame(
             {
                 "open": settles, "high": settles, "low": settles, "close": settles,
@@ -177,6 +177,53 @@ def test_capital_fraction_scales_sleeve_sizing_linearly():
         assert large_targets.targets[instrument] == pytest.approx(
             2.0 * small_targets.targets[instrument], rel=1e-9
         )
+
+
+def test_holiday_gap_delays_slow_refresh_instead_of_skipping_it():
+    inert_fast = _fast_strategy(lambda date, inst: 0.0)
+    slow = _slow_strategy(lambda date, inst: 1.0 if date.day % 2 else -1.0)
+    strategy = TwoSleeveStrategy(
+        slow=slow, fast=inert_fast,
+        slow_capital_fraction=0.8, fast_capital_fraction=0.2,
+        slow_interval_weeks=2,
+    )
+    panel = _panel()
+    base = _weekly_dates(1)[0]
+    # Week 0 refresh; week 1 held; week 2 skipped (holiday); week 3 call:
+    # 21 days since refresh >= 14 -> MUST refresh (a modulo rule would hold).
+    dates = [base, base + dt.timedelta(days=7), base + dt.timedelta(days=21)]
+    held = []
+    for date in dates:
+        _, record = strategy.rebalance(panel.view(date), _book(date))
+        held.append(
+            any(cap.get("cap") == "slow_sleeve_held" for cap in record.instruments["aa"].caps_applied)
+        )
+    assert held == [False, True, False]
+
+
+def test_fast_sleeve_bands_against_its_own_last_targets():
+    # Falling prices make same-direction lot targets GROW week over week (the
+    # band deliberately never blocks reductions); a huge band must hold the
+    # fast sleeve at its own prior targets — impossible unless the sleeve
+    # sees them as book positions.
+    panel = _panel(drift_per_day=-0.001)
+    banded_cfg = _cfg().model_copy(update={"rebalance_band_lots": 10_000.0})
+    fast = PortfolioStrategy([_StubSignal("fast_sig", lambda d, i: -1.0)], {"fast_sig": 1.0}, banded_cfg)
+    strategy = TwoSleeveStrategy(
+        slow=_slow_strategy(lambda d, i: 0.0), fast=fast,
+        slow_capital_fraction=0.5, fast_capital_fraction=0.5,
+        slow_interval_weeks=4,
+    )
+    dates = _weekly_dates(2)
+
+    first, _ = strategy.rebalance(panel.view(dates[0]), _book(dates[0]))
+    second, record = strategy.rebalance(panel.view(dates[1]), _book(dates[1]))
+
+    assert second.targets == pytest.approx(first.targets)
+    assert any(
+        cap.get("cap") == "rebalance_band_lots"
+        for cap in record.instruments["aa"].caps_applied
+    )
 
 
 def test_guards_reject_bad_composition():

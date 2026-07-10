@@ -50,17 +50,18 @@ class TwoSleeveStrategy:
         self.slow_capital_fraction = float(slow_capital_fraction)
         self.fast_capital_fraction = float(fast_capital_fraction)
         self.slow_interval_weeks = int(slow_interval_weeks)
-        self._anchor: dt.date | None = None
         self._slow_targets: dict[str, float] = {}
+        self._fast_targets: dict[str, float] = {}
         self._slow_record: RebalanceRecord | None = None
+        self._last_slow_refresh: dt.date | None = None
 
     def rebalance(self, view: PanelView, book: BookState) -> tuple[TargetBook, RebalanceRecord]:
-        if self._anchor is None:
-            self._anchor = view.date
-        weeks_since_anchor = (view.date - self._anchor).days // 7
+        # Elapsed-time rule, not a modulo schedule: a holiday-skipped week
+        # (e.g. Chinese New Year) delays the slow refresh by one call instead
+        # of silently pushing it a whole interval out.
         slow_due = (
-            self._slow_record is None
-            or weeks_since_anchor % self.slow_interval_weeks == 0
+            self._last_slow_refresh is None
+            or (view.date - self._last_slow_refresh).days >= 7 * self.slow_interval_weeks
         )
 
         if slow_due:
@@ -68,9 +69,11 @@ class TwoSleeveStrategy:
             slow_target, slow_record = self.slow.rebalance(view, slow_book)
             self._slow_targets = dict(slow_target.targets)
             self._slow_record = slow_record
+            self._last_slow_refresh = view.date
 
-        fast_book = _sleeve_book(book, self.fast_capital_fraction, {})
+        fast_book = _sleeve_book(book, self.fast_capital_fraction, self._fast_targets)
         fast_target, fast_record = self.fast.rebalance(view, fast_book)
+        self._fast_targets = dict(fast_target.targets)
 
         instruments = sorted(set(self._slow_targets) | set(fast_target.targets))
         combined = {
