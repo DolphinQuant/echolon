@@ -46,6 +46,14 @@ CONTRACT_COLUMNS = [
     "contract",
 ]
 
+CURVE_COLUMNS = [
+    "near_contract",
+    "near_settle",
+    "far_contract",
+    "far_settle",
+    "days_between",
+]
+
 
 def _parse_date(value: str | dt.date) -> dt.date:
     if isinstance(value, dt.date):
@@ -93,6 +101,23 @@ class PanelView:
         if match.empty:
             return None
         return match.iloc[0].copy()
+
+    def curve_history(self, instrument: str, lookback: int) -> pd.DataFrame:
+        """Return up to ``lookback`` curve rows dated on or before the view date.
+
+        Mirrors :meth:`bars` no-lookahead semantics for the near/far curve
+        series so curve-history signals (basis momentum, carry change) cannot
+        read past the view date by construction. Instruments without a curve
+        file return an empty frame with the canonical curve columns.
+        """
+        if lookback <= 0:
+            raise ValueError("lookback must be positive")
+        instrument_id = instrument.lower()
+        curves = self._panel._curves.get(instrument_id)
+        if curves is None:
+            return pd.DataFrame(columns=CURVE_COLUMNS)
+        visible = curves.loc[curves.index <= self.date, CURVE_COLUMNS]
+        return visible.tail(lookback).copy()
 
     def curve(self, instrument: str) -> CurvePoint | None:
         instrument_id = instrument.lower()
