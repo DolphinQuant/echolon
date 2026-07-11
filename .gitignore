@@ -26,3 +26,6 @@ Thumbs.db
 
 # Internal-only historical plans / analyses; not part of the public surface.
 docs/
+
+# Local isolated worktrees used for reviewed execution plans
+.worktrees/
