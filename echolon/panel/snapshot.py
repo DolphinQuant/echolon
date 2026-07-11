@@ -54,6 +54,10 @@ CURVE_COLUMNS = [
     "days_between",
 ]
 
+INVENTORY_COLUMNS = ["receipts", "receipts_chg", "unit"]
+
+POSITIONING_COLUMNS = ["long_oi_top20", "short_oi_top20", "net_share"]
+
 
 def _parse_date(value: str | dt.date) -> dt.date:
     if isinstance(value, dt.date):
@@ -119,6 +123,37 @@ class PanelView:
         visible = curves.loc[curves.index <= self.date, CURVE_COLUMNS]
         return visible.tail(lookback).copy()
 
+    def inventory_history(self, instrument: str, lookback: int) -> pd.DataFrame:
+        """Return published inventory rows visible on or before the view date.
+
+        A date-T row is visible in a date-T view, matching bars. Downstream
+        execution code remains responsible for the binding T+1 timing rule.
+        """
+        return self._optional_history(
+            instrument, lookback, self._panel._inventory, INVENTORY_COLUMNS
+        )
+
+    def positioning_history(self, instrument: str, lookback: int) -> pd.DataFrame:
+        """Return published top-20 positioning rows on or before the view date."""
+        return self._optional_history(
+            instrument, lookback, self._panel._positioning, POSITIONING_COLUMNS
+        )
+
+    def _optional_history(
+        self,
+        instrument: str,
+        lookback: int,
+        histories: dict[str, pd.DataFrame],
+        columns: list[str],
+    ) -> pd.DataFrame:
+        if lookback <= 0:
+            raise ValueError("lookback must be positive")
+        frame = histories.get(instrument.lower())
+        if frame is None:
+            return pd.DataFrame(columns=columns)
+        visible = frame.loc[frame.index <= self.date, columns]
+        return visible.tail(lookback).copy()
+
     def curve(self, instrument: str) -> CurvePoint | None:
         instrument_id = instrument.lower()
         curves = self._panel._curves.get(instrument_id)
@@ -152,6 +187,8 @@ class PanelData:
         curves: dict[str, pd.DataFrame],
         contracts: dict[str, pd.DataFrame],
         meta: dict[str, InstrumentMeta],
+        inventory: dict[str, pd.DataFrame] | None = None,
+        positioning: dict[str, pd.DataFrame] | None = None,
     ) -> None:
         self.snapshot_dir = snapshot_dir
         self.manifest = manifest
@@ -161,6 +198,8 @@ class PanelData:
         self._curves = curves
         self._contracts = contracts
         self._meta = meta
+        self._inventory = inventory or {}
+        self._positioning = positioning or {}
         self.calendar = self._build_calendar()
 
     @classmethod
@@ -184,6 +223,13 @@ class PanelData:
             if contracts_path.exists():
                 contracts[instrument] = _normalize_contract_frame(_read_csv_with_date(contracts_path))
 
+        inventory = cls._load_optional_histories(
+            snapshot_path, manifest, "inventory", INVENTORY_COLUMNS
+        )
+        positioning = cls._load_optional_histories(
+            snapshot_path, manifest, "positioning", POSITIONING_COLUMNS
+        )
+
         meta = cls._load_meta(snapshot_path / "meta" / "instruments.csv")
         for instrument in manifest.instruments:
             if instrument not in meta:
@@ -196,7 +242,28 @@ class PanelData:
             curves=curves,
             contracts=contracts,
             meta=meta,
+            inventory=inventory,
+            positioning=positioning,
         )
+
+    @staticmethod
+    def _load_optional_histories(
+        snapshot_dir: Path,
+        manifest: PanelManifest,
+        family: str,
+        required_columns: list[str],
+    ) -> dict[str, pd.DataFrame]:
+        histories: dict[str, pd.DataFrame] = {}
+        for instrument in manifest.instruments:
+            relpath = f"{family}/{instrument}.csv"
+            if relpath not in manifest.files:
+                continue
+            frame = _read_csv_with_date(snapshot_dir / relpath)
+            missing = set(required_columns).difference(frame.columns)
+            if missing:
+                raise ValueError(f"{relpath} missing canonical columns: {sorted(missing)}")
+            histories[instrument] = frame
+        return histories
 
     @staticmethod
     def _verify_manifest_hashes(snapshot_dir: Path, manifest: PanelManifest) -> None:

@@ -52,7 +52,10 @@ def run_panel_qc(
     bars: dict[str, pd.DataFrame],
     curves: dict[str, pd.DataFrame],
     roll_gap_stats: dict | None = None,
-    waivers: Mapping[tuple[str, dt.date, str], str | Mapping[str, Any]] | None = None,
+    waivers: Mapping[tuple[str, dt.date | None, str], str | Mapping[str, Any]] | None = None,
+    inventory: dict[str, pd.DataFrame] | None = None,
+    positioning: dict[str, pd.DataFrame] | None = None,
+    trading_calendars: Mapping[str, list[dt.date]] | None = None,
 ) -> QCReport:
     """Run S12 QC checks over in-memory panel data."""
     checks: list[QCCheck] = []
@@ -60,6 +63,23 @@ def run_panel_qc(
         _check_bars(instrument, frame, checks, waivers or {})
     for instrument, frame in curves.items():
         _check_curves(instrument, frame, checks)
+    for instrument, frame in (inventory or {}).items():
+        _check_inventory(
+            instrument,
+            frame,
+            list((trading_calendars or {}).get(instrument, [])),
+            checks,
+            waivers or {},
+        )
+    for instrument, frame in (positioning or {}).items():
+        _check_optional_history(
+            family="positioning",
+            instrument=instrument,
+            frame=frame,
+            calendar=list((trading_calendars or {}).get(instrument, [])),
+            checks=checks,
+            waivers=waivers or {},
+        )
 
     if any(check.severity == "ERROR" and not check.waived for check in checks):
         status = "FAIL"
@@ -74,7 +94,7 @@ def _check_bars(
     instrument: str,
     frame: pd.DataFrame,
     checks: list[QCCheck],
-    waivers: Mapping[tuple[str, dt.date, str], str | Mapping[str, Any]],
+    waivers: Mapping[tuple[str, dt.date | None, str], str | Mapping[str, Any]],
 ) -> None:
     required_price_columns = ("open", "high", "low", "close", "settle")
     raw_price_columns = tuple(column for column in ("open_raw", "high_raw", "low_raw", "close_raw", "settle_raw") if column in frame)
@@ -213,3 +233,131 @@ def _check_curves(instrument: str, frame: pd.DataFrame, checks: list[QCCheck]) -
                 date=date_value,
                 value=float(near_month),
             )
+
+
+def _date_value(value: Any) -> dt.date:
+    return value if isinstance(value, dt.date) else pd.Timestamp(value).date()
+
+
+def _waived_error(
+    checks: list[QCCheck],
+    *,
+    check_id: str,
+    message: str,
+    instrument: str,
+    date: dt.date | None,
+    value: float | None,
+    waivers: Mapping[tuple[str, dt.date | None, str], str | Mapping[str, Any]],
+) -> None:
+    reason, approved_by = _waiver_details(waivers.get((instrument, date, check_id)))
+    _add_check(
+        checks,
+        check_id=check_id,
+        severity="ERROR",
+        message=message,
+        instrument=instrument,
+        date=date,
+        value=value,
+        waived=reason is not None and approved_by is not None,
+        waiver_reason=reason,
+        waiver_approved_by=approved_by,
+    )
+
+
+def _check_optional_history(
+    *,
+    family: str,
+    instrument: str,
+    frame: pd.DataFrame,
+    calendar: list[dt.date],
+    checks: list[QCCheck],
+    waivers: Mapping[tuple[str, dt.date | None, str], str | Mapping[str, Any]],
+) -> None:
+    duplicate_dates = frame.index[frame.index.duplicated()].unique()
+    for date in duplicate_dates:
+        date_value = _date_value(date)
+        _waived_error(
+            checks,
+            check_id=f"{family}_duplicate_date",
+            message=f"{family} contains duplicate dates",
+            instrument=instrument,
+            date=date_value,
+            value=float((frame.index == date).sum()),
+            waivers=waivers,
+        )
+    present = {_date_value(value) for value in frame.index}
+    first_present = min(present) if present else None
+    expected = [date for date in calendar if first_present is None or date >= first_present]
+    missing = sorted(set(expected).difference(present))
+    coverage = len(set(expected).intersection(present)) / len(expected) if expected else 1.0
+    if missing and coverage < 0.95:
+        _waived_error(
+            checks,
+            check_id=f"{family}_coverage",
+            message=f"{family} is missing trading-calendar dates",
+            instrument=instrument,
+            date=missing[0],
+            value=coverage,
+            waivers=waivers,
+        )
+    elif missing and coverage < 0.995:
+        _add_check(
+            checks,
+            check_id=f"{family}_coverage",
+            severity="WARN",
+            message=f"{family} coverage is below warning threshold",
+            instrument=instrument,
+            date=missing[0],
+            value=coverage,
+        )
+
+
+def _check_inventory(
+    instrument: str,
+    frame: pd.DataFrame,
+    calendar: list[dt.date],
+    checks: list[QCCheck],
+    waivers: Mapping[tuple[str, dt.date | None, str], str | Mapping[str, Any]],
+) -> None:
+    _check_optional_history(
+        family="inventory",
+        instrument=instrument,
+        frame=frame,
+        calendar=calendar,
+        checks=checks,
+        waivers=waivers,
+    )
+    if "unit" not in frame.columns:
+        _waived_error(
+            checks,
+            check_id="inventory_unit_column_present",
+            message="inventory requires a unit column",
+            instrument=instrument,
+            date=None,
+            value=None,
+            waivers=waivers,
+        )
+    else:
+        for date, unit in frame["unit"].items():
+            if pd.isna(unit) or not str(unit).strip():
+                _waived_error(
+                    checks,
+                    check_id="inventory_unit_value_present",
+                    message="inventory unit value must be present",
+                    instrument=instrument,
+                    date=_date_value(date),
+                    value=None,
+                    waivers=waivers,
+                )
+    if "receipts" in frame.columns:
+        for date, receipts in pd.to_numeric(frame["receipts"], errors="coerce").items():
+            if pd.notna(receipts) and receipts < 0:
+                _waived_error(
+                    checks,
+                    check_id="inventory_receipts_nonnegative",
+                    message="inventory receipts must be nonnegative",
+                    instrument=instrument,
+                    date=_date_value(date),
+                    value=float(receipts),
+                    waivers=waivers,
+                )

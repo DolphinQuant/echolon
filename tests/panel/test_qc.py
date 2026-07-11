@@ -62,6 +62,105 @@ def test_qc_fails_on_zero_price_and_bad_curve_order():
     }
 
 
+def test_qc_v3_errors_gate_coverage_duplicates_negative_receipts_and_units():
+    calendar = [dt.date(2024, 1, 2), dt.date(2024, 1, 3)]
+    inventory = {
+        "al": pd.DataFrame(
+            {"receipts": [10.0, -1.0], "unit": ["ton", ""]},
+            index=[calendar[0], calendar[0]],
+        )
+    }
+    positioning = {
+        "al": pd.DataFrame(
+            {"long_oi_top20": [6.0], "short_oi_top20": [4.0], "net_share": [0.2]},
+            index=[calendar[0]],
+        )
+    }
+
+    report = run_panel_qc(
+        snapshot="v3",
+        bars={},
+        curves={},
+        inventory=inventory,
+        positioning=positioning,
+        trading_calendars={"al": calendar},
+    )
+
+    assert report.status == "FAIL"
+    assert {check.check_id for check in report.checks} >= {
+        "inventory_coverage",
+        "inventory_duplicate_date",
+        "inventory_receipts_nonnegative",
+        "inventory_unit_value_present",
+        "positioning_coverage",
+    }
+    assert {check.severity for check in report.checks} == {"ERROR"}
+
+
+def test_qc_v3_requires_inventory_unit_column():
+    date = dt.date(2024, 1, 2)
+
+    report = run_panel_qc(
+        snapshot="v3",
+        bars={},
+        curves={},
+        inventory={"al": pd.DataFrame({"receipts": [1.0]}, index=[date])},
+        positioning={},
+        trading_calendars={"al": [date]},
+    )
+
+    assert report.status == "FAIL"
+    assert [check.check_id for check in report.checks] == ["inventory_unit_column_present"]
+
+
+def test_qc_v3_item_waiver_needs_owner_visible_reason_and_approver():
+    date = dt.date(2024, 1, 2)
+    kwargs = dict(
+        snapshot="v3",
+        bars={},
+        curves={},
+        inventory={"al": pd.DataFrame({"receipts": [-1.0], "unit": ["ton"]}, index=[date])},
+        positioning={},
+        trading_calendars={"al": [date]},
+    )
+
+    unapproved = run_panel_qc(
+        **kwargs,
+        waivers={("al", date, "inventory_receipts_nonnegative"): "known correction"},
+    )
+    approved = run_panel_qc(
+        **kwargs,
+        waivers={("al", date, "inventory_receipts_nonnegative"): {"reason": "exchange correction", "approved_by": "owner"}},
+    )
+
+    assert unapproved.status == "FAIL"
+    assert unapproved.checks[0].waived is False
+    assert approved.status == "PASS_WITH_WARNINGS"
+    assert approved.checks[0].waived is True
+    assert approved.checks[0].waiver_reason == "exchange correction"
+    assert approved.checks[0].waiver_approved_by == "owner"
+
+
+def test_qc_v3_coverage_uses_first_availability_and_error_threshold():
+    calendar = [dt.date(2024, 1, 1) + dt.timedelta(days=offset) for offset in range(201)]
+    positioning = pd.DataFrame(
+        {"long_oi_top20": 1.0, "short_oi_top20": 1.0, "net_share": 0.0},
+        index=calendar[1:200],
+    )
+
+    report = run_panel_qc(
+        snapshot="v3",
+        bars={},
+        curves={},
+        inventory={},
+        positioning={"al": positioning},
+        trading_calendars={"al": calendar},
+    )
+
+    assert report.status == "PASS"
+    assert report.checks == []
+
+
 def test_qc_warns_on_zero_volume_and_settle_close_divergence():
     bars = {
         "al": pd.DataFrame(
