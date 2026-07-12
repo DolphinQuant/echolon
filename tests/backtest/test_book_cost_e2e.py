@@ -149,7 +149,7 @@ def test_book_backtester_applies_s11_slippage_and_commission(tmp_path: Path):
     cu_trade = next(trade for trade in result.trades if trade.instrument == "cu")
     assert al_trade.date == dt.date(2024, 1, 3)
     assert al_trade.intended_price == 19010.0
-    assert al_trade.fill_price == 19015.7
+    assert al_trade.fill_price == 19015.71
     assert al_trade.commission_rmb == pytest.approx(3.01, abs=0.01)
     assert cu_trade.commission_rmb == pytest.approx(17.50, abs=0.01)
     assert (tmp_path / "equity_curve.csv").is_file()
