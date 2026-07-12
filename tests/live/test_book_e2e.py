@@ -118,7 +118,7 @@ def test_end_to_end_is_idempotent_and_deterministic(tmp_path):
 
 def test_paper_fill_matches_certified_backtest_arithmetic():
     # S11 anchor shape: 1 lot at open 19020, 3 bps slippage, tick 5 ->
-    # 19020 * 1.0003 = 19025.706 -> tick-rounded 19025; per-lot commission.
+    # 19020 * 3 bps = 5.706, rounded adversely to a 10-point offset.
     meta = InstrumentMeta(
         instrument_id="aa",
         sector="sector_a",
@@ -139,11 +139,11 @@ def test_paper_fill_matches_certified_backtest_arithmetic():
         slippage_bps=3.0,
         fill_date=dt.date(2026, 7, 6),
     )
-    assert fill.fill_price == 19025.0
+    assert fill.fill_price == 19030.0
     assert fill.commission_rmb == 3.01
-    assert fill.slippage_rmb == 5.0 * 1 * 5.0  # |19025 - 19020| * lots * multiplier
+    assert fill.slippage_rmb == 10.0 * 1 * 5.0
     assert fill.realized_pnl_rmb == 0.0
-    assert fill.position_after == PaperPosition(lots=1, avg_price=19025.0, contract="aa2608")
+    assert fill.position_after == PaperPosition(lots=1, avg_price=19030.0, contract="aa2608")
 
     # Closing the lot lower realizes the loss with the same arithmetic.
     close = simulate_paper_fill(
@@ -155,6 +155,6 @@ def test_paper_fill_matches_certified_backtest_arithmetic():
         slippage_bps=3.0,
         fill_date=dt.date(2026, 7, 7),
     )
-    assert close.fill_price == 18995.0  # sell side slips down, tick-rounded
-    assert close.realized_pnl_rmb == (18995.0 - 19025.0) * 5.0
+    assert close.fill_price == 18990.0  # sell-side offset rounds adversely to two ticks
+    assert close.realized_pnl_rmb == (18990.0 - 19030.0) * 5.0
     assert close.position_after == PaperPosition()

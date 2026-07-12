@@ -292,9 +292,14 @@ class DailyBookBacktester(IBookBacktester):
 
 
 def _slipped_price(price: float, lots: float, slippage_bps: float, tick: float) -> float:
+    """Apply slippage in adverse whole ticks, never rounding the charge away."""
+    if lots == 0 or slippage_bps <= 0:
+        return price
     direction = 1.0 if lots > 0 else -1.0
-    raw = price * (1.0 + direction * slippage_bps / 10_000.0)
-    return round(raw / tick) * tick if tick > 0 else raw
+    if tick <= 0:
+        return price * (1.0 + direction * slippage_bps / 10_000.0)
+    offset_ticks = max(1, math.ceil(abs(price) * slippage_bps / 10_000.0 / tick))
+    return price + direction * offset_ticks * tick
 
 
 def _commission_rmb(meta: Any, price: float, lots_abs: float, *, close_today: bool = False) -> float:

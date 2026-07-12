@@ -149,7 +149,7 @@ def test_book_backtester_applies_s11_slippage_and_commission(tmp_path: Path):
     cu_trade = next(trade for trade in result.trades if trade.instrument == "cu")
     assert al_trade.date == dt.date(2024, 1, 3)
     assert al_trade.intended_price == 19010.0
-    assert al_trade.fill_price == 19015.7
+    assert al_trade.fill_price == 19015.71
     assert al_trade.commission_rmb == pytest.approx(3.01, abs=0.01)
     assert cu_trade.commission_rmb == pytest.approx(17.50, abs=0.01)
     assert (tmp_path / "equity_curve.csv").is_file()
@@ -175,9 +175,9 @@ def test_book_backtester_uses_per_instrument_slippage_tiers(tmp_path: Path):
 
     al_trade = next(trade for trade in result.trades if trade.instrument == "al")
     cu_trade = next(trade for trade in result.trades if trade.instrument == "cu")
-    assert al_trade.fill_price == 19029.01
+    assert al_trade.fill_price == 19029.02
     assert cu_trade.fill_price == 70010.0
-    assert al_trade.slippage_rmb == pytest.approx((19029.01 - 19010.0) * 5.0)
+    assert al_trade.slippage_rmb == pytest.approx((19029.02 - 19010.0) * 5.0)
     assert cu_trade.slippage_rmb == pytest.approx((70010.0 - 70000.0) * 5.0)
 
 
