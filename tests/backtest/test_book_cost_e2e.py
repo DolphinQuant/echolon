@@ -175,9 +175,9 @@ def test_book_backtester_uses_per_instrument_slippage_tiers(tmp_path: Path):
 
     al_trade = next(trade for trade in result.trades if trade.instrument == "al")
     cu_trade = next(trade for trade in result.trades if trade.instrument == "cu")
-    assert al_trade.fill_price == 19029.02
+    assert al_trade.fill_price == 19029.01
     assert cu_trade.fill_price == 70010.0
-    assert al_trade.slippage_rmb == pytest.approx((19029.02 - 19010.0) * 5.0)
+    assert al_trade.slippage_rmb == pytest.approx((19029.01 - 19010.0) * 5.0)
     assert cu_trade.slippage_rmb == pytest.approx((70010.0 - 70000.0) * 5.0)
 
 

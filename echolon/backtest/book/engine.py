@@ -6,6 +6,7 @@ import hashlib
 import json
 import math
 from dataclasses import dataclass
+from decimal import ROUND_CEILING, Decimal
 from pathlib import Path
 from typing import Any, Mapping
 
@@ -298,8 +299,16 @@ def _slipped_price(price: float, lots: float, slippage_bps: float, tick: float) 
     direction = 1.0 if lots > 0 else -1.0
     if tick <= 0:
         return price * (1.0 + direction * slippage_bps / 10_000.0)
-    offset_ticks = max(1, math.ceil(abs(price) * slippage_bps / 10_000.0 / tick))
-    return price + direction * offset_ticks * tick
+    tick_decimal = Decimal(str(tick))
+    offset_ratio = (
+        Decimal(str(abs(price)))
+        * Decimal(str(slippage_bps))
+        / Decimal(10_000)
+        / tick_decimal
+    )
+    offset_ticks = max(1, int(offset_ratio.to_integral_value(rounding=ROUND_CEILING)))
+    result = Decimal(str(price)) + Decimal(str(direction)) * offset_ticks * tick_decimal
+    return float(result)
 
 
 def _commission_rmb(meta: Any, price: float, lots_abs: float, *, close_today: bool = False) -> float:
