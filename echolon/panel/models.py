@@ -36,7 +36,7 @@ class InstrumentMeta(BaseModel):
 
 
 class PanelManifest(BaseModel):
-    schema: Literal["panel/v1"] = "panel/v1"
+    schema: Literal["panel/v1", "panel/v3"] = "panel/v1"
     version: str
     created_at: str
     source_refs: list[str]
