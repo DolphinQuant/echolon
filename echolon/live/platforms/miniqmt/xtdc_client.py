@@ -176,6 +176,11 @@ class XtdcClient:
             self._ensure_listener()
 
             from xtquant import xtdata
+            # xtdata.connect() returns an already-connected client without
+            # honoring a newly supplied port.  A process that queried MiniQMT
+            # first would otherwise stay on the broker port instead of this
+            # token listener.
+            xtdata.disconnect()
             xtdata.connect(port=self._port)
 
             self._connected = True
@@ -205,7 +210,7 @@ class XtdcClient:
         except Exception as e:
             logger.warning("[XTDC] Disconnect failed: %s", e)
 
-    def shutdown(self) -> None:
+    def shutdown(self) -> bool:
         """Disconnect and stop the token data listener for finite processes.
 
         Long-running services should continue to use disconnect(), which keeps
@@ -216,11 +221,18 @@ class XtdcClient:
         listener_was_ready = type(self)._listener_ready
         self.disconnect()
         if not listener_was_ready:
-            return
+            return True
         try:
             from xtquant import xtdatacenter as xtdc
 
             xtdc.shutdown()
+            return True
+        except AttributeError:
+            logger.warning(
+                "[XTDC] Installed datacenter binary has no shutdown symbol; "
+                "caller must use a controlled process exit after flushing output"
+            )
+            return False
         finally:
             type(self)._listener_ready = False
 
