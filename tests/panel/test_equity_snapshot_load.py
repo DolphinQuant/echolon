@@ -90,6 +90,7 @@ def test_load_optional_equity_families_and_metadata(tmp_path) -> None:
         "qc_status": "PASS_WITH_WARNINGS",
         "adjustment_convention": "hfq_asof",
         "pit_status": "ann_date_approx",
+        "selection_date": "2018-06-29",
     }
     (tmp_path / "manifest.json").write_text(json.dumps(manifest))
 
@@ -109,3 +110,4 @@ def test_load_optional_equity_families_and_metadata(tmp_path) -> None:
     assert view.meta(instrument).min_commission == 5.0
     assert panel.manifest.adjustment_convention == "hfq_asof"
     assert panel.manifest.pit_status == "ann_date_approx"
+    assert panel.manifest.selection_date.isoformat() == "2018-06-29"

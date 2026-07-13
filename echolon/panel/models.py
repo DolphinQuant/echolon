@@ -53,6 +53,7 @@ class PanelManifest(BaseModel):
     qc_status: Literal["PASS", "PASS_WITH_WARNINGS"]
     adjustment_convention: Literal["hfq_asof"] | None = None
     pit_status: Literal["ann_date_approx", "true_pit"] | None = None
+    selection_date: dt.date | None = None
 
 
 class QCCheck(BaseModel):
