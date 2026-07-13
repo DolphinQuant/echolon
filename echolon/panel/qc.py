@@ -74,7 +74,16 @@ def run_panel_qc(
     for instrument, frame in bars.items():
         meta = (instrument_meta or {}).get(instrument)
         tick = float(meta.tick) if meta is not None else 0.0
-        _check_bars(instrument, frame, checks, waivers or {}, tick=tick)
+        _check_bars(
+            instrument,
+            frame,
+            checks,
+            waivers or {},
+            tick=tick,
+            trading_calendar=list(
+                (trading_calendars or {}).get(instrument, [])
+            ),
+        )
     for instrument, frame in curves.items():
         _check_curves(instrument, frame, checks)
     for instrument, frame in (inventory or {}).items():
@@ -145,6 +154,7 @@ def _check_bars(
     waivers: Mapping[tuple[str, dt.date | None, str], str | Mapping[str, Any]],
     *,
     tick: float,
+    trading_calendar: list[dt.date],
 ) -> None:
     required_price_columns = ("open", "high", "low", "close", "settle")
     raw_price_columns = tuple(column for column in ("open_raw", "high_raw", "low_raw", "close_raw", "settle_raw") if column in frame)
@@ -169,7 +179,13 @@ def _check_bars(
                     waiver_approved_by=approved_by,
                 )
         volume = float(row["volume"])
-        if volume == 0:
+        suspended = (
+            pd.to_numeric(
+                pd.Series([row.get("suspended", 0.0)]), errors="coerce"
+            ).fillna(0.0).iloc[0]
+            == 1.0
+        )
+        if volume == 0 and not suspended:
             _add_check(
                 checks,
                 check_id="volume_nonzero",
@@ -216,7 +232,12 @@ def _check_bars(
     )
     if has_equity_limits:
         _check_equity_limit_bands(
-            instrument, frame, tick, checks, waivers
+            instrument,
+            frame,
+            tick,
+            checks,
+            waivers,
+            trading_calendar,
         )
         return
 
@@ -260,11 +281,40 @@ def _check_equity_limit_bands(
     tick: float,
     checks: list[QCCheck],
     waivers: Mapping[tuple[str, dt.date | None, str], str | Mapping[str, Any]],
+    trading_calendar: list[dt.date],
 ) -> None:
     """Check raw close prices against exchange bands in RMB per share."""
     close_column = "close_raw" if "close_raw" in frame else "close"
     tolerance = tick / 2.0
+    calendar_positions = {
+        _date_value(date): position
+        for position, date in enumerate(trading_calendar)
+    }
+    previous_trading_position: int | None = None
+    consecutive_suspended = 0
     for date, row in frame.iterrows():
+        date_value = _date_value(date)
+        suspended = (
+            pd.to_numeric(
+                pd.Series([row.get("suspended", 0.0)]), errors="coerce"
+            ).fillna(0.0).iloc[0]
+            == 1.0
+        )
+        if suspended:
+            consecutive_suspended += 1
+            continue
+        current_position = calendar_positions.get(date_value)
+        if current_position is not None:
+            gap_length = (
+                current_position
+                if previous_trading_position is None
+                else current_position - previous_trading_position - 1
+            )
+            previous_trading_position = current_position
+        else:
+            gap_length = consecutive_suspended
+        is_resumption = gap_length >= 10
+        consecutive_suspended = 0
         close = pd.to_numeric(pd.Series([row[close_column]]), errors="coerce").iloc[0]
         upper = pd.to_numeric(
             pd.Series([row["limit_up_price"]]), errors="coerce"
@@ -273,6 +323,20 @@ def _check_equity_limit_bands(
             pd.Series([row["limit_down_price"]]), errors="coerce"
         ).iloc[0]
         if pd.isna(close) or pd.isna(upper) or pd.isna(lower):
+            continue
+        if is_resumption:
+            _add_check(
+                checks,
+                check_id="limit_band_resumption_skip",
+                severity="WARN",
+                message=(
+                    "exchange limit band skipped on first trading row after "
+                    "at least 10 suspended trading days"
+                ),
+                instrument=instrument,
+                date=date_value,
+                value=float(gap_length),
+            )
             continue
         if lower - tolerance <= close <= upper + tolerance:
             continue

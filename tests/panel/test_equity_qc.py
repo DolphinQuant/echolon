@@ -97,6 +97,62 @@ def test_equity_limit_band_passes_at_exchange_bound() -> None:
     assert "daily_return_threshold" not in _ids(report)
 
 
+def test_equity_limit_band_skips_suspended_carry_and_zero_volume() -> None:
+    bars = _bars(trip_limit=True)
+    bars["000001.sz"]["suspended"] = [0.0, 1.0, 0.0, 0.0]
+    bars["000001.sz"].loc[DATES[1], "volume"] = 0.0
+
+    report = run_panel_qc(
+        snapshot="equity",
+        bars=bars,
+        curves={},
+        instrument_meta=_meta(),
+    )
+
+    assert "equity_limit_band" not in _ids(report)
+    assert "volume_nonzero" not in _ids(report)
+
+
+def test_equity_limit_band_warns_on_first_row_after_eleven_day_gap() -> None:
+    dates = [value.date() for value in pd.bdate_range("2020-01-02", periods=13)]
+    frame = pd.DataFrame(
+        {
+            "open": [10.0, 7.3],
+            "high": [10.0, 7.3],
+            "low": [10.0, 7.3],
+            "close": [10.0, 7.3],
+            "settle": [10.0, 7.3],
+            "close_raw": [10.0, 7.3],
+            "volume": [100.0, 100.0],
+            "suspended": [0.0, 0.0],
+            "open_interest": [0.0, 0.0],
+            "contract": ["000001.sz", "000001.sz"],
+            "limit_up_price": [11.0, 11.0],
+            "limit_down_price": [9.0, 9.0],
+        },
+        index=[dates[0], dates[-1]],
+    )
+
+    report = run_panel_qc(
+        snapshot="equity",
+        bars={"000001.sz": frame},
+        curves={},
+        instrument_meta=_meta(),
+        trading_calendars={"000001.sz": dates},
+    )
+
+    skips = [
+        check
+        for check in report.checks
+        if check.check_id == "limit_band_resumption_skip"
+    ]
+    assert report.status == "PASS_WITH_WARNINGS"
+    assert len(skips) == 1
+    assert skips[0].date == dates[-1]
+    assert skips[0].severity == "WARN"
+    assert "equity_limit_band" not in _ids(report)
+
+
 def test_pit_consistency_trips_future_observation() -> None:
     future = pd.DataFrame(
         {"net_profit_q": [1.0]}, index=[dt.date(2020, 1, 6)]
