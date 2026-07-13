@@ -12,6 +12,28 @@ import pytest
 
 from echolon.markets.shfe.adapter import SHFEAdapter
 from echolon.markets.crypto.adapter import CryptoAdapter
+from echolon.markets.interface import ContractSpec
+
+
+def test_contract_spec_equity_cost_anchors_are_side_aware():
+    spec = ContractSpec(
+        symbol="equity",
+        multiplier=1.0,
+        tick_size=0.01,
+        margin_rate=1.0,
+        commission=0.00025,
+        commission_type="percentage",
+        stamp_duty_rate=0.0005,
+        transfer_fee_rate=0.00001,
+        min_commission=5.0,
+        long_only=True,
+        t_plus_one=True,
+        min_order_size=100.0,
+    )
+
+    assert spec.calculate_commission(10.0, 200, side="SELL") == pytest.approx(6.02, abs=0.01)
+    assert spec.calculate_commission(10.0, 200, side="BUY") == pytest.approx(5.02, abs=0.01)
+    assert spec.calculate_commission(50.0, 10_000, side="BUY") == pytest.approx(130.0, abs=0.01)
 
 
 # =========================================================================
@@ -137,6 +159,9 @@ class TestSHFEAdapterPrecision:
     def test_size_precision(self, adapter):
         # SHFE always uses whole lots
         assert adapter.get_size_precision("al") == 0
+
+    def test_round_size_uses_min_order_size(self, adapter):
+        assert adapter.round_size(3.4, "al") == 3
 
 
 # =========================================================================

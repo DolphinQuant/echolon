@@ -228,6 +228,68 @@ def test_book_backtester_artifacts_are_deterministic(tmp_path: Path):
         assert (first_dir / name).read_bytes() == (second_dir / name).read_bytes()
 
 
+def test_fill_refusal_is_auditable_and_does_not_block_other_names(tmp_path: Path):
+    panel = _Panel()
+    new_dates = [dt.date(2023, 1, 2) + dt.timedelta(days=i) for i in range(5)]
+    panel.calendar = new_dates
+    for instrument, frame in panel._bars.items():
+        frame.index = new_dates
+        frame["suspended"] = 0.0
+        frame["limit_up_price"] = float("nan")
+        frame["limit_down_price"] = float("nan")
+        panel._contracts[instrument] = frame.assign(symbol=frame["contract"])
+    panel._bars["al"].loc[new_dates[1], "suspended"] = 1.0
+
+    result = DailyBookBacktester(
+        output_dir=tmp_path, slippage_bps=0.0, rebalance_weekday=0
+    ).run(
+        _StaticStrategy({"al": 1, "cu": 1}),
+        panel,
+        BookBacktestConfig(
+            start=new_dates[0], end=new_dates[-1], initial_equity_rmb=700_000.0,
+            panel_snapshot="synthetic_book",
+        ),
+    )
+
+    assert not any(trade.instrument == "al" for trade in result.trades)
+    assert any(trade.instrument == "cu" for trade in result.trades)
+    assert result.events == [{
+        "date": new_dates[1].isoformat(),
+        "type": "fill_refused",
+        "detail": {"instrument": "al", "side": "BUY", "lots": 1.0, "reason": "suspended"},
+    }]
+
+
+@pytest.mark.parametrize(
+    ("target", "limit_column", "limit_price", "expected_reason"),
+    [(1, "limit_up_price", 19010.0, "limit_up"), (-1, "limit_down_price", 19010.0, "limit_down")],
+)
+def test_locked_limit_open_refuses_fill(
+    tmp_path: Path, target: int, limit_column: str, limit_price: float, expected_reason: str
+):
+    panel = _Panel()
+    new_dates = [dt.date(2023, 1, 2) + dt.timedelta(days=i) for i in range(5)]
+    panel.calendar = new_dates
+    for instrument, frame in panel._bars.items():
+        frame.index = new_dates
+        frame["suspended"] = 0.0
+        frame["limit_up_price"] = float("nan")
+        frame["limit_down_price"] = float("nan")
+        panel._contracts[instrument] = frame.assign(symbol=frame["contract"])
+    panel._bars["al"].loc[new_dates[1], limit_column] = limit_price
+
+    result = DailyBookBacktester(
+        output_dir=tmp_path, slippage_bps=0.0, rebalance_weekday=0
+    ).run(
+        _StaticStrategy({"al": target}), panel,
+        BookBacktestConfig(start=new_dates[0], end=new_dates[-1], initial_equity_rmb=700_000.0,
+                           panel_snapshot="synthetic_book"),
+    )
+
+    assert not result.trades
+    assert result.events[0]["detail"]["reason"] == expected_reason
+
+
 def test_book_backtester_roll_preserves_accrued_contract_pnl(tmp_path: Path):
     class RollingPanel(_Panel):
         def __init__(self) -> None:

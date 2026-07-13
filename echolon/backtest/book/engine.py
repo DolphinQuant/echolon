@@ -67,7 +67,7 @@ class DailyBookBacktester(IBookBacktester):
             view = panel.view(date)
             if pending_targets is not None:
                 cash += self._roll_changed_main_contracts(view, positions, trades, config, pending_targets)
-                cash += self._execute_targets(view, positions, pending_targets, trades, config)
+                cash += self._execute_targets(view, positions, pending_targets, trades, config, events)
                 pending_targets = None
             else:
                 cash += self._roll_changed_main_contracts(view, positions, trades, config)
@@ -141,6 +141,7 @@ class DailyBookBacktester(IBookBacktester):
         targets: Mapping[str, int],
         trades: list[TradeRecord],
         config: BookBacktestConfig,
+        events: list[dict],
     ) -> float:
         cash_delta = 0.0
         for instrument, target in targets.items():
@@ -151,6 +152,15 @@ class DailyBookBacktester(IBookBacktester):
             bar = view.bars(instrument, 1).iloc[-1]
             meta = view.meta(instrument)
             intended = _raw_price(bar, "open")
+            side = "BUY" if diff > 0 else "SELL"
+            reason = _fill_refusal_reason(bar, side, intended, float(meta.tick))
+            if reason is not None:
+                events.append({
+                    "date": view.date.isoformat(),
+                    "type": "fill_refused",
+                    "detail": {"instrument": instrument, "side": side, "lots": abs(diff), "reason": reason},
+                })
+                continue
             fill = _slipped_price(
                 intended,
                 diff,
@@ -168,7 +178,7 @@ class DailyBookBacktester(IBookBacktester):
                     date=view.date,
                     instrument=instrument,
                     contract=str(bar["contract"]),
-                    side="BUY" if diff > 0 else "SELL",
+                    side=side,
                     lots=abs(diff),
                     intended_price=round(intended, 10),
                     fill_price=round(fill, 10),
@@ -309,6 +319,20 @@ def _slipped_price(price: float, lots: float, slippage_bps: float, tick: float) 
     offset_ticks = max(1, int(offset_ratio.to_integral_value(rounding=ROUND_CEILING)))
     result = Decimal(str(price)) + Decimal(str(direction)) * offset_ticks * tick_decimal
     return float(result)
+
+
+def _fill_refusal_reason(bar: Any, side: str, open_raw: float, tick: float) -> str | None:
+    """Return an A-share fill-refusal reason, or None when the bar is tradable."""
+    if float(bar.get("suspended", 0.0)) == 1.0:
+        return "suspended"
+    epsilon = tick / 2.0
+    limit_up = bar.get("limit_up_price", float("nan"))
+    limit_down = bar.get("limit_down_price", float("nan"))
+    if side == "BUY" and pd.notna(limit_up) and open_raw >= float(limit_up) - epsilon:
+        return "limit_up"
+    if side == "SELL" and pd.notna(limit_down) and open_raw <= float(limit_down) + epsilon:
+        return "limit_down"
+    return None
 
 
 def _commission_rmb(meta: Any, price: float, lots_abs: float, *, close_today: bool = False) -> float:

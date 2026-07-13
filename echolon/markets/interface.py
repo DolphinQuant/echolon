@@ -57,6 +57,11 @@ class ContractSpec:
     trading_unit: str = "lots"  # "lots", "contracts", "coins"
     min_order_size: float = 1.0
     max_order_size: Optional[float] = None
+    stamp_duty_rate: float = 0.0
+    transfer_fee_rate: float = 0.0
+    min_commission: float = 0.0
+    long_only: bool = False
+    t_plus_one: bool = False
 
     # =========================================================================
     # Cost-model v2 fields (Q59 + Q60; per qorka decisions_log.md 2026-05-13
@@ -114,17 +119,26 @@ class ContractSpec:
         price: float,
         size: float,
         close_today: bool = False,
+        side: str | None = None,
     ) -> float:
-        """Calculate commission for trade."""
+        """Calculate total trade charges in RMB; invalid sides raise loudly."""
+        if side not in (None, "BUY", "SELL"):
+            raise ValueError("side must be BUY, SELL, or None")
         commission = (
             self.close_today_commission
             if close_today and self.close_today_commission is not None
             else self.commission
         )
+        notional = self.calculate_contract_value(price, size)
         if self.commission_type == "per_contract":
-            return abs(size) * commission
+            brokerage = abs(size) * commission
         else:  # percentage
-            return self.calculate_contract_value(price, size) * commission
+            brokerage = notional * commission
+        if side is None:
+            return brokerage
+        brokerage = max(brokerage, self.min_commission)
+        stamp_duty = notional * self.stamp_duty_rate if side == "SELL" else 0.0
+        return brokerage + stamp_duty + notional * self.transfer_fee_rate
 
     def calculate_pnl(
         self,
@@ -362,6 +376,7 @@ class IMarketAdapter(ABC):
         size: float,
         price: float,
         close_today: bool = False,
+        side: str | None = None,
     ) -> float:
         """
         Calculate commission for a trade.
