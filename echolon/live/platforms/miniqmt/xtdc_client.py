@@ -205,6 +205,22 @@ class XtdcClient:
         except Exception as e:
             logger.warning("[XTDC] Disconnect failed: %s", e)
 
+    def shutdown(self) -> None:
+        """Disconnect and stop the token data listener for finite processes.
+
+        Long-running services should continue to use disconnect(), which keeps
+        the listener reusable. One-shot probes and scheduled batch jobs should
+        use shutdown() so native xtdatacenter threads do not survive into
+        interpreter teardown.
+        """
+        self.disconnect()
+        try:
+            from xtquant import xtdatacenter as xtdc
+
+            xtdc.shutdown()
+        finally:
+            type(self)._listener_ready = False
+
     # ------------------------------------------------------------------
     # Main contract history (token-only API)
     # ------------------------------------------------------------------
