@@ -177,6 +177,7 @@ def test_panel_data_loads_snapshot_and_exposes_calendar(tmp_path):
         "2024-01-03",
         "2024-01-04",
     ]
+    assert panel._sector_membership.empty
 
 
 def test_panel_view_bars_are_no_lookahead_and_lookback_limited(tmp_path):

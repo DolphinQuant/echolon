@@ -9,6 +9,7 @@ from typing import Any
 import pandas as pd
 
 from .models import CurvePoint, InstrumentMeta, PanelManifest
+from .sector import resolve_sector_asof
 
 
 BAR_COLUMNS = [
@@ -82,6 +83,8 @@ ESTIMATES_COLUMNS = [
     "revision_score",
     "guidance_surprise",
 ]
+
+SECTOR_MEMBERSHIP_COLUMNS = ["instrument", "l1_code", "in_date", "out_date"]
 
 
 def _parse_date(value: str | dt.date) -> dt.date:
@@ -196,6 +199,16 @@ class PanelView:
         ]
         return sorted(eligible.astype(str).str.lower().unique())
 
+    def sector_asof(self, instrument: str) -> str | None:
+        """Return the point-in-time sector code, falling back to metadata."""
+        meta = self.meta(instrument)
+        return resolve_sector_asof(
+            self._panel._sector_membership,
+            instrument,
+            self.date,
+            fallback=meta.sector,
+        )
+
     def _optional_history(
         self,
         instrument: str,
@@ -249,6 +262,7 @@ class PanelData:
         fundamentals: dict[str, pd.DataFrame] | None = None,
         estimates: dict[str, pd.DataFrame] | None = None,
         universe: pd.DataFrame | None = None,
+        sector_membership: pd.DataFrame | None = None,
     ) -> None:
         self.snapshot_dir = snapshot_dir
         self.manifest = manifest
@@ -266,6 +280,7 @@ class PanelData:
         self._fundamentals = fundamentals or {}
         self._estimates = estimates or {}
         self._universe = _normalize_universe(universe)
+        self._sector_membership = _normalize_sector_membership(sector_membership)
         self.calendar = self._build_calendar()
 
     @classmethod
@@ -306,6 +321,11 @@ class PanelData:
             universe = pd.read_csv(membership_path)
         else:
             universe = None
+        sector_membership_path = snapshot_path / "universe" / "sw_membership.csv"
+        if "universe/sw_membership.csv" in manifest.files:
+            sector_membership = pd.read_csv(sector_membership_path)
+        else:
+            sector_membership = None
 
         meta = cls._load_meta(snapshot_path / "meta" / "instruments.csv")
         for instrument in manifest.instruments:
@@ -324,6 +344,7 @@ class PanelData:
             fundamentals=fundamentals,
             estimates=estimates,
             universe=universe,
+            sector_membership=sector_membership,
         )
 
     @staticmethod
@@ -453,6 +474,21 @@ def _normalize_universe(frame: pd.DataFrame | None) -> pd.DataFrame:
     out["instrument"] = out["instrument"].astype(str).str.lower()
     return out[["date", "instrument"]].sort_values(
         ["date", "instrument"]
+    )
+
+
+def _normalize_sector_membership(frame: pd.DataFrame | None) -> pd.DataFrame:
+    if frame is None or frame.empty:
+        return pd.DataFrame(columns=SECTOR_MEMBERSHIP_COLUMNS)
+    missing = set(SECTOR_MEMBERSHIP_COLUMNS).difference(frame.columns)
+    if missing:
+        raise ValueError(
+            f"universe/sw_membership.csv missing columns: {sorted(missing)}"
+        )
+    out = frame.copy()
+    out["instrument"] = out["instrument"].astype(str).str.lower()
+    return out[SECTOR_MEMBERSHIP_COLUMNS].sort_values(
+        ["instrument", "in_date"]
     )
 
 
