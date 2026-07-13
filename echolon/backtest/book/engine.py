@@ -44,6 +44,7 @@ class DailyBookBacktester(IBookBacktester):
         if rebalance_interval_weeks < 1:
             raise ValueError("rebalance_interval_weeks must be >= 1")
         self.rebalance_interval_weeks = int(rebalance_interval_weeks)
+        self._last_buy_fill_dates: dict[str, dt.date] = {}
 
     def run(
         self,
@@ -51,6 +52,7 @@ class DailyBookBacktester(IBookBacktester):
         panel: PanelData,
         config: BookBacktestConfig,
     ) -> BookResult:
+        self._last_buy_fill_dates = {}
         dates = [date for date in panel.calendar if config.start <= date <= config.end]
         if len(dates) < 2:
             raise ValueError("book backtest requires at least two panel dates")
@@ -153,6 +155,14 @@ class DailyBookBacktester(IBookBacktester):
             meta = view.meta(instrument)
             intended = _raw_price(bar, "open")
             side = "BUY" if diff > 0 else "SELL"
+            if (
+                side == "SELL"
+                and bool(meta.t_plus_one)
+                and self._last_buy_fill_dates.get(instrument) == view.date
+            ):
+                raise RuntimeError(
+                    f"T+1 violation: cannot sell {instrument} shares bought on {view.date}"
+                )
             reason = _fill_refusal_reason(bar, side, intended, float(meta.tick))
             if reason is not None:
                 events.append({
@@ -168,11 +178,15 @@ class DailyBookBacktester(IBookBacktester):
                 float(meta.tick),
             )
             close_today = _is_close_today(positions[instrument], diff, view.date)
-            commission = _commission_rmb(meta, fill, abs(diff), close_today=close_today)
+            commission = _commission_rmb(
+                meta, fill, abs(diff), close_today=close_today, side=side
+            )
             realized = _realized_pnl(positions[instrument], diff, fill, float(meta.multiplier))
             cash_delta += realized - commission
             new_position = _updated_position(positions[instrument], diff, fill, str(bar["contract"]), view.date)
             positions[instrument] = new_position
+            if side == "BUY":
+                self._last_buy_fill_dates[instrument] = view.date
             trades.append(
                 TradeRecord(
                     date=view.date,
@@ -335,15 +349,28 @@ def _fill_refusal_reason(bar: Any, side: str, open_raw: float, tick: float) -> s
     return None
 
 
-def _commission_rmb(meta: Any, price: float, lots_abs: float, *, close_today: bool = False) -> float:
+def _commission_rmb(
+    meta: Any,
+    price: float,
+    lots_abs: float,
+    *,
+    close_today: bool = False,
+    side: str | None = None,
+) -> float:
     commission = (
         float(meta.close_today_commission)
         if close_today and meta.close_today_commission is not None
         else float(meta.commission)
     )
-    if meta.commission_type == "percentage":
-        return commission * price * float(meta.multiplier) * lots_abs
-    return commission * lots_abs
+    notional = price * float(meta.multiplier) * lots_abs
+    brokerage = commission * notional if meta.commission_type == "percentage" else commission * lots_abs
+    if side is None:
+        return brokerage
+    if side not in ("BUY", "SELL"):
+        raise ValueError("side must be BUY, SELL, or None")
+    brokerage = max(brokerage, float(meta.min_commission))
+    stamp_duty = notional * float(meta.stamp_duty_rate) if side == "SELL" else 0.0
+    return brokerage + stamp_duty + notional * float(meta.transfer_fee_rate)
 
 
 def _updated_position(position: _Position, diff: float, fill: float, contract: str, date: dt.date) -> _Position:

@@ -48,6 +48,7 @@ from echolon.strategy.frequency.interday_context import InterdayContext
 from echolon.strategy.frequency.intraday_context import IntradayContext
 from echolon.markets.shfe.adapter import SHFEAdapter
 from echolon.markets.crypto.adapter import CryptoAdapter
+from echolon.markets.equity.adapter import EquityAdapter
 from echolon.data.loaders.contract_loader import ContractIndicatorManager
 from echolon.config.markets.core.context import TradingContext
 
@@ -83,6 +84,7 @@ class EngineFactory:
     MARKET_ADAPTERS: Dict[str, Type[IMarketAdapter]] = {
         "SHFE": SHFEAdapter,
         "CRYPTO": CryptoAdapter,
+        "EQUITY": EquityAdapter,
     }
 
     # Bar size string to enum mapping
@@ -171,6 +173,8 @@ class EngineFactory:
             return adapter_class(
                 symbol=instrument_code,
             )
+        elif market == "EQUITY":
+            return adapter_class(symbol=instrument_code, trading_calendar_path=calendar_path)
         else:
             return adapter_class()
 

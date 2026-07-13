@@ -231,3 +231,17 @@ def test_legacy_bar_frame_defaults_equity_tradability_columns():
     assert normalized.loc[0, "suspended"] == 0.0
     assert pd.isna(normalized.loc[0, "limit_up_price"])
     assert pd.isna(normalized.loc[0, "limit_down_price"])
+
+
+def test_instrument_meta_equity_fields_default_to_futures_behavior():
+    from echolon.panel.models import InstrumentMeta
+
+    meta = InstrumentMeta(
+        instrument_id="al", sector="base", multiplier=5.0, tick=5.0,
+        margin_rate=0.1, commission=3.0, commission_type="per_contract",
+    )
+    assert meta.min_order_size == 1.0
+    assert meta.t_plus_one is False
+    assert meta.stamp_duty_rate == 0.0
+    assert meta.transfer_fee_rate == 0.0
+    assert meta.min_commission == 0.0

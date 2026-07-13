@@ -38,6 +38,13 @@ from echolon.config.markets.shfe.sessions import (
 from echolon.config.markets.shfe.instruments import INSTRUMENTS as SHFE_INSTRUMENTS, NIGHT_SESSION_PRODUCTS
 from echolon.config.markets.core.types import InstrumentSpec
 from .trading_calendar import TradingCalendar
+from .contract_rules import (
+    get_main_contract,
+    should_rollover,
+    get_rollover_target as contract_get_rollover_target,
+    get_expiry_date,
+    parse_contract,
+)
 
 # Session aliases for convenience
 NIGHT_SESSION = SHFE_SESSIONS['night']
@@ -73,15 +80,6 @@ def instrument_spec_to_contract_spec(spec: InstrumentSpec) -> ContractSpec:
         trading_unit=spec.trading_unit,
         min_order_size=spec.min_order_size,
     )
-
-
-from .contract_rules import (
-    get_main_contract,
-    should_rollover,
-    get_rollover_target as contract_get_rollover_target,
-    get_expiry_date,
-    parse_contract,
-)
 
 
 class SHFEAdapter(BaseMarketAdapter):
@@ -462,6 +460,7 @@ class SHFEAdapter(BaseMarketAdapter):
         size: int,
         price: float,
         close_today: bool = False,
+        side: str | None = None,
     ) -> float:
         """
         Calculate commission for a trade.

@@ -123,6 +123,9 @@ class TestSHFEAdapterCalculations:
         # al uses fixed commission of 3.01 CNY per lot
         assert comm == pytest.approx(3.01)
 
+    def test_side_keyword_is_accepted_but_ignored_for_futures(self, adapter):
+        assert adapter.calculate_commission("al", 1, 20000.0, side="SELL") == pytest.approx(3.01)
+
     def test_calculate_margin(self, adapter):
         margin = adapter.calculate_margin("al", 1, 20000.0)
         # margin = size * price * multiplier * margin_rate

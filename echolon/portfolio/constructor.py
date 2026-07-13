@@ -28,6 +28,8 @@ class ConstructorConfig(BaseModel):
     min_abs_score_for_position: float
     sizing_mode: Literal["implementation", "research"] = "implementation"
     rebalance_band_lots: float = Field(default=0.0, ge=0.0)
+    long_only: bool = False
+    max_weight_per_name_pct: float | None = None
 
 
 class Constructor:
@@ -46,8 +48,12 @@ class Constructor:
     ) -> tuple[TargetBook, RebalanceRecord]:
         rows: dict[str, InstrumentRebalance] = {}
         lots_float: dict[str, float] = {}
-        denom = sum(abs(score) for score in blended_scores.values())
-        for instrument, blended in blended_scores.items():
+        effective_scores = {
+            instrument: max(float(score), 0.0) if self.config.long_only else float(score)
+            for instrument, score in blended_scores.items()
+        }
+        denom = sum(abs(score) for score in effective_scores.values())
+        for instrument, blended in effective_scores.items():
             bars = view.bars(instrument, 64)
             meta = view.meta(instrument)
             if bars.empty:
@@ -79,13 +85,18 @@ class Constructor:
                 caps_applied=[],
             )
 
+        self._pin_suspended_positions(view, book, lots_float, rows)
         self._apply_sector_caps(view, book, lots_float, rows)
+        self._apply_per_name_cap(view, book, lots_float, rows)
         self._apply_margin_cap(view, book, lots_float, rows)
 
         if self.config.sizing_mode == "research":
             final_targets = {instrument: float(lots) for instrument, lots in lots_float.items()}
         else:
-            final_targets = {instrument: _toward_zero(lots) for instrument, lots in lots_float.items()}
+            final_targets = {
+                instrument: _toward_zero_lot(lots, float(view.meta(instrument).min_order_size))
+                for instrument, lots in lots_float.items()
+            }
         final_targets = self._apply_rebalance_band(view, book, final_targets, rows)
         for instrument, lots in final_targets.items():
             rows[instrument].post_round_lots = lots
@@ -248,6 +259,50 @@ class Constructor:
                 {"cap": "margin", "before": before, "after": lots_float[instrument]}
             )
 
+    def _apply_per_name_cap(
+        self,
+        view: PanelView,
+        book: BookState,
+        lots_float: dict[str, float],
+        rows: dict[str, InstrumentRebalance],
+    ) -> None:
+        cap_pct = self.config.max_weight_per_name_pct
+        if cap_pct is None:
+            return
+        cap_rmb = book.equity_rmb * cap_pct / 100.0
+        for instrument, lots in lots_float.items():
+            bars = view.bars(instrument, 1)
+            if bars.empty:
+                continue
+            meta = view.meta(instrument)
+            price = _raw_price(bars.iloc[-1], "settle")
+            notional = abs(lots) * price * float(meta.multiplier)
+            if notional <= cap_rmb or notional == 0.0:
+                continue
+            before = lots_float[instrument]
+            lots_float[instrument] *= cap_rmb / notional
+            rows[instrument].caps_applied.append(
+                {"cap": "per_name_weight", "before": before, "after": lots_float[instrument]}
+            )
+
+    def _pin_suspended_positions(
+        self,
+        view: PanelView,
+        book: BookState,
+        targets: dict[str, float],
+        rows: dict[str, InstrumentRebalance],
+    ) -> None:
+        for instrument, target in list(targets.items()):
+            bars = view.bars(instrument, 1)
+            if bars.empty or float(bars.iloc[-1].get("suspended", 0.0)) != 1.0:
+                continue
+            position = book.positions.get(instrument)
+            held = 0.0 if position is None else float(position.lots)
+            targets[instrument] = held
+            rows[instrument].caps_applied.append(
+                {"cap": "suspended_hold", "before": float(target), "after": held}
+            )
+
 
 def _annualized_vol(settles: pd.Series) -> float:
     returns = pd.to_numeric(settles, errors="coerce").pct_change().dropna()
@@ -258,6 +313,13 @@ def _annualized_vol(settles: pd.Series) -> float:
 
 def _toward_zero(value: float) -> int:
     return math.ceil(value) if value < 0 else math.floor(value)
+
+
+def _toward_zero_lot(value: float, min_order_size: float) -> int:
+    if min_order_size <= 0:
+        raise ValueError("min_order_size must be positive")
+    lots = _toward_zero(value / min_order_size)
+    return int(lots * min_order_size)
 
 
 def _sign(value: float) -> int:

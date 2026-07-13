@@ -20,3 +20,18 @@ def annualized_carry_cost(basis: pd.Series, days_to_expiry: pd.Series) -> pd.Ser
     aligned_basis, days = basis.align(days_to_expiry, join="inner")
     days = pd.to_numeric(days, errors="coerce").where(lambda values: values > 0)
     return -pd.to_numeric(aligned_basis, errors="coerce") * (365.0 / days)
+
+
+def daily_hedge_carry(active_settles: pd.DataFrame, index_close: pd.Series) -> pd.DataFrame:
+    """Return daily short-hedge carry cost as a decimal fraction; roll days are NaN."""
+    required = {"contract", "settle"}
+    missing = required.difference(active_settles.columns)
+    if missing:
+        raise ValueError(f"active_settles missing columns: {sorted(missing)}")
+    frame = active_settles.loc[:, ["contract", "settle"]].copy()
+    spot = pd.to_numeric(index_close.reindex(frame.index), errors="coerce")
+    future_return = pd.to_numeric(frame["settle"], errors="coerce").pct_change()
+    spot_return = spot.pct_change()
+    same_contract = frame["contract"].eq(frame["contract"].shift(1))
+    frame["hedge_carry_cost"] = (future_return - spot_return).where(same_contract)
+    return frame.loc[:, ["contract", "hedge_carry_cost"]]

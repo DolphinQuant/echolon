@@ -16,6 +16,7 @@ from echolon.portfolio import (
     PortfolioStrategy,
     PositionState,
 )
+from echolon.portfolio.constructor import _toward_zero_lot
 from echolon.signals import ScoreVector, SignalEngine
 
 
@@ -73,6 +74,24 @@ def _view() -> _View:
     )
 
 
+def _equity_view(*, suspended: bool = False) -> _View:
+    dates = [dt.date(2022, 10, 1) + dt.timedelta(days=index) for index in range(80)]
+    frames = {"a": _bars(10.0), "b": _bars(20.0), "c": _bars(30.0)}
+    for frame in frames.values():
+        frame.index = dates
+        frame["suspended"] = 0.0
+    frames["a"].loc[dates[-1], "suspended"] = float(suspended)
+    metas = {
+        name: InstrumentMeta(
+            instrument_id=name, sector="equity", multiplier=1.0, tick=0.01,
+            margin_rate=1.0, commission=0.00025, commission_type="percentage",
+            min_order_size=100.0,
+        )
+        for name in frames
+    }
+    return _View(date=dates[-1], bars_by_instrument=frames, meta_by_instrument=metas)
+
+
 def _book(equity: float = 100_000.0) -> BookState:
     return BookState(date=dt.date(2024, 3, 20), equity_rmb=equity, cash_rmb=equity, margin_used_rmb=0.0)
 
@@ -124,6 +143,56 @@ def test_constructor_zero_score_book_is_flat():
 
     assert target.targets == {"al": 0, "cu": 0}
     assert all(row.post_round_lots == 0 for row in record.instruments.values())
+
+
+def test_equity_rounding_is_toward_zero_in_whole_lots():
+    assert _toward_zero_lot(274.9, 100.0) == 200
+    assert _toward_zero_lot(-274.9, 100.0) == -200
+
+
+@given(value=st.floats(min_value=-1_000_000, max_value=1_000_000,
+                       allow_nan=False, allow_infinity=False))
+def test_equity_lot_rounding_property(value: float):
+    rounded = _toward_zero_lot(value, 100.0)
+    assert rounded % 100 == 0
+    assert abs(rounded) <= abs(value) + 1e-9
+
+
+def test_constructor_long_only_and_per_name_weight_cap():
+    constructor = Constructor(ConstructorConfig(
+        vol_target_ann_pct=80.0, sector_caps_pct={"equity": 100.0},
+        max_margin_utilization_pct=100.0, min_abs_score_for_position=0.0,
+        long_only=True, max_weight_per_name_pct=2.0,
+    ))
+    book = BookState(date=_equity_view().date, equity_rmb=1_000_000.0,
+                     cash_rmb=1_000_000.0, margin_used_rmb=0.0)
+    target, record = constructor.construct(
+        view=_equity_view(), book=book,
+        blended_scores={"a": 3.0, "b": 1.0, "c": -2.0},
+        raw_scores={"a": {}, "b": {}, "c": {}},
+    )
+    assert all(lots >= 0 for lots in target.targets.values())
+    risk_a = target.targets["a"] * _equity_view().bars("a", 1).iloc[-1]["settle"]
+    assert risk_a <= 20_000.0
+    assert any(cap["cap"] == "per_name_weight" for cap in record.instruments["a"].caps_applied)
+
+
+def test_constructor_suspended_name_holds_current_position():
+    view = _equity_view(suspended=True)
+    book = BookState(
+        date=view.date, equity_rmb=1_000_000.0, cash_rmb=1_000_000.0,
+        margin_used_rmb=0.0,
+        positions={"a": PositionState(lots=300, avg_price=10.0, contract="a", margin_rmb=0.0)},
+    )
+    constructor = Constructor(ConstructorConfig(
+        vol_target_ann_pct=10.0, sector_caps_pct={"equity": 100.0},
+        max_margin_utilization_pct=100.0, min_abs_score_for_position=0.0,
+    ))
+    target, record = constructor.construct(
+        view=view, book=book, blended_scores={"a": -1.0}, raw_scores={"a": {}},
+    )
+    assert target.targets["a"] == 300
+    assert record.instruments["a"].caps_applied[-1]["cap"] == "suspended_hold"
 
 
 def test_constructor_sets_zero_when_instrument_has_no_visible_bars():

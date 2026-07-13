@@ -33,6 +33,11 @@ class InstrumentMeta(BaseModel):
     commission_type: str
     close_today_commission: float | None = None
     currency: Literal["RMB"] = "RMB"
+    min_order_size: float = 1.0
+    t_plus_one: bool = False
+    stamp_duty_rate: float = 0.0
+    transfer_fee_rate: float = 0.0
+    min_commission: float = 0.0
 
 
 class PanelManifest(BaseModel):
