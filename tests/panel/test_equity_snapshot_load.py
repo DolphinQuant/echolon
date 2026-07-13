@@ -52,6 +52,14 @@ def test_load_optional_equity_families_and_metadata(tmp_path) -> None:
         "universe/membership.csv": pd.DataFrame(
             {"date": ["2020-01-02"], "instrument": [instrument]}
         ),
+        "universe/sw_membership.csv": pd.DataFrame(
+            {
+                "instrument": [instrument],
+                "l1_code": ["801780"],
+                "in_date": ["20190101"],
+                "out_date": [None],
+            }
+        ),
         "meta/instruments.csv": pd.DataFrame(
             {
                 "instrument_id": [instrument],
@@ -103,6 +111,7 @@ def test_load_optional_equity_families_and_metadata(tmp_path) -> None:
     assert view.fundamentals_history(instrument, 1)["net_profit_q"].item() == 1.0
     assert view.estimates_history(instrument, 1)["guidance_surprise"].item() == 0.2
     assert view.universe() == [instrument]
+    assert view.sector_asof(instrument) == "801780"
     assert view.meta(instrument).min_order_size == 100.0
     assert view.meta(instrument).t_plus_one is True
     assert view.meta(instrument).stamp_duty_rate == 0.0005
