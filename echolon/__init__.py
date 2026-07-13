@@ -21,9 +21,19 @@ from echolon.strategy.schemas import (
  SizerOutput,
 )
 
-# Convenience entry points
-from echolon.backtest.runner import run_backtest
-from echolon.data.backtest_data import run_data_pipeline
+# Convenience entry points are deliberately lazy.  Importing a lightweight
+# integration module (for example the token-only XTDC client) must not import
+# optional plotting/native backtest dependencies as a side effect.
+def run_backtest(*args, **kwargs):
+ from echolon.backtest.runner import run_backtest as _run_backtest
+
+ return _run_backtest(*args, **kwargs)
+
+
+def run_data_pipeline(*args, **kwargs):
+ from echolon.data.backtest_data import run_data_pipeline as _run_data_pipeline
+
+ return _run_data_pipeline(*args, **kwargs)
 
 __all__ = [
  "__version__",

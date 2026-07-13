@@ -144,6 +144,22 @@ def test_connect_propagates_credentials_missing(monkeypatch):
         client.connect()
 
 
+def test_connect_switches_existing_xtdata_client_to_token_port(monkeypatch):
+    _reset_env(monkeypatch)
+    fake_xtdata = MagicMock()
+    monkeypatch.setitem(sys.modules, "xtquant.xtdata", fake_xtdata)
+    import xtquant
+
+    monkeypatch.setattr(xtquant, "xtdata", fake_xtdata, raising=False)
+    client = XtdcClient(token="fixture", port=58616)
+    monkeypatch.setattr(client, "_ensure_listener", lambda: None)
+
+    assert client.connect() is True
+
+    fake_xtdata.disconnect.assert_called_once_with()
+    fake_xtdata.connect.assert_called_once_with(port=58616)
+
+
 def test_addr_list_omitted_when_empty(monkeypatch, caplog):
     """When no addr_list is supplied, the listener should warn and
     fall through to xtdc's built-in defaults."""
@@ -170,3 +186,60 @@ def test_addr_list_omitted_when_empty(monkeypatch, caplog):
     assert any(
         "No addr_list supplied" in rec.message for rec in caplog.records
     ), "Expected a warning when addr_list is empty"
+
+
+def test_shutdown_stops_listener_and_resets_class_state(monkeypatch):
+    _reset_env(monkeypatch)
+    client = XtdcClient(token="fixture")
+    events = []
+    monkeypatch.setattr(client, "disconnect", lambda: events.append("disconnect"))
+    fake_xtdc = MagicMock()
+    monkeypatch.setitem(sys.modules, "xtquant.xtdatacenter", fake_xtdc)
+    import xtquant
+
+    monkeypatch.setattr(xtquant, "xtdatacenter", fake_xtdc, raising=False)
+    XtdcClient._listener_ready = True
+
+    result = client.shutdown()
+
+    assert result is True
+    assert events == ["disconnect"]
+    fake_xtdc.shutdown.assert_called_once_with()
+    assert XtdcClient._listener_ready is False
+
+
+def test_shutdown_without_initialized_listener_only_disconnects(monkeypatch):
+    _reset_env(monkeypatch)
+    client = XtdcClient(token="fixture")
+    events = []
+    monkeypatch.setattr(client, "disconnect", lambda: events.append("disconnect"))
+    fake_xtdc = MagicMock()
+    monkeypatch.setitem(sys.modules, "xtquant.xtdatacenter", fake_xtdc)
+    import xtquant
+
+    monkeypatch.setattr(xtquant, "xtdatacenter", fake_xtdc, raising=False)
+    XtdcClient._listener_ready = False
+
+    result = client.shutdown()
+
+    assert result is True
+    assert events == ["disconnect"]
+    fake_xtdc.shutdown.assert_not_called()
+
+
+def test_shutdown_reports_missing_native_symbol(monkeypatch):
+    _reset_env(monkeypatch)
+    client = XtdcClient(token="fixture")
+    monkeypatch.setattr(client, "disconnect", lambda: None)
+    fake_xtdc = MagicMock()
+    fake_xtdc.shutdown.side_effect = AttributeError("missing native shutdown")
+    monkeypatch.setitem(sys.modules, "xtquant.xtdatacenter", fake_xtdc)
+    import xtquant
+
+    monkeypatch.setattr(xtquant, "xtdatacenter", fake_xtdc, raising=False)
+    XtdcClient._listener_ready = True
+
+    result = client.shutdown()
+
+    assert result is False
+    assert XtdcClient._listener_ready is False
