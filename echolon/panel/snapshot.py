@@ -31,6 +31,9 @@ BAR_COLUMNS = [
     "volume",
     "open_interest",
     "contract",
+    "amount",
+    "total_mv",
+    "float_mv",
     "suspended",
     "limit_up_price",
     "limit_down_price",
@@ -59,6 +62,26 @@ CURVE_COLUMNS = [
 INVENTORY_COLUMNS = ["receipts", "receipts_chg", "unit"]
 
 POSITIONING_COLUMNS = ["long_oi_top20", "short_oi_top20", "net_share"]
+
+FUNDAMENTALS_COLUMNS = [
+    "report_period",
+    "ann_date",
+    "net_profit_q",
+    "revenue_q",
+    "total_equity",
+    "total_assets",
+    "ocf_q",
+    "net_profit_ttm",
+    "revenue_ttm",
+    "ocf_ttm",
+]
+
+ESTIMATES_COLUMNS = [
+    "consensus_eps_fy1",
+    "consensus_count",
+    "revision_score",
+    "guidance_surprise",
+]
 
 
 def _parse_date(value: str | dt.date) -> dt.date:
@@ -141,6 +164,38 @@ class PanelView:
             instrument, lookback, self._panel._positioning, POSITIONING_COLUMNS
         )
 
+    def fundamentals_history(
+        self, instrument: str, lookback: int
+    ) -> pd.DataFrame:
+        """Return observation-dated fundamental rows visible to this view."""
+        return self._optional_history(
+            instrument,
+            lookback,
+            self._panel._fundamentals,
+            FUNDAMENTALS_COLUMNS,
+        )
+
+    def estimates_history(
+        self, instrument: str, lookback: int
+    ) -> pd.DataFrame:
+        """Return observation-dated estimate rows visible to this view."""
+        return self._optional_history(
+            instrument,
+            lookback,
+            self._panel._estimates,
+            ESTIMATES_COLUMNS,
+        )
+
+    def universe(self) -> list[str]:
+        """Return instruments eligible on exactly this view date."""
+        membership = self._panel._universe
+        if membership.empty:
+            return []
+        eligible = membership.loc[
+            membership["date"].eq(self.date), "instrument"
+        ]
+        return sorted(eligible.astype(str).str.lower().unique())
+
     def _optional_history(
         self,
         instrument: str,
@@ -183,7 +238,7 @@ class PanelData:
     def __init__(
         self,
         *,
-        snapshot_dir: Path,
+        snapshot_dir: Path | None,
         manifest: PanelManifest,
         bars: dict[str, pd.DataFrame],
         curves: dict[str, pd.DataFrame],
@@ -191,6 +246,9 @@ class PanelData:
         meta: dict[str, InstrumentMeta],
         inventory: dict[str, pd.DataFrame] | None = None,
         positioning: dict[str, pd.DataFrame] | None = None,
+        fundamentals: dict[str, pd.DataFrame] | None = None,
+        estimates: dict[str, pd.DataFrame] | None = None,
+        universe: pd.DataFrame | None = None,
     ) -> None:
         self.snapshot_dir = snapshot_dir
         self.manifest = manifest
@@ -205,6 +263,9 @@ class PanelData:
         self._meta = meta
         self._inventory = inventory or {}
         self._positioning = positioning or {}
+        self._fundamentals = fundamentals or {}
+        self._estimates = estimates or {}
+        self._universe = _normalize_universe(universe)
         self.calendar = self._build_calendar()
 
     @classmethod
@@ -234,6 +295,17 @@ class PanelData:
         positioning = cls._load_optional_histories(
             snapshot_path, manifest, "positioning", POSITIONING_COLUMNS
         )
+        fundamentals = cls._load_optional_histories(
+            snapshot_path, manifest, "fundamentals", FUNDAMENTALS_COLUMNS
+        )
+        estimates = cls._load_optional_histories(
+            snapshot_path, manifest, "estimates", ESTIMATES_COLUMNS
+        )
+        membership_path = snapshot_path / "universe" / "membership.csv"
+        if "universe/membership.csv" in manifest.files:
+            universe = pd.read_csv(membership_path)
+        else:
+            universe = None
 
         meta = cls._load_meta(snapshot_path / "meta" / "instruments.csv")
         for instrument in manifest.instruments:
@@ -249,6 +321,9 @@ class PanelData:
             meta=meta,
             inventory=inventory,
             positioning=positioning,
+            fundamentals=fundamentals,
+            estimates=estimates,
+            universe=universe,
         )
 
     @staticmethod
@@ -304,6 +379,17 @@ class PanelData:
                     else float(normalized["close_today_commission"])
                 ),
                 currency=str(normalized["currency"]),
+                min_order_size=float(normalized.get("min_order_size") or 1.0),
+                t_plus_one=_as_bool(normalized.get("t_plus_one"), default=False),
+                stamp_duty_rate=float(
+                    normalized.get("stamp_duty_rate") or 0.0
+                ),
+                transfer_fee_rate=float(
+                    normalized.get("transfer_fee_rate") or 0.0
+                ),
+                min_commission=float(
+                    normalized.get("min_commission") or 0.0
+                ),
             )
         return records
 
@@ -340,6 +426,9 @@ def _normalize_bar_frame(frame: pd.DataFrame) -> pd.DataFrame:
         out[column] = out[adj]
     if "adj_factor" not in out:
         out["adj_factor"] = 1.0
+    for column in ("amount", "total_mv", "float_mv"):
+        if column not in out:
+            out[column] = float("nan")
     if "suspended" not in out:
         out["suspended"] = 0.0
     if "limit_up_price" not in out:
@@ -347,6 +436,37 @@ def _normalize_bar_frame(frame: pd.DataFrame) -> pd.DataFrame:
     if "limit_down_price" not in out:
         out["limit_down_price"] = float("nan")
     return out
+
+
+def _normalize_universe(frame: pd.DataFrame | None) -> pd.DataFrame:
+    if frame is None or frame.empty:
+        return pd.DataFrame(columns=["date", "instrument"])
+    out = frame.copy()
+    if "instrument" not in out and "ts_code" in out:
+        out = out.rename(columns={"ts_code": "instrument"})
+    missing = {"date", "instrument"}.difference(out.columns)
+    if missing:
+        raise ValueError(
+            f"universe/membership.csv missing columns: {sorted(missing)}"
+        )
+    out["date"] = pd.to_datetime(out["date"]).dt.date
+    out["instrument"] = out["instrument"].astype(str).str.lower()
+    return out[["date", "instrument"]].sort_values(
+        ["date", "instrument"]
+    )
+
+
+def _as_bool(value: Any, *, default: bool) -> bool:
+    if value is None:
+        return default
+    if isinstance(value, bool):
+        return value
+    normalized = str(value).strip().lower()
+    if normalized in {"true", "1", "yes"}:
+        return True
+    if normalized in {"false", "0", "no"}:
+        return False
+    raise ValueError(f"invalid boolean metadata value: {value}")
 
 
 def _normalize_contract_frame(frame: pd.DataFrame) -> pd.DataFrame:
