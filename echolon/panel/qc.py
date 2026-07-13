@@ -11,6 +11,12 @@ import pandas as pd
 from .models import QCCheck, QCReport
 
 
+PIT_RESTATEMENT_MESSAGE = (
+    "Fundamental values may include later restatements; announcement dates "
+    "are approximate first-observation dates (pit_status=ann_date_approx)."
+)
+
+
 def _contract_month(contract: str) -> int | None:
     match = re.search(r"(\d{4})", str(contract))
     if match is None:
@@ -56,11 +62,19 @@ def run_panel_qc(
     inventory: dict[str, pd.DataFrame] | None = None,
     positioning: dict[str, pd.DataFrame] | None = None,
     trading_calendars: Mapping[str, list[dt.date]] | None = None,
+    fundamentals: dict[str, pd.DataFrame] | None = None,
+    estimates: dict[str, pd.DataFrame] | None = None,
+    universe: pd.DataFrame | None = None,
+    delisted_roster: pd.DataFrame | None = None,
+    source_manifest: Mapping[str, Any] | None = None,
+    instrument_meta: Mapping[str, Any] | None = None,
 ) -> QCReport:
     """Run S12 QC checks over in-memory panel data."""
     checks: list[QCCheck] = []
     for instrument, frame in bars.items():
-        _check_bars(instrument, frame, checks, waivers or {})
+        meta = (instrument_meta or {}).get(instrument)
+        tick = float(meta.tick) if meta is not None else 0.0
+        _check_bars(instrument, frame, checks, waivers or {}, tick=tick)
     for instrument, frame in curves.items():
         _check_curves(instrument, frame, checks)
     for instrument, frame in (inventory or {}).items():
@@ -80,6 +94,40 @@ def run_panel_qc(
             checks=checks,
             waivers=waivers or {},
         )
+    calendar = sorted(
+        {
+            _date_value(date)
+            for frame in bars.values()
+            for date in frame.index
+        }
+    )
+    _check_pit_consistency(
+        fundamentals or {}, estimates or {}, calendar, checks, waivers or {}
+    )
+    if universe is not None:
+        normalized_universe = _normalize_universe(universe)
+        _check_survivorship_coverage(
+            normalized_universe,
+            delisted_roster,
+            calendar,
+            checks,
+            waivers or {},
+        )
+        _check_universe_coverage(
+            normalized_universe,
+            fundamentals,
+            checks,
+            waivers or {},
+        )
+    if (source_manifest or {}).get("pit_status") == "ann_date_approx":
+        _add_check(
+            checks,
+            check_id="pit_restatement_caveat",
+            severity="WARN",
+            message=PIT_RESTATEMENT_MESSAGE,
+            instrument=None,
+            date=None,
+        )
 
     if any(check.severity == "ERROR" and not check.waived for check in checks):
         status = "FAIL"
@@ -95,6 +143,8 @@ def _check_bars(
     frame: pd.DataFrame,
     checks: list[QCCheck],
     waivers: Mapping[tuple[str, dt.date | None, str], str | Mapping[str, Any]],
+    *,
+    tick: float,
 ) -> None:
     required_price_columns = ("open", "high", "low", "close", "settle")
     raw_price_columns = tuple(column for column in ("open_raw", "high_raw", "low_raw", "close_raw", "settle_raw") if column in frame)
@@ -160,6 +210,16 @@ def _check_bars(
                     value=divergence,
                 )
 
+    has_equity_limits = (
+        {"limit_up_price", "limit_down_price"}.issubset(frame.columns)
+        and frame[["limit_up_price", "limit_down_price"]].notna().any().any()
+    )
+    if has_equity_limits:
+        _check_equity_limit_bands(
+            instrument, frame, tick, checks, waivers
+        )
+        return
+
     closes = pd.to_numeric(frame["close"], errors="coerce")
     returns = closes.pct_change().dropna().abs()
     for date, value in returns.items():
@@ -191,6 +251,47 @@ def _check_bars(
             instrument=instrument,
             date=date_value,
             value=float(value),
+        )
+
+
+def _check_equity_limit_bands(
+    instrument: str,
+    frame: pd.DataFrame,
+    tick: float,
+    checks: list[QCCheck],
+    waivers: Mapping[tuple[str, dt.date | None, str], str | Mapping[str, Any]],
+) -> None:
+    """Check raw close prices against exchange bands in RMB per share."""
+    close_column = "close_raw" if "close_raw" in frame else "close"
+    tolerance = tick / 2.0
+    for date, row in frame.iterrows():
+        close = pd.to_numeric(pd.Series([row[close_column]]), errors="coerce").iloc[0]
+        upper = pd.to_numeric(
+            pd.Series([row["limit_up_price"]]), errors="coerce"
+        ).iloc[0]
+        lower = pd.to_numeric(
+            pd.Series([row["limit_down_price"]]), errors="coerce"
+        ).iloc[0]
+        if pd.isna(close) or pd.isna(upper) or pd.isna(lower):
+            continue
+        if lower - tolerance <= close <= upper + tolerance:
+            continue
+        date_value = _date_value(date)
+        reason, approved_by = _waiver_details(
+            waivers.get((instrument, date_value, "equity_limit_band"))
+        )
+        distance = max(float(close - upper), float(lower - close), 0.0)
+        _add_check(
+            checks,
+            check_id="equity_limit_band",
+            severity="ERROR",
+            message="raw close exceeds exchange limit band plus half tick",
+            instrument=instrument,
+            date=date_value,
+            value=distance,
+            waived=reason is not None and approved_by is not None,
+            waiver_reason=reason,
+            waiver_approved_by=approved_by,
         )
 
 
@@ -361,3 +462,157 @@ def _check_inventory(
                     value=float(receipts),
                     waivers=waivers,
                 )
+
+
+def _check_pit_consistency(
+    fundamentals: dict[str, pd.DataFrame],
+    estimates: dict[str, pd.DataFrame],
+    calendar: list[dt.date],
+    checks: list[QCCheck],
+    waivers: Mapping[tuple[str, dt.date | None, str], str | Mapping[str, Any]],
+) -> None:
+    if not calendar:
+        return
+    panel_end = max(calendar)
+    for family, histories in (
+        ("fundamentals", fundamentals),
+        ("estimates", estimates),
+    ):
+        for instrument, frame in histories.items():
+            for observation in frame.index:
+                observation_date = _date_value(observation)
+                if observation_date <= panel_end:
+                    continue
+                _waived_error(
+                    checks,
+                    check_id="pit_consistency",
+                    message=(
+                        f"{family} observation falls after panel calendar end"
+                    ),
+                    instrument=instrument,
+                    date=observation_date,
+                    value=float((observation_date - panel_end).days),
+                    waivers=waivers,
+                )
+
+
+def _normalize_universe(frame: pd.DataFrame) -> pd.DataFrame:
+    out = frame.copy()
+    if "instrument" not in out and "ts_code" in out:
+        out = out.rename(columns={"ts_code": "instrument"})
+    missing = {"date", "instrument"}.difference(out.columns)
+    if missing:
+        raise ValueError(f"universe missing columns: {sorted(missing)}")
+    out["date"] = pd.to_datetime(out["date"]).dt.date
+    out["instrument"] = out["instrument"].astype(str).str.lower()
+    return out[["date", "instrument"]]
+
+
+def _check_survivorship_coverage(
+    universe: pd.DataFrame,
+    delisted_roster: pd.DataFrame | None,
+    calendar: list[dt.date],
+    checks: list[QCCheck],
+    waivers: Mapping[tuple[str, dt.date | None, str], str | Mapping[str, Any]],
+) -> None:
+    if delisted_roster is None or delisted_roster.empty or not calendar:
+        return
+    roster = delisted_roster.copy()
+    if "instrument" not in roster and "ts_code" in roster:
+        roster = roster.rename(columns={"ts_code": "instrument"})
+    missing = {"instrument", "delist_date"}.difference(roster.columns)
+    if missing:
+        raise ValueError(f"delisted roster missing columns: {sorted(missing)}")
+    roster["instrument"] = roster["instrument"].astype(str).str.lower()
+    roster["delist_date"] = pd.to_datetime(
+        roster["delist_date"], errors="coerce"
+    ).dt.date
+    calendar_start, calendar_end = min(calendar), max(calendar)
+    for row in roster.itertuples(index=False):
+        delist_date = row.delist_date
+        if (
+            pd.isna(delist_date)
+            or delist_date < calendar_start
+            or delist_date > calendar_end
+        ):
+            continue
+        present = universe.loc[
+            universe["instrument"].eq(row.instrument)
+            & universe["date"].lt(delist_date)
+        ]
+        if not present.empty:
+            continue
+        _waived_error(
+            checks,
+            check_id="survivorship_coverage",
+            message="in-calendar delisted instrument lacks pre-delist membership",
+            instrument=row.instrument,
+            date=delist_date,
+            value=0.0,
+            waivers=waivers,
+        )
+
+
+def _check_universe_coverage(
+    universe: pd.DataFrame,
+    fundamentals: dict[str, pd.DataFrame] | None,
+    checks: list[QCCheck],
+    waivers: Mapping[tuple[str, dt.date | None, str], str | Mapping[str, Any]],
+) -> None:
+    counts = universe.groupby("date")["instrument"].nunique().sort_index()
+    for position, (date, count) in enumerate(counts.items()):
+        trailing = counts.iloc[max(0, position - 20) : position]
+        if trailing.empty:
+            continue
+        median = float(trailing.median())
+        if median <= 0 or float(count) >= median * 0.70:
+            continue
+        _waived_error(
+            checks,
+            check_id="universe_coverage",
+            message="eligible count dropped more than 30% versus trailing median",
+            instrument="universe",
+            date=_date_value(date),
+            value=float(count) / median,
+            waivers=waivers,
+        )
+    if fundamentals is None:
+        return
+    normalized_histories = {
+        instrument.lower(): frame for instrument, frame in fundamentals.items()
+    }
+    for date, rows in universe.groupby("date"):
+        eligible = set(rows["instrument"])
+        if not eligible:
+            continue
+        observed = 0
+        for instrument in eligible:
+            history = normalized_histories.get(instrument)
+            if history is None or history.empty:
+                continue
+            if any(_date_value(value) <= date for value in history.index):
+                observed += 1
+        coverage = observed / len(eligible)
+        if coverage >= 0.70:
+            continue
+        severity = "ERROR" if coverage < 0.50 else "WARN"
+        if severity == "ERROR":
+            _waived_error(
+                checks,
+                check_id="fundamental_coverage",
+                message="fundamental coverage is below 50% of eligible names",
+                instrument="universe",
+                date=_date_value(date),
+                value=coverage,
+                waivers=waivers,
+            )
+        else:
+            _add_check(
+                checks,
+                check_id="fundamental_coverage",
+                severity="WARN",
+                message="fundamental coverage is below 70% of eligible names",
+                instrument="universe",
+                date=_date_value(date),
+                value=coverage,
+            )
