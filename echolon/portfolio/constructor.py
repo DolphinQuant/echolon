@@ -1,4 +1,5 @@
 """Portfolio constructor pipeline."""
+
 from __future__ import annotations
 
 import math
@@ -11,7 +12,13 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from echolon.panel import PanelView
 
-from .models import BookRiskSnapshot, BookState, InstrumentRebalance, RebalanceRecord, TargetBook
+from .models import (
+    BookRiskSnapshot,
+    BookState,
+    InstrumentRebalance,
+    RebalanceRecord,
+    TargetBook,
+)
 
 
 class ConstructorConfig(BaseModel):
@@ -30,6 +37,7 @@ class ConstructorConfig(BaseModel):
     rebalance_band_lots: float = Field(default=0.0, ge=0.0)
     long_only: bool = False
     max_weight_per_name_pct: float | None = None
+    implementation_min_lots: float | None = Field(default=None, gt=0.0)
 
 
 class Constructor:
@@ -49,7 +57,9 @@ class Constructor:
         rows: dict[str, InstrumentRebalance] = {}
         lots_float: dict[str, float] = {}
         effective_scores = {
-            instrument: max(float(score), 0.0) if self.config.long_only else float(score)
+            instrument: max(float(score), 0.0)
+            if self.config.long_only
+            else float(score)
             for instrument, score in blended_scores.items()
         }
         denom = sum(abs(score) for score in effective_scores.values())
@@ -91,10 +101,22 @@ class Constructor:
         self._apply_margin_cap(view, book, lots_float, rows)
 
         if self.config.sizing_mode == "research":
-            final_targets = {instrument: float(lots) for instrument, lots in lots_float.items()}
-        else:
             final_targets = {
-                instrument: _toward_zero_lot(lots, float(view.meta(instrument).min_order_size))
+                instrument: float(lots) for instrument, lots in lots_float.items()
+            }
+        else:
+            if self.config.implementation_min_lots is not None:
+                self._concentrate_min_lots(
+                    view=view,
+                    book=book,
+                    effective_scores=effective_scores,
+                    lots_float=lots_float,
+                    rows=rows,
+                )
+            final_targets = {
+                instrument: _toward_zero_lot(
+                    lots, float(view.meta(instrument).min_order_size)
+                )
                 for instrument, lots in lots_float.items()
             }
         final_targets = self._apply_rebalance_band(view, book, final_targets, rows)
@@ -104,6 +126,92 @@ class Constructor:
             TargetBook(date=view.date, targets=final_targets),
             RebalanceRecord(date=view.date, instruments=rows),
         )
+
+    def _concentrate_min_lots(
+        self,
+        *,
+        view: PanelView,
+        book: BookState,
+        effective_scores: Mapping[str, float],
+        lots_float: dict[str, float],
+        rows: dict[str, InstrumentRebalance],
+    ) -> None:
+        """Drop undersized positions and resize survivors at unchanged target volatility.
+
+        ``implementation_min_lots`` is measured in exchange lots. For example, a value
+        of 1.0 requires 100 shares when an instrument's minimum order size is 100 shares.
+        The method mutates ``lots_float`` in instrument units and records every drop.
+        """
+        minimum_lots = self.config.implementation_min_lots
+        if minimum_lots is None:
+            return
+        active = {
+            instrument for instrument, lots in lots_float.items() if abs(lots) > 0.0
+        }
+        for _ in range(len(active)):
+            tentative = {
+                instrument: _toward_zero_lot(
+                    lots_float[instrument], float(view.meta(instrument).min_order_size)
+                )
+                for instrument in active
+            }
+            undersized = [
+                instrument
+                for instrument in active
+                if abs(tentative[instrument])
+                < minimum_lots * float(view.meta(instrument).min_order_size)
+            ]
+            if not undersized:
+                return
+            drop = min(
+                undersized,
+                key=lambda instrument: (abs(effective_scores[instrument]), instrument),
+            )
+            before = lots_float[drop]
+            lots_float[drop] = 0.0
+            rows[drop].caps_applied.append(
+                {"cap": "min_lot_drop", "before": before, "after": 0.0}
+            )
+            active.remove(drop)
+            if not active:
+                return
+
+            resized = self._resize_active(view, book, effective_scores, active, rows)
+            self._apply_sector_caps(view, book, resized, rows)
+            self._apply_per_name_cap(view, book, resized, rows)
+            self._apply_margin_cap(view, book, resized, rows)
+            lots_float.update(resized)
+
+    def _resize_active(
+        self,
+        view: PanelView,
+        book: BookState,
+        effective_scores: Mapping[str, float],
+        active: set[str],
+        rows: Mapping[str, InstrumentRebalance],
+    ) -> dict[str, float]:
+        """Re-run SPECS S7 volatility sizing for active instruments, returning lots."""
+        denominator = sum(
+            abs(effective_scores[instrument]) for instrument in sorted(active)
+        )
+        resized: dict[str, float] = {}
+        for instrument in sorted(active):
+            bars = view.bars(instrument, 1)
+            vol_ann = rows[instrument].vol_ann
+            if bars.empty or denominator <= 1e-12 or vol_ann <= 0.0:
+                resized[instrument] = 0.0
+                continue
+            price = _raw_price(bars.iloc[-1], "settle")
+            meta = view.meta(instrument)
+            notional = (
+                book.equity_rmb
+                * self.config.vol_target_ann_pct
+                / 100.0
+                * effective_scores[instrument]
+                / (vol_ann * denominator)
+            )
+            resized[instrument] = notional / (price * float(meta.multiplier))
+        return resized
 
     def _apply_rebalance_band(
         self,
@@ -230,7 +338,11 @@ class Constructor:
                 before = lots_float[instrument]
                 lots_float[instrument] *= scale
                 rows[instrument].caps_applied.append(
-                    {"cap": f"sector:{sector}", "before": before, "after": lots_float[instrument]}
+                    {
+                        "cap": f"sector:{sector}",
+                        "before": before,
+                        "after": lots_float[instrument],
+                    }
                 )
 
     def _apply_margin_cap(
@@ -247,7 +359,9 @@ class Constructor:
             if bars.empty:
                 continue
             price = _raw_price(bars.iloc[-1], "settle")
-            margin += abs(lots) * price * float(meta.multiplier) * float(meta.margin_rate)
+            margin += (
+                abs(lots) * price * float(meta.multiplier) * float(meta.margin_rate)
+            )
         cap_rmb = book.equity_rmb * self.config.max_margin_utilization_pct / 100.0
         if margin <= cap_rmb or margin == 0.0:
             return
@@ -282,7 +396,11 @@ class Constructor:
             before = lots_float[instrument]
             lots_float[instrument] *= cap_rmb / notional
             rows[instrument].caps_applied.append(
-                {"cap": "per_name_weight", "before": before, "after": lots_float[instrument]}
+                {
+                    "cap": "per_name_weight",
+                    "before": before,
+                    "after": lots_float[instrument],
+                }
             )
 
     def _pin_suspended_positions(
