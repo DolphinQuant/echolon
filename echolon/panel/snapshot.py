@@ -134,6 +134,23 @@ class PanelView:
             return None
         return match.iloc[0].copy()
 
+    def contracts_history(self, instrument: str, lookback: int) -> pd.DataFrame:
+        """Return complete listed-contract curves for recent visible dates.
+
+        ``lookback`` counts unique trading dates, not contract rows. The result
+        therefore contains every listed contract row for each selected date,
+        ordered by ascending date. Missing instruments return an empty frame;
+        non-positive lookbacks raise :class:`ValueError`.
+        """
+        if lookback <= 0:
+            raise ValueError("lookback must be positive")
+        contracts = self._panel._contracts.get(instrument.lower())
+        if contracts is None:
+            return pd.DataFrame(columns=CONTRACT_COLUMNS)
+        visible = contracts.loc[contracts.index <= self.date, CONTRACT_COLUMNS]
+        selected_dates = visible.index.unique()[-lookback:]
+        return visible.loc[visible.index.isin(selected_dates)].copy()
+
     def curve_history(self, instrument: str, lookback: int) -> pd.DataFrame:
         """Return up to ``lookback`` curve rows dated on or before the view date.
 
