@@ -28,7 +28,7 @@ ensuring all required interface methods are implemented.
 
 from abc import ABC, abstractmethod
 from datetime import datetime, date, time
-from typing import Optional, List, Dict, Any
+from typing import Optional, List, Dict
 
 from echolon.markets.interface import SessionWindow, ContractSpec, IMarketAdapter
 
@@ -168,7 +168,9 @@ class BaseMarketAdapter(IMarketAdapter, ABC):
         self,
         symbol: str,
         size: int,
-        price: float
+        price: float,
+        close_today: bool = False,
+        side: str | None = None,
     ) -> float:
         """
         Calculate commission for a trade.
@@ -319,7 +321,7 @@ class BaseMarketAdapter(IMarketAdapter, ABC):
             Size rounded to lot size
         """
         spec = self.get_contract_spec(symbol)
-        lot_size = spec.lot_size
+        lot_size = spec.min_order_size
         return int(round(size / lot_size) * lot_size)
 
     def get_trading_days_in_month(

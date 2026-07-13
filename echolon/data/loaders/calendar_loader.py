@@ -141,6 +141,8 @@ def is_night_market_open(
     Returns:
         True if night market is open (defaults to True on missing data).
     """
+    if market.upper() == "EQUITY":
+        return False
     if market_data_dir is None:
         from echolon.errors import raise_error
         raise_error(
@@ -159,7 +161,7 @@ def is_night_market_open(
     df['date'] = pd.to_datetime(df['date'])
 
     if 'night_market' not in df.columns:
-        logger.warning(f"[CALENDAR_LOADER] No night_market column in calendar — defaulting True")
+        logger.warning("[CALENDAR_LOADER] No night_market column in calendar — defaulting True")
         return True
 
     ts = pd.Timestamp(date)

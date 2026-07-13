@@ -44,6 +44,7 @@ class DailyBookBacktester(IBookBacktester):
         if rebalance_interval_weeks < 1:
             raise ValueError("rebalance_interval_weeks must be >= 1")
         self.rebalance_interval_weeks = int(rebalance_interval_weeks)
+        self._last_buy_fill_dates: dict[str, dt.date] = {}
 
     def run(
         self,
@@ -51,6 +52,7 @@ class DailyBookBacktester(IBookBacktester):
         panel: PanelData,
         config: BookBacktestConfig,
     ) -> BookResult:
+        self._last_buy_fill_dates = {}
         dates = [date for date in panel.calendar if config.start <= date <= config.end]
         if len(dates) < 2:
             raise ValueError("book backtest requires at least two panel dates")
@@ -67,7 +69,7 @@ class DailyBookBacktester(IBookBacktester):
             view = panel.view(date)
             if pending_targets is not None:
                 cash += self._roll_changed_main_contracts(view, positions, trades, config, pending_targets)
-                cash += self._execute_targets(view, positions, pending_targets, trades, config)
+                cash += self._execute_targets(view, positions, pending_targets, trades, config, events)
                 pending_targets = None
             else:
                 cash += self._roll_changed_main_contracts(view, positions, trades, config)
@@ -141,6 +143,7 @@ class DailyBookBacktester(IBookBacktester):
         targets: Mapping[str, int],
         trades: list[TradeRecord],
         config: BookBacktestConfig,
+        events: list[dict],
     ) -> float:
         cash_delta = 0.0
         for instrument, target in targets.items():
@@ -151,6 +154,23 @@ class DailyBookBacktester(IBookBacktester):
             bar = view.bars(instrument, 1).iloc[-1]
             meta = view.meta(instrument)
             intended = _raw_price(bar, "open")
+            side = "BUY" if diff > 0 else "SELL"
+            if (
+                side == "SELL"
+                and bool(meta.t_plus_one)
+                and self._last_buy_fill_dates.get(instrument) == view.date
+            ):
+                raise RuntimeError(
+                    f"T+1 violation: cannot sell {instrument} shares bought on {view.date}"
+                )
+            reason = _fill_refusal_reason(bar, side, intended, float(meta.tick))
+            if reason is not None:
+                events.append({
+                    "date": view.date.isoformat(),
+                    "type": "fill_refused",
+                    "detail": {"instrument": instrument, "side": side, "lots": abs(diff), "reason": reason},
+                })
+                continue
             fill = _slipped_price(
                 intended,
                 diff,
@@ -158,17 +178,21 @@ class DailyBookBacktester(IBookBacktester):
                 float(meta.tick),
             )
             close_today = _is_close_today(positions[instrument], diff, view.date)
-            commission = _commission_rmb(meta, fill, abs(diff), close_today=close_today)
+            commission = _commission_rmb(
+                meta, fill, abs(diff), close_today=close_today, side=side
+            )
             realized = _realized_pnl(positions[instrument], diff, fill, float(meta.multiplier))
             cash_delta += realized - commission
             new_position = _updated_position(positions[instrument], diff, fill, str(bar["contract"]), view.date)
             positions[instrument] = new_position
+            if side == "BUY":
+                self._last_buy_fill_dates[instrument] = view.date
             trades.append(
                 TradeRecord(
                     date=view.date,
                     instrument=instrument,
                     contract=str(bar["contract"]),
-                    side="BUY" if diff > 0 else "SELL",
+                    side=side,
                     lots=abs(diff),
                     intended_price=round(intended, 10),
                     fill_price=round(fill, 10),
@@ -311,15 +335,42 @@ def _slipped_price(price: float, lots: float, slippage_bps: float, tick: float) 
     return float(result)
 
 
-def _commission_rmb(meta: Any, price: float, lots_abs: float, *, close_today: bool = False) -> float:
+def _fill_refusal_reason(bar: Any, side: str, open_raw: float, tick: float) -> str | None:
+    """Return an A-share fill-refusal reason, or None when the bar is tradable."""
+    if float(bar.get("suspended", 0.0)) == 1.0:
+        return "suspended"
+    epsilon = tick / 2.0
+    limit_up = bar.get("limit_up_price", float("nan"))
+    limit_down = bar.get("limit_down_price", float("nan"))
+    if side == "BUY" and pd.notna(limit_up) and open_raw >= float(limit_up) - epsilon:
+        return "limit_up"
+    if side == "SELL" and pd.notna(limit_down) and open_raw <= float(limit_down) + epsilon:
+        return "limit_down"
+    return None
+
+
+def _commission_rmb(
+    meta: Any,
+    price: float,
+    lots_abs: float,
+    *,
+    close_today: bool = False,
+    side: str | None = None,
+) -> float:
     commission = (
         float(meta.close_today_commission)
         if close_today and meta.close_today_commission is not None
         else float(meta.commission)
     )
-    if meta.commission_type == "percentage":
-        return commission * price * float(meta.multiplier) * lots_abs
-    return commission * lots_abs
+    notional = price * float(meta.multiplier) * lots_abs
+    brokerage = commission * notional if meta.commission_type == "percentage" else commission * lots_abs
+    if side is None:
+        return brokerage
+    if side not in ("BUY", "SELL"):
+        raise ValueError("side must be BUY, SELL, or None")
+    brokerage = max(brokerage, float(meta.min_commission))
+    stamp_duty = notional * float(meta.stamp_duty_rate) if side == "SELL" else 0.0
+    return brokerage + stamp_duty + notional * float(meta.transfer_fee_rate)
 
 
 def _updated_position(position: _Position, diff: float, fill: float, contract: str, date: dt.date) -> _Position:

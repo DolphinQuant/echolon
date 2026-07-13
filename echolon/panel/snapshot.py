@@ -3,7 +3,6 @@ from __future__ import annotations
 
 import datetime as dt
 import hashlib
-import json
 from pathlib import Path
 from typing import Any
 
@@ -32,6 +31,9 @@ BAR_COLUMNS = [
     "volume",
     "open_interest",
     "contract",
+    "suspended",
+    "limit_up_price",
+    "limit_down_price",
 ]
 
 CONTRACT_COLUMNS = [
@@ -194,7 +196,10 @@ class PanelData:
         self.manifest = manifest
         self.instruments = list(manifest.instruments)
         self.snapshot_version = manifest.version
-        self._bars = bars
+        self._bars = {
+            instrument: _normalize_bar_frame(frame)
+            for instrument, frame in bars.items()
+        }
         self._curves = curves
         self._contracts = contracts
         self._meta = meta
@@ -335,6 +340,12 @@ def _normalize_bar_frame(frame: pd.DataFrame) -> pd.DataFrame:
         out[column] = out[adj]
     if "adj_factor" not in out:
         out["adj_factor"] = 1.0
+    if "suspended" not in out:
+        out["suspended"] = 0.0
+    if "limit_up_price" not in out:
+        out["limit_up_price"] = float("nan")
+    if "limit_down_price" not in out:
+        out["limit_down_price"] = float("nan")
     return out
 
 

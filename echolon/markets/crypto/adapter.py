@@ -39,7 +39,6 @@ if TYPE_CHECKING:
 
 from .session_config import (
     ALL_SESSIONS,
-    CONTINUOUS_SESSION,
 )
 from .perpetual_rules import (
     get_next_funding_time,
@@ -326,7 +325,9 @@ class CryptoAdapter(BaseMarketAdapter):
         self,
         symbol: str,
         size: int,
-        price: float
+        price: float,
+        close_today: bool = False,
+        side: str | None = None,
     ) -> float:
         """
         Calculate commission for a trade.
