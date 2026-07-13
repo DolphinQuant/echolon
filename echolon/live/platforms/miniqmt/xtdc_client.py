@@ -213,7 +213,10 @@ class XtdcClient:
         use shutdown() so native xtdatacenter threads do not survive into
         interpreter teardown.
         """
+        listener_was_ready = type(self)._listener_ready
         self.disconnect()
+        if not listener_was_ready:
+            return
         try:
             from xtquant import xtdatacenter as xtdc
 

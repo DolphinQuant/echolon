@@ -189,3 +189,21 @@ def test_shutdown_stops_listener_and_resets_class_state(monkeypatch):
     assert events == ["disconnect"]
     fake_xtdc.shutdown.assert_called_once_with()
     assert XtdcClient._listener_ready is False
+
+
+def test_shutdown_without_initialized_listener_only_disconnects(monkeypatch):
+    _reset_env(monkeypatch)
+    client = XtdcClient(token="fixture")
+    events = []
+    monkeypatch.setattr(client, "disconnect", lambda: events.append("disconnect"))
+    fake_xtdc = MagicMock()
+    monkeypatch.setitem(sys.modules, "xtquant.xtdatacenter", fake_xtdc)
+    import xtquant
+
+    monkeypatch.setattr(xtquant, "xtdatacenter", fake_xtdc, raising=False)
+    XtdcClient._listener_ready = False
+
+    client.shutdown()
+
+    assert events == ["disconnect"]
+    fake_xtdc.shutdown.assert_not_called()
