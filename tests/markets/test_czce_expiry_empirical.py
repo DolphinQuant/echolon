@@ -1,4 +1,4 @@
-"""Offline DCE rule falsifier against the authoritative p2_v4 panel."""
+"""Offline CZCE episode-keyed rule falsifier against the p2_v4 panel."""
 
 from __future__ import annotations
 
@@ -11,19 +11,19 @@ import pandas as pd
 import pytest
 
 from echolon.markets.empirical_expiry import empirical_episodes
-from echolon.markets.expiry import last_trade_date
+from echolon.markets.expiry import encoded_last_trade_date
 from echolon.markets.shfe.trading_calendar import TradingCalendar
 
-DCE_INSTRUMENTS = ("c", "p", "pp", "eg", "jd", "i", "l", "m", "v", "y")
+CZCE_INSTRUMENTS = ("cf", "rm", "sm", "sa", "sr", "sf", "fg", "ma", "oi", "ur", "ta")
 
 
-def test_dce_encoded_rule_reproduces_at_least_95pct_empirical_last_trades() -> None:
+def test_czce_encoded_rule_is_rejected_below_95pct_episode_bar() -> None:
     snapshot = _snapshot_path()
     if not snapshot.exists():
         pytest.skip(f"real p2_v4 snapshot unavailable: {snapshot}")
 
     rows = []
-    for instrument in DCE_INSTRUMENTS:
+    for instrument in CZCE_INSTRUMENTS:
         frame = pd.read_csv(
             snapshot / "contracts" / f"{instrument}.csv",
             usecols=["date", "contract"],
@@ -35,47 +35,32 @@ def test_dce_encoded_rule_reproduces_at_least_95pct_empirical_last_trades() -> N
     calendar = TradingCalendar()
     calendar._trading_days = set(contracts["date"].dt.date)
     calendar._calendar_loaded = True
+
     results: list[tuple[str, dt.date, dt.date]] = []
     source_episodes: set[tuple[str, dt.date, dt.date]] = set()
     for contract, episode in _episodes(contracts):
-        delivery_year, delivery_month = _delivery_month(str(contract))
-        # A delivery month still in progress at the panel end is not expired.
-        if (delivery_year, delivery_month) >= (panel_end.year, panel_end.month):
+        year, month = _delivery_month(contract, episode[-1])
+        if (year, month) >= (panel_end.year, panel_end.month):
             continue
         empirical = episode[-1]
-        source_episodes.add((str(contract), episode[0], empirical))
-        predicted = last_trade_date(str(contract), "DCE", calendar)
-        results.append((str(contract), empirical, predicted))
+        source_episodes.add((contract, episode[0], empirical))
+        predicted = encoded_last_trade_date(
+            contract, "CZCE", calendar, delivery_year=year
+        )
+        results.append((contract, empirical, predicted))
 
     bundled_episodes = {
         (contract, episode.first_observation, episode.last_trade)
         for contract in contracts["contract"].astype(str).unique()
         for episode in empirical_episodes(contract)
-        if episode.exchange == "DCE"
+        if episode.exchange == "CZCE"
     }
     assert bundled_episodes == source_episodes
 
     matches = sum(empirical == predicted for _, empirical, predicted in results)
-    assert len(results) == 1068
-    assert matches == 1022
-    assert matches / len(results) >= 0.95
-
-
-def _snapshot_path() -> Path:
-    configured = os.environ.get("DOLPHINQUANT_P2_V4_PANEL")
-    if configured:
-        return Path(configured)
-    return (
-        Path(__file__).resolve().parents[4]
-        / "output_bank/market/panels/p2_v4_shfe_czce_dce_ine"
-    )
-
-
-def _delivery_month(contract: str) -> tuple[int, int]:
-    match = re.fullmatch(r"[A-Za-z]+(\d{2})(\d{2})", contract)
-    if match is None:
-        raise ValueError(f"unexpected DCE contract identifier: {contract}")
-    return 2000 + int(match.group(1)), int(match.group(2))
+    assert len(results) == 1037
+    assert matches == 562
+    assert matches / len(results) < 0.95
 
 
 def _episodes(frame: pd.DataFrame) -> list[tuple[str, list[dt.date]]]:
@@ -89,3 +74,26 @@ def _episodes(frame: pd.DataFrame) -> list[tuple[str, list[dt.date]]]:
                 start = index
         episodes.append((str(contract), dates[start:]))
     return episodes
+
+
+def _snapshot_path() -> Path:
+    configured = os.environ.get("DOLPHINQUANT_P2_V4_PANEL")
+    if configured:
+        return Path(configured)
+    return (
+        Path(__file__).resolve().parents[4]
+        / "output_bank/market/panels/p2_v4_shfe_czce_dce_ine"
+    )
+
+
+def _delivery_month(contract: str, empirical: dt.date) -> tuple[int, int]:
+    match = re.fullmatch(r"[A-Za-z]+(\d)(\d{2})", contract)
+    if match is None:
+        raise ValueError(f"unexpected CZCE contract identifier: {contract}")
+    year_digit, month = int(match.group(1)), int(match.group(2))
+    candidates = [
+        year
+        for year in range(empirical.year - 2, empirical.year + 3)
+        if year % 10 == year_digit
+    ]
+    return min(candidates, key=lambda year: abs(year - empirical.year)), month

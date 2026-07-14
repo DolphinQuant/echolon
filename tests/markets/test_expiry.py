@@ -177,6 +177,14 @@ def test_new_last_trade_api_keeps_ine_descoped() -> None:
         last_trade_date("SC2403", "INE", object())
 
 
+def test_czce_position_close_is_explicitly_undefined() -> None:
+    calendar = _calendar("2026-01-08")
+    assert (
+        days_to_position_close("RM601", "CZCE", dt.date(2026, 1, 8), calendar)
+        is None
+    )
+
+
 def _calendar(*dates: str) -> TradingCalendar:
     calendar = TradingCalendar()
     calendar._trading_days = {dt.date.fromisoformat(value) for value in dates}

@@ -125,3 +125,17 @@ def test_delivery_window_uses_shfe_position_close_not_last_trade() -> None:
     assert not tradable_window(
         spread, dt.date(2024, 2, 22), exchange="SHFE", calendar=calendar
     )
+
+
+def test_delivery_window_consumes_czce_empirical_resolution() -> None:
+    days = pd.bdate_range("2026-01-01", "2026-01-31")
+    calendar = TradingCalendar()
+    calendar._trading_days = {value.date() for value in days}
+    calendar._calendar_loaded = True
+    spread = SpreadSpec(instrument="rm", near_contract="RM601", far_contract="RM605")
+    assert tradable_window(
+        spread, dt.date(2026, 1, 5), exchange="CZCE", calendar=calendar
+    )
+    assert not tradable_window(
+        spread, dt.date(2026, 1, 8), exchange="CZCE", calendar=calendar
+    )
