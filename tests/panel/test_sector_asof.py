@@ -90,14 +90,16 @@ def test_csv_integer_dates_keep_old_sector_before_reclassification(
             "instrument": ["000001.sz", "000001.sz"],
             "l1_code": ["OLD", "NEW"],
             "in_date": [20100101, 20190701],
-            "out_date": [20190630, 20991231],
+            "out_date": [20190630, None],
         }
     ).to_csv(membership_path, index=False)
 
     membership = pd.read_csv(membership_path)
 
     assert membership["in_date"].dtype.kind in "iu"
+    assert membership["out_date"].dtype.kind == "f"
     assert resolve_sector_asof(membership, "000001.sz", "20180630") == "OLD"
+    assert resolve_sector_asof(membership, "000001.sz", "20200630") == "NEW"
 
 
 def test_missing_asof_membership_uses_explicit_fallback_only() -> None:

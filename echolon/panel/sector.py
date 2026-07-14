@@ -10,6 +10,8 @@ def _parse_membership_dates(values: pd.Series, *, column: str) -> pd.Series:
     """Parse YYYYMMDD membership dates, preserving only genuine empties as NaT."""
     genuinely_empty = values.isna()
     text = values.astype(str).str.strip()
+    if pd.api.types.is_float_dtype(values.dtype):
+        text = text.str.removesuffix(".0")
     genuinely_empty |= text.eq("")
     try:
         return pd.to_datetime(
