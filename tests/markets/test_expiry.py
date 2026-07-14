@@ -1,4 +1,5 @@
-"""Exchange-true futures expiry and trading-day DTE falsifiers."""
+"""Exchange-true futures last-trade and position-close falsifiers."""
+
 from __future__ import annotations
 
 import datetime as dt
@@ -6,7 +7,14 @@ import datetime as dt
 import pandas as pd
 import pytest
 
-from echolon.markets.expiry import days_to_expiry, expiry_date
+from echolon.markets.expiry import (
+    days_to_expiry,
+    days_to_last_trade,
+    days_to_position_close,
+    expiry_date,
+    last_trade_date,
+    position_close_date,
+)
 from echolon.markets.shfe.trading_calendar import TradingCalendar
 
 
@@ -68,16 +76,109 @@ def test_expiry_fails_loudly_for_unpinned_exchange(exchange: str) -> None:
 def test_days_to_expiry_counts_future_trading_sessions_only(
     pinned_shfe_calendar: TradingCalendar,
 ) -> None:
-    assert days_to_expiry(
-        "ni2503",
-        "SHFE",
-        dt.date(2025, 2, 5),
-        pinned_shfe_calendar,
-    ) == 3
-    assert days_to_expiry(
-        "ni2503",
-        "SHFE",
-        dt.date(2025, 2, 10),
-        pinned_shfe_calendar,
-    ) == 0
+    assert (
+        days_to_expiry(
+            "ni2503",
+            "SHFE",
+            dt.date(2025, 2, 5),
+            pinned_shfe_calendar,
+        )
+        == 3
+    )
+    assert (
+        days_to_expiry(
+            "ni2503",
+            "SHFE",
+            dt.date(2025, 2, 10),
+            pinned_shfe_calendar,
+        )
+        == 0
+    )
 
+
+def test_shfe_last_trade_and_position_close_are_distinct(
+    pinned_shfe_calendar: TradingCalendar,
+) -> None:
+    assert position_close_date("ni2503", "SHFE", pinned_shfe_calendar) == dt.date(
+        2025, 2, 10
+    )
+    assert last_trade_date("ni2502", "SHFE", pinned_shfe_calendar) == dt.date(
+        2025, 2, 10
+    )
+    assert (
+        days_to_position_close(
+            "ni2503", "SHFE", dt.date(2025, 2, 5), pinned_shfe_calendar
+        )
+        == 3
+    )
+
+
+def test_dce_tenth_trading_day_convention() -> None:
+    calendar = _calendar(
+        "2024-03-01",
+        "2024-03-04",
+        "2024-03-05",
+        "2024-03-06",
+        "2024-03-07",
+        "2024-03-08",
+        "2024-03-11",
+        "2024-03-12",
+        "2024-03-13",
+        "2024-03-14",
+        "2024-03-15",
+        "2024-03-18",
+        "2024-03-19",
+        "2024-03-20",
+        "2024-03-21",
+        "2024-03-22",
+        "2024-03-25",
+        "2024-03-26",
+        "2024-03-27",
+        "2024-03-28",
+        "2024-03-29",
+    )
+    assert last_trade_date("M2403", "DCE", calendar) == dt.date(2024, 3, 14)
+    assert days_to_last_trade("M2403", "DCE", dt.date(2024, 3, 11), calendar) == 3
+    assert (
+        days_to_position_close("M2403", "DCE", dt.date(2024, 3, 11), calendar) is None
+    )
+
+
+@pytest.mark.parametrize("contract", ["EG2403", "JD2403"])
+def test_dce_eg_and_jd_fourth_from_month_end_convention(contract: str) -> None:
+    calendar = _calendar(
+        "2024-03-01",
+        "2024-03-04",
+        "2024-03-05",
+        "2024-03-06",
+        "2024-03-07",
+        "2024-03-08",
+        "2024-03-11",
+        "2024-03-12",
+        "2024-03-13",
+        "2024-03-14",
+        "2024-03-15",
+        "2024-03-18",
+        "2024-03-19",
+        "2024-03-20",
+        "2024-03-21",
+        "2024-03-22",
+        "2024-03-25",
+        "2024-03-26",
+        "2024-03-27",
+        "2024-03-28",
+        "2024-03-29",
+    )
+    assert last_trade_date(contract, "DCE", calendar) == dt.date(2024, 3, 26)
+
+
+def test_new_last_trade_api_keeps_ine_descoped() -> None:
+    with pytest.raises(NotImplementedError, match="INE"):
+        last_trade_date("SC2403", "INE", object())
+
+
+def _calendar(*dates: str) -> TradingCalendar:
+    calendar = TradingCalendar()
+    calendar._trading_days = {dt.date.fromisoformat(value) for value in dates}
+    calendar._calendar_loaded = True
+    return calendar

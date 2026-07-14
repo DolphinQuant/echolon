@@ -1,7 +1,10 @@
-"""Exchange-backed futures expiry and trading-day distance utilities."""
+"""Exchange-backed futures last-trade and position-close utilities."""
+
 from __future__ import annotations
 
+import calendar as month_calendar
 import datetime as dt
+import re
 
 from echolon.markets.shfe import contract_rules as shfe_contract_rules
 from echolon.markets.shfe.trading_calendar import TradingCalendar
@@ -11,6 +14,94 @@ def _require_loaded_calendar(calendar: TradingCalendar) -> None:
     """Reject the SHFE calendar's weekend-only approximation mode."""
     if not isinstance(calendar, TradingCalendar) or not calendar.is_loaded:
         raise ValueError("expiry calculation requires a loaded exchange calendar")
+
+
+def last_trade_date(
+    contract: str,
+    exchange: str,
+    calendar: TradingCalendar,
+) -> dt.date:
+    """Return the final trading date, requiring a loaded exchange calendar.
+
+    Supported encoded conventions are SHFE's trading day on or before the
+    delivery-month 15th and DCE's delivery-month tenth trading day, except
+    DCE EG/JD whose convention is the fourth trading day from month end.
+    These are encoded conventions, not claims of an external citation.
+    Unsupported exchanges fail with :class:`NotImplementedError`.
+    """
+    exchange_id = exchange.upper()
+    if exchange_id not in {"SHFE", "DCE"}:
+        raise NotImplementedError(
+            f"{exchange_id} last-trade rule is not authoritatively pinned"
+        )
+    _require_loaded_calendar(calendar)
+    product, year, month = _parse_four_digit_contract(contract)
+    trading_days = _trading_days_in_month(calendar, year, month)
+    if exchange_id == "SHFE":
+        eligible = [day for day in trading_days if day.day <= 15]
+        if not eligible:
+            raise ValueError(
+                f"calendar has no SHFE sessions through {year}-{month:02d}-15"
+            )
+        return eligible[-1]
+    if product in {"eg", "jd"}:
+        if len(trading_days) < 4:
+            raise ValueError(
+                f"calendar has fewer than four DCE sessions in {year}-{month:02d}"
+            )
+        return trading_days[-4]
+    if len(trading_days) < 10:
+        raise ValueError(
+            f"calendar has fewer than ten DCE sessions in {year}-{month:02d}"
+        )
+    return trading_days[9]
+
+
+def position_close_date(
+    contract: str,
+    exchange: str,
+    calendar: TradingCalendar,
+) -> dt.date | None:
+    """Return the final general-position holding date, or ``None`` if undefined.
+
+    The in-repository SHFE rule defines this separately from last trade. DCE
+    has no encoded position-close convention here and is never guessed.
+    """
+    exchange_id = exchange.upper()
+    if exchange_id == "SHFE":
+        _require_loaded_calendar(calendar)
+        return shfe_contract_rules.get_expiry_date(contract, calendar)
+    if exchange_id == "DCE":
+        _require_loaded_calendar(calendar)
+        return None
+    raise NotImplementedError(
+        f"{exchange_id} position-close rule is not authoritatively pinned"
+    )
+
+
+def days_to_last_trade(
+    contract: str,
+    exchange: str,
+    asof: dt.date,
+    calendar: TradingCalendar,
+) -> int:
+    """Return signed trading sessions after ``asof`` through last trade."""
+    return _trading_day_distance(
+        asof, last_trade_date(contract, exchange, calendar), calendar
+    )
+
+
+def days_to_position_close(
+    contract: str,
+    exchange: str,
+    asof: dt.date,
+    calendar: TradingCalendar,
+) -> int | None:
+    """Return signed sessions to position close, or ``None`` when undefined."""
+    close_date = position_close_date(contract, exchange, calendar)
+    if close_date is None:
+        return None
+    return _trading_day_distance(asof, close_date, calendar)
 
 
 def expiry_date(
@@ -31,7 +122,9 @@ def expiry_date(
             f"{exchange_id} expiry rule is not authoritatively pinned"
         )
     _require_loaded_calendar(calendar)
-    return shfe_contract_rules.get_expiry_date(contract, calendar)
+    close_date = position_close_date(contract, exchange_id, calendar)
+    assert close_date is not None
+    return close_date
 
 
 def days_to_expiry(
@@ -47,22 +140,46 @@ def days_to_expiry(
     unloaded calendars fail exactly as :func:`expiry_date` does.
     """
     expiry = expiry_date(contract, exchange, calendar)
-    if asof == expiry:
+    return _trading_day_distance(asof, expiry, calendar)
+
+
+def _trading_day_distance(
+    asof: dt.date,
+    target: dt.date,
+    calendar: TradingCalendar,
+) -> int:
+    if asof == target:
         return 0
-    if asof < expiry:
-        return sum(
-            calendar.is_trading_day(day)
-            for day in _dates_between(asof, expiry)
-        )
-    return -sum(
-        calendar.is_trading_day(day)
-        for day in _dates_between(expiry, asof)
+    if asof < target:
+        return sum(calendar.is_trading_day(day) for day in _dates_between(asof, target))
+    return -sum(calendar.is_trading_day(day) for day in _dates_between(target, asof))
+
+
+def _parse_four_digit_contract(contract: str) -> tuple[str, int, int]:
+    match = re.fullmatch(r"([A-Za-z]+)(\d{2})(\d{2})", contract.strip())
+    if match is None:
+        raise ValueError(f"contract must use unambiguous YYMM digits: {contract}")
+    month = int(match.group(3))
+    if not 1 <= month <= 12:
+        raise ValueError(f"invalid delivery month in contract: {contract}")
+    year_digits = int(match.group(2))
+    year = 2000 + year_digits if year_digits <= 50 else 1900 + year_digits
+    return match.group(1).lower(), year, month
+
+
+def _trading_days_in_month(
+    calendar: TradingCalendar,
+    year: int,
+    month: int,
+) -> list[dt.date]:
+    return calendar.get_trading_days_between(
+        dt.date(year, month, 1),
+        dt.date(year, month, month_calendar.monthrange(year, month)[1]),
     )
 
 
 def _dates_between(start: dt.date, end: dt.date) -> list[dt.date]:
     """Return calendar dates in ``(start, end]``."""
     return [
-        start + dt.timedelta(days=offset)
-        for offset in range(1, (end - start).days + 1)
+        start + dt.timedelta(days=offset) for offset in range(1, (end - start).days + 1)
     ]
