@@ -6,6 +6,21 @@ import datetime as dt
 import pandas as pd
 
 
+def _parse_membership_dates(values: pd.Series, *, column: str) -> pd.Series:
+    """Parse YYYYMMDD membership dates, preserving only genuine empties as NaT."""
+    genuinely_empty = values.isna()
+    text = values.astype(str).str.strip()
+    genuinely_empty |= text.eq("")
+    try:
+        return pd.to_datetime(
+            text.mask(genuinely_empty),
+            format="%Y%m%d",
+            errors="raise",
+        )
+    except (TypeError, ValueError) as exc:
+        raise ValueError(f"invalid non-empty {column}; expected YYYYMMDD") from exc
+
+
 def resolve_sector_asof(
     membership: pd.DataFrame,
     instrument: str,
@@ -22,8 +37,8 @@ def resolve_sector_asof(
     frame = membership.loc[
         membership["instrument"].astype(str).str.lower().eq(instrument.lower())
     ].copy()
-    frame["in_date"] = pd.to_datetime(frame["in_date"], errors="coerce")
-    frame["out_date"] = pd.to_datetime(frame["out_date"], errors="coerce")
+    frame["in_date"] = _parse_membership_dates(frame["in_date"], column="in_date")
+    frame["out_date"] = _parse_membership_dates(frame["out_date"], column="out_date")
     active = frame.loc[
         frame["in_date"].le(view_date)
         & (frame["out_date"].isna() | frame["out_date"].ge(view_date))
