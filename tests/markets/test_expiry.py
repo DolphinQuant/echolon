@@ -180,8 +180,7 @@ def test_new_last_trade_api_keeps_ine_descoped() -> None:
 def test_czce_position_close_is_explicitly_undefined() -> None:
     calendar = _calendar("2026-01-08")
     assert (
-        days_to_position_close("RM601", "CZCE", dt.date(2026, 1, 8), calendar)
-        is None
+        days_to_position_close("RM601", "CZCE", dt.date(2026, 1, 8), calendar) is None
     )
 
 
