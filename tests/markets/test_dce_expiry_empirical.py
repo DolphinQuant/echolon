@@ -34,14 +34,19 @@ def test_dce_encoded_rule_reproduces_at_least_95pct_empirical_last_trades() -> N
     calendar = TradingCalendar()
     calendar._trading_days = set(contracts["date"].dt.date)
     calendar._calendar_loaded = True
+    empirical_lookup = contracts.groupby("contract")["date"].max().dt.date.to_dict()
+
+    def empirical_last_trade(contract: str) -> dt.date:
+        """Return the authoritative panel's LAST row for an unambiguous DCE code."""
+        return empirical_lookup[contract]
 
     results: list[tuple[str, dt.date, dt.date]] = []
-    for contract, group in contracts.groupby("contract"):
+    for contract in empirical_lookup:
         delivery_year, delivery_month = _delivery_month(str(contract))
         # A delivery month still in progress at the panel end is not expired.
         if (delivery_year, delivery_month) >= (panel_end.year, panel_end.month):
             continue
-        empirical = group["date"].max().date()
+        empirical = empirical_last_trade(str(contract))
         predicted = last_trade_date(str(contract), "DCE", calendar)
         results.append((str(contract), empirical, predicted))
 
