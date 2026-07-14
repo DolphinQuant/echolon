@@ -2,8 +2,10 @@
 from __future__ import annotations
 
 import datetime as dt
+from pathlib import Path
 
 import pandas as pd
+import pytest
 
 from echolon.panel.models import InstrumentMeta, PanelManifest
 from echolon.panel.sector import resolve_sector_asof
@@ -79,6 +81,27 @@ def test_reclassified_name_uses_old_sector_before_new_in_date() -> None:
     )
 
 
+def test_csv_integer_dates_keep_old_sector_before_reclassification(
+    tmp_path: Path,
+) -> None:
+    membership_path = tmp_path / "sw_membership.csv"
+    pd.DataFrame(
+        {
+            "instrument": ["000001.sz", "000001.sz"],
+            "l1_code": ["OLD", "NEW"],
+            "in_date": [20100101, 20190701],
+            "out_date": [20190630, None],
+        }
+    ).to_csv(membership_path, index=False)
+
+    membership = pd.read_csv(membership_path)
+
+    assert membership["in_date"].dtype.kind in "iu"
+    assert membership["out_date"].dtype.kind == "f"
+    assert resolve_sector_asof(membership, "000001.sz", "20180630") == "OLD"
+    assert resolve_sector_asof(membership, "000001.sz", "20200630") == "NEW"
+
+
 def test_missing_asof_membership_uses_explicit_fallback_only() -> None:
     membership = pd.DataFrame(
         {
@@ -96,6 +119,20 @@ def test_missing_asof_membership_uses_explicit_fallback_only() -> None:
         )
         == "UNKNOWN"
     )
+
+
+def test_nonempty_malformed_membership_date_is_not_coerced_to_nat() -> None:
+    membership = pd.DataFrame(
+        {
+            "instrument": ["000001.sz"],
+            "l1_code": ["801780"],
+            "in_date": ["not-a-date"],
+            "out_date": [None],
+        }
+    )
+
+    with pytest.raises(ValueError, match="invalid non-empty in_date"):
+        resolve_sector_asof(membership, "000001.sz", "20200630")
 
 
 def test_panel_view_sector_asof_switches_on_reclassification_date() -> None:
