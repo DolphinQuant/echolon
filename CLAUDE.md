@@ -45,3 +45,33 @@ the engineers who execute.
 6. **Escalate to rethinking, not re-typing.** If a subagent misses twice on
    the same task, the brief or the plan is wrong; rediagnose in Fable
    context instead of dispatching a third attempt.
+
+## Driving Codex executors headless (hard-won lessons, 2026-07-14)
+Dispatch pattern (all four rules are mandatory, each was learned from a real failure):
+```
+cd <workdir> && caffeinate -is codex exec --sandbox workspace-write "<prompt>" < /dev/null 2>&1
+```
+1. **`< /dev/null` is NOT optional.** Without it, `codex exec` captures the shell's stdin
+   and silently blocks mid-run ("Reading additional input from stdin..."): short probes
+   pass, every long task freezes with zero error output. This cost a full day of silent
+   stalls before it was isolated.
+2. **Never `--full-auto`** (disables Codex's own sandbox). `--sandbox workspace-write`
+   keeps the sandbox on and headless approvals sane. The sandbox has NO NETWORK — plans
+   must be executable offline (validate against in-repo data, never live sources).
+3. **`caffeinate -is` on laptops** — battery sleep froze agent sessions mid-write.
+4. **Absolute paths inside prompts** — relative paths resolve against the workdir and
+   have been silently mis-resolved.
+Monitoring (verify PROGRESS, never liveness): sample the newest
+`~/.codex/sessions/<date>/rollout-*.jsonl` size twice ≥45s apart — growth = working,
+frozen ≥6 min = dead (arm a stall alarm); watch the deliverable file. Do NOT trust `ps`
+grep counts (self-matching artifacts) or the codex plugin's status registry (blind to
+subagent-launched jobs). Parallel agents: one git WORKTREE per agent per repo — branch
+rules alone cannot isolate a shared checkout; sibling editable deps (qorka→echolon) mean
+the isolation must cover the dependency set; merges are reviewer-only, sequential, in
+quiet trees. Model: keep the user's config default (gpt-5.6-sol medium); log every
+dispatch in `dolphinquant-design/log/agent_dispatch_log.md`.
+5. **"Selected model is at capacity" is a real, recurring upstream failure** (gpt-5.6-sol
+   at peak). It ends the run nonzero AFTER partial work — work survives uncommitted in the
+   tree and the session is resumable: `codex exec --sandbox workspace-write resume --last "<continue prompt>"` (options BEFORE the resume subcommand — after it they fail argument parsing) in a
+   retry loop (≥5 attempts, 300s backoff). Never re-dispatch fresh when a resume can keep
+   hundreds of thousands of tokens of context.
