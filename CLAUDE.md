@@ -96,3 +96,24 @@ never guessed mid-run (an 8-worker guess on an 18-core M5 Pro cost hours):
    mid-flight (never destabilize a live checkpointed run to tune it).
 6. Never buy speed by weakening the instrument (fewer placebos, trimmed pipelines,
    shortcut nulls) — parallel width and warm caches are the only legitimate levers.
+
+## Time is the scarcest resource (adopted 2026-07-15)
+Work at maximum speed WITHOUT sacrificing quality — velocity comes from removing waste,
+never from thinning evidence. The order of operations (question → delete → simplify →
+accelerate → automate) is binding:
+1. **Probe before pinning (plan pre-flight).** Every checkable fact in a plan (paths,
+   dates, APIs, vendor behavior, data boundaries) is verified against reality by a cheap
+   agent BEFORE dispatch. Guessed constants caused 11/11 defects in one week at ~1–3h per
+   STOP→amend→redispatch cycle; a 10-minute probe kills most.
+2. **Delete before optimizing.** Question whether a step needs to exist before making it
+   faster. Reviews are risk-TIERED: evidence/ruler/ledger-touching work keeps two
+   independent layers; pure infrastructure gets one fast layer.
+3. **Overlap the critical path.** Long compute windows are working time: pre-write the
+   next plan, review ready artifacts, run pre-flights during them. The critical path
+   should be the longest single compute, not the sum of steps.
+4. **Automate only proven loops** (dispatch → monitor → review is automated; judgment and
+   merges stay human/reviewer-serialized on purpose).
+5. **The exemption is absolute:** preregistration, fences, one-shot rules, falsifiers, and
+   determinism are NEVER deleted, thinned, or "accelerated" — false confidence costs more
+   than any schedule slip (the −53,975 RMB lesson). Accelerate everything around the
+   evidence; never the evidence itself.
