@@ -68,6 +68,7 @@ build-backend = "hatchling.build"
 [tool.hatch.build.targets.wheel]
 packages = ["echolon"]
 artifacts = [
+    "echolon/markets/data/*.csv",
     "echolon/native/templates/**/*.json",
     "echolon/native/templates/**/*.md",
     "echolon/native/errors/codes/*.md",
