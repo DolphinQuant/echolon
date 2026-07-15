@@ -75,3 +75,24 @@ dispatch in `dolphinquant-design/log/agent_dispatch_log.md`.
    tree and the session is resumable: `codex exec --sandbox workspace-write resume --last "<continue prompt>"` (options BEFORE the resume subcommand — after it they fail argument parsing) in a
    retry loop (≥5 attempts, 300s backoff). Never re-dispatch fresh when a resume can keep
    hundreds of thousands of tokens of context.
+
+## Maximize compute utilization on heavy tasks (adopted 2026-07-15)
+Any compute job expected to run >30 minutes MUST be sized to the machine, in the PLAN,
+never guessed mid-run (an 8-worker guess on an 18-core M5 Pro cost hours):
+1. **Measure first:** `sysctl -n hw.ncpu hw.memsize` + `memory_pressure -Q`. Size
+   `PARALLEL_WORKERS = hw.ncpu − 4` (headroom for system + supervising agents); reduce
+   only if per-worker memory × workers approaches free memory.
+2. **Fork + copy-on-write for shared read-only data:** load the big panel ONCE in the
+   parent, `mp_context=fork` — worker RSS double-counts shared pages; trust
+   `memory_pressure` free%, not summed RSS.
+3. **One thread per worker:** keep numpy/BLAS single-threaded inside workers (workers ≈
+   cores, each pegged ~100%); oversubscription is slower, not faster.
+4. **Checkpoint idempotence is mandatory:** every trial/unit writes an isolated completed
+   marker; a restart skips complete units. This makes tuning, crashes, and worker-count
+   changes near-free.
+5. **Verify at launch, don't assume:** within the first minutes confirm load-avg ≈ worker
+   count and per-worker CPU ≈100%; record trials/hour + ETA in the progress log. A healthy
+   run that under-uses the machine is a defect to fix at the NEXT restart point, not
+   mid-flight (never destabilize a live checkpointed run to tune it).
+6. Never buy speed by weakening the instrument (fewer placebos, trimmed pipelines,
+   shortcut nulls) — parallel width and warm caches are the only legitimate levers.
