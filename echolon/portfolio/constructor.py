@@ -7,6 +7,7 @@ from collections import defaultdict
 from collections.abc import Mapping
 from typing import Literal
 
+import numpy as np
 import pandas as pd
 from pydantic import BaseModel, ConfigDict, Field
 
@@ -19,6 +20,12 @@ from .models import (
     RebalanceRecord,
     TargetBook,
 )
+
+# Average-correlation vol-targeting controls. The scaling is a fixed-point
+# iteration: at most this many rescale rounds, stopping early once the global
+# scale is within tolerance of 1.0. Both are mechanism constants, not calibration.
+_AVG_CORR_MAX_ROUNDS = 5
+_AVG_CORR_REL_TOL = 1e-6
 
 
 class ConstructorConfig(BaseModel):
@@ -38,6 +45,14 @@ class ConstructorConfig(BaseModel):
     long_only: bool = False
     max_weight_per_name_pct: float | None = None
     implementation_min_lots: float | None = Field(default=None, gt=0.0)
+    # Portfolio-vol targeting model. "perfect_correlation" is the historical
+    # sizing (sum_i w_i*sigma_i == target; the true portfolio vol only when every
+    # held name is perfectly correlated) and is the DEFAULT so unset callers keep
+    # byte-identical books. "avg_correlation" instead rescales the book so the
+    # estimated portfolio vol under an average-pairwise-correlation approximation
+    # meets the target, with the risk caps engaging each round.
+    vol_model: Literal["perfect_correlation", "avg_correlation"] = "perfect_correlation"
+    avg_correlation_lookback_days: int = Field(default=120, gt=1)
 
 
 class Constructor:
@@ -96,9 +111,12 @@ class Constructor:
             )
 
         self._pin_suspended_positions(view, book, lots_float, rows)
-        self._apply_sector_caps(view, book, lots_float, rows)
-        self._apply_per_name_cap(view, book, lots_float, rows)
-        self._apply_margin_cap(view, book, lots_float, rows)
+        if self.config.vol_model == "avg_correlation":
+            self._apply_avg_correlation_targeting(view, book, lots_float, rows)
+        else:
+            self._apply_sector_caps(view, book, lots_float, rows)
+            self._apply_per_name_cap(view, book, lots_float, rows)
+            self._apply_margin_cap(view, book, lots_float, rows)
 
         if self.config.sizing_mode == "research":
             final_targets = {
@@ -403,6 +421,87 @@ class Constructor:
                 }
             )
 
+    def _apply_avg_correlation_targeting(
+        self,
+        view: PanelView,
+        book: BookState,
+        lots_float: dict[str, float],
+        rows: dict[str, InstrumentRebalance],
+    ) -> None:
+        """Rescale the book so estimated portfolio vol meets target under average
+        pairwise correlation, re-applying every risk cap each round.
+
+        The perfect-correlation model sizes so ``sum_i w_i*sigma_i`` equals the
+        target, which is the true portfolio vol only when every held name moves
+        together. This mode estimates portfolio vol with the average-correlation
+        approximation and rescales toward the target across at most
+        :data:`_AVG_CORR_MAX_ROUNDS` fixed-point rounds. Caps take priority: a
+        name pinned at a cap is re-clipped after every rescale while uncapped
+        names absorb the remaining risk budget, so the caps ENGAGE when binding.
+        Reduces to the perfect-correlation sizing exactly when the average
+        correlation is 1.0 (the rescale factor is then 1.0 and nothing moves).
+        """
+        target_vol = self.config.vol_target_ann_pct / 100.0
+        for _ in range(_AVG_CORR_MAX_ROUNDS):
+            self._apply_sector_caps(view, book, lots_float, rows)
+            self._apply_per_name_cap(view, book, lots_float, rows)
+            self._apply_margin_cap(view, book, lots_float, rows)
+            sigma_p = self._estimate_portfolio_vol(view, book, lots_float, rows)
+            if sigma_p <= 0.0:
+                return
+            scale = target_vol / sigma_p
+            if abs(scale - 1.0) <= _AVG_CORR_REL_TOL:
+                return
+            for instrument in lots_float:
+                lots_float[instrument] *= scale
+        # Enforce caps once more so they still hold after the final rescale.
+        self._apply_sector_caps(view, book, lots_float, rows)
+        self._apply_per_name_cap(view, book, lots_float, rows)
+        self._apply_margin_cap(view, book, lots_float, rows)
+
+    def _estimate_portfolio_vol(
+        self,
+        view: PanelView,
+        book: BookState,
+        lots_float: Mapping[str, float],
+        rows: Mapping[str, InstrumentRebalance],
+    ) -> float:
+        """Annualized portfolio vol under the average-correlation approximation.
+
+        ``sigma_p^2 = (1 - rho_bar) * sum_i (w_i*sigma_i)^2
+                      + rho_bar * (sum_i w_i*sigma_i)^2`` where ``w_i`` is the
+        signed notional weight, ``sigma_i`` reuses the sizing vol recorded in
+        ``rows`` (so the perfect-correlation limit is exact), and ``rho_bar`` is
+        the average trailing pairwise correlation of the held names.
+        """
+        equity = book.equity_rmb
+        if equity <= 0.0:
+            return 0.0
+        contributions: dict[str, float] = {}
+        for instrument, lots in lots_float.items():
+            if lots == 0.0:
+                continue
+            bars = view.bars(instrument, 1)
+            if bars.empty:
+                continue
+            sigma_i = float(rows[instrument].vol_ann)
+            if sigma_i <= 0.0:
+                continue
+            price = _raw_price(bars.iloc[-1], "settle")
+            meta = view.meta(instrument)
+            weight = lots * price * float(meta.multiplier) / equity
+            contributions[instrument] = weight * sigma_i
+        if not contributions:
+            return 0.0
+        held = sorted(contributions)
+        sum_squared = sum(value * value for value in contributions.values())
+        sum_linear = sum(contributions.values())
+        rho_bar = _average_pairwise_correlation(
+            view, held, self.config.avg_correlation_lookback_days
+        )
+        variance = (1.0 - rho_bar) * sum_squared + rho_bar * (sum_linear * sum_linear)
+        return math.sqrt(variance) if variance > 0.0 else 0.0
+
     def _pin_suspended_positions(
         self,
         view: PanelView,
@@ -420,6 +519,44 @@ class Constructor:
             rows[instrument].caps_applied.append(
                 {"cap": "suspended_hold", "before": float(target), "after": held}
             )
+
+
+def _average_pairwise_correlation(
+    view: PanelView, instruments: list[str], lookback_days: int
+) -> float:
+    """Average Pearson correlation of trailing ``lookback_days`` daily returns.
+
+    Only names with a full, finite return window (complete-case) enter the
+    estimate; a name short of history still contributes to portfolio variance
+    through its own vol, but not to the shared correlation. The average is the
+    exact off-diagonal mean of the correlation matrix, computed in O(n*T) from
+    unit-normalized return vectors, and is clipped to ``[-1.0, 1.0]``. Fewer than
+    two qualifying names returns 0.0 (independence): with one held name there are
+    no cross terms, so the correlation is irrelevant to the variance.
+    """
+    if len(instruments) < 2:
+        return 0.0
+    unit_vectors: list[np.ndarray] = []
+    for instrument in instruments:
+        bars = view.bars(instrument, lookback_days + 1)
+        settles = pd.to_numeric(bars["settle"], errors="coerce")
+        returns = settles.pct_change().to_numpy(dtype=float)[1:]
+        if returns.size < lookback_days or not np.all(np.isfinite(returns)):
+            continue
+        window = returns[-lookback_days:]
+        centered = window - window.mean()
+        norm = math.sqrt(float(centered @ centered))
+        if norm <= 0.0:
+            continue
+        unit_vectors.append(centered / norm)
+    if len(unit_vectors) < 2:
+        return 0.0
+    standardized = np.vstack(unit_vectors)
+    count = standardized.shape[0]
+    total = standardized.sum(axis=0)
+    off_diagonal_sum = float(total @ total) - float(count)
+    rho_bar = off_diagonal_sum / (count * (count - 1))
+    return max(-1.0, min(1.0, rho_bar))
 
 
 def _annualized_vol(settles: pd.Series) -> float:
