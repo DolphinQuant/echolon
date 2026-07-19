@@ -6,6 +6,9 @@ only when no expired episode is available. This matters especially for DCE EG,
 where 22 of 46 R1 rule divergences ended empirically before the formal boundary.
 CZCE's candidate convention failed its episode-keyed validation bar and is
 therefore available for falsification only, never as an operational fallback.
+GFEX has no encoded convention at all: its last-trade support is bundled
+empirical episodes only (``days_to_last_trade`` serves expired GFEX contracts
+and refuses beyond-data ones), never a guessed rule.
 """
 
 from __future__ import annotations
@@ -46,6 +49,12 @@ def last_trade_date(
         raise NotImplementedError(
             "CZCE encoded last-trade rule failed empirical validation; "
             "expired episodes are empirical-only"
+        )
+    if exchange_id == "GFEX":
+        raise NotImplementedError(
+            "GFEX has no encoded last-trade rule and none is guessed; expired "
+            "episodes are empirical-only. days_to_last_trade serves bundled "
+            "GFEX episodes and refuses beyond-data contracts by design"
         )
     return encoded_last_trade_date(contract, exchange_id, calendar)
 
