@@ -110,6 +110,25 @@ INSTRUMENTS: Dict[str, InstrumentSpec] = {
         has_night_session=True,
         sessions=ALL_SESSIONS,
     ),
+    'ao': InstrumentSpec(
+        code='ao',
+        name='alumina',
+        market='SHFE',
+        # Contract spec (multiplier 20 吨/手, tick 1 元/吨) verified against
+        # akshare futures_fees_info (合约乘数/最小跳动) 2026-07-19; panel-v5 add.
+        multiplier=20.0,          # 20吨/手 (20 tons per lot)
+        tick_size=1.0,            # 1元/吨
+        # margin/commission are broker-observed snapshots (akshare
+        # futures_fees_info, updated 2026-07-18) and vary over time.
+        margin_rate=0.11,
+        commission=0.000101,
+        commission_type='percentage',
+        currency='CNY',
+        trading_unit='lots',
+        min_order_size=1.0,
+        has_night_session=True,
+        sessions=ALL_SESSIONS,
+    ),
 
     # =========================================================================
     # Precious Metals
@@ -262,7 +281,7 @@ def get_by_category(category: str) -> Dict[str, InstrumentSpec]:
     Categories: 'base_metals', 'precious_metals', 'ferrous', 'energy'
     """
     categories = {
-        'base_metals': ['al', 'cu', 'zn', 'pb', 'ni', 'sn'],
+        'base_metals': ['al', 'cu', 'zn', 'pb', 'ni', 'sn', 'ao'],
         'precious_metals': ['au', 'ag'],
         'ferrous': ['rb', 'hc', 'ss'],
         'energy': ['bu', 'ru', 'sp'],
