@@ -3,7 +3,7 @@
 Panel-v5 (FV3 round-3) adds three CZCE products — ap (apple), cj (jujube/red date),
 pk (peanut) — that were absent from p2_v4 and therefore have NO rows in the bundled
 ``echolon/markets/data/empirical_last_trades.csv``.  Without episodes, the strict
-episode clock REFUSES their expired live contracts with :class:`NotImplementedError`
+episode clock REFUSES their four-digit live contracts with :class:`NotImplementedError`
 (CZCE has no operational encoded rule; expired contracts are empirical-only).  This
 builder backfills those episodes purely from observed contract bars — no guessed rule —
 exactly as the incumbent CZCE/DCE/SHFE episodes (``build_empirical_last_trade_data.py``)
@@ -15,14 +15,19 @@ EPISODE-keyed: the same code carries multiple rows disambiguated by ``first_obse
 The contract identifier stored here is exactly the code carried in the delivered bar
 ``symbol`` (e.g. ``AP1805`` — a four-digit unified code — split from its ``.ZF`` suffix),
 because that is the identifier panel-v5 presents to the episode clock verbatim for these
-products.  The delivered set also contains the native three-digit codes (``AP701``) for
-the currently-listed contracts; every one of those delivers AFTER the data cutoff and is
-dropped by the in-progress delivery-month filter below, so no code is stored twice.
+products.  The delivered set also contains native three-digit codes (``AP701``) for
+currently-listed contracts.  Both representations are stored exactly as panel-v5
+presents them: three-digit codes are decade-safe because lookup is episode-keyed, while
+the four-digit rows let the empirical-only CZCE clock rank live unified codes without
+guessing an expiry rule.  For a contract still alive at the panel cutoff, ``last_trade``
+is its last observed panel date (an explicit beyond-calendar sentinel), not a projected
+exchange last-trade date.
 
-Source: per-contract daily bars ``.csv.gz`` under
-``<bars_root>/{ap,cj,pk}/*.csv.gz`` (xtdata_expansion_20260711).  The bar ``time`` column
-is epoch-milliseconds in UTC; a single shared helper converts it to the Beijing trade
-date (midnight-Beijing lands at 16:00 UTC the previous day — trap T8).
+Source: the delivered panel-v5 contract frames under
+``<panel_contracts_root>/{ap,cj,pk}.csv``.  These frames already contain the exact
+contract identifiers and Beijing trade dates presented to the signal engine; using them
+also respects panel QC exclusions (for example CJ2607/CJ607 end on 2026-07-09 in the
+published panel although the delivered raw bar family contains a 2026-07-10 row).
 
 The write is strictly ADD-ONLY: every existing row (all other exchanges AND the incumbent
 CZCE products) is preserved byte-for-byte; only ap/cj/pk rows are (re)written, so re-runs
@@ -35,46 +40,20 @@ from __future__ import annotations
 import argparse
 import csv
 import datetime as dt
-import gzip
 import re
 from pathlib import Path
 
 NEW_PRODUCTS = ("ap", "cj", "pk")
 EPISODE_GAP_DAYS = 180
-_UNIX_EPOCH = dt.datetime(1970, 1, 1)
-_BEIJING_OFFSET = dt.timedelta(hours=8)
 
 _REPO_ROOT = Path(__file__).resolve().parents[1]
-_DEFAULT_BARS_ROOT = (
+_DEFAULT_PANEL_CONTRACTS_ROOT = (
     _REPO_ROOT.parents[1]
-    / "output_bank/datasets/xtdata_expansion_20260711/raw/bars/CZCE"
+    / "output_bank/market/panels/p2_v5_shfe_czce_dce_gfex/contracts"
 )
 _DEFAULT_EPISODES_CSV = _REPO_ROOT / "echolon/markets/data/empirical_last_trades.csv"
 
 _EPISODE_FIELDS = ("exchange", "contract", "first_observation", "last_trade")
-
-
-def beijing_date_from_epoch_ms(epoch_ms: int) -> dt.date:
-    """Convert an epoch-millisecond UTC bar timestamp to its Beijing trade date.
-
-    China Standard Time is a fixed UTC+8 (no DST since 1991), so shifting by eight hours
-    before taking the calendar date recovers the true trade date from a midnight-Beijing
-    bar stamp (the single conversion point for trap T8).
-    """
-    return (_UNIX_EPOCH + dt.timedelta(milliseconds=epoch_ms) + _BEIJING_OFFSET).date()
-
-
-def _contract_trade_dates(path: Path) -> tuple[str, list[dt.date]]:
-    """Return the suffix-stripped contract id and its sorted observed dates."""
-    dates: set[dt.date] = set()
-    contract: str | None = None
-    with gzip.open(path, "rt", encoding="utf-8-sig", newline="") as handle:
-        for row in csv.DictReader(handle):
-            contract = row["symbol"].strip().split(".")[0].upper()
-            dates.add(beijing_date_from_epoch_ms(int(row["time"])))
-    if contract is None:
-        raise ValueError(f"no bar rows in {path}")
-    return contract, sorted(dates)
 
 
 def _episodes(dates: list[dt.date]) -> list[list[dt.date]]:
@@ -89,32 +68,6 @@ def _episodes(dates: list[dt.date]) -> list[list[dt.date]]:
     return episodes
 
 
-def _delivery_month(contract: str, empirical: dt.date) -> tuple[int, int]:
-    """Return the (year, month) delivery month of a CZCE contract identifier.
-
-    Four-digit YYMM codes carry their own decade.  Three-digit YMM codes repeat every
-    decade, so the decade is resolved from the episode's last observed date (the nearest
-    matching year), exactly as ``build_empirical_last_trade_data.py`` resolves it.
-    """
-    four_digit = re.fullmatch(r"[A-Z]+(\d{2})(\d{2})", contract)
-    if four_digit is not None:
-        year_digits = int(four_digit.group(1))
-        year = 2000 + year_digits if year_digits <= 50 else 1900 + year_digits
-        return year, int(four_digit.group(2))
-    three_digit = re.fullmatch(r"[A-Z]+(\d)(\d{2})", contract)
-    if three_digit is None:
-        raise ValueError(f"unexpected CZCE contract identifier: {contract}")
-    year_digit = int(three_digit.group(1))
-    candidates = [
-        year
-        for year in range(empirical.year - 2, empirical.year + 3)
-        if year % 10 == year_digit
-    ]
-    return min(candidates, key=lambda year: abs(year - empirical.year)), int(
-        three_digit.group(2)
-    )
-
-
 def _product_of(contract: str) -> str:
     """Return the lowercase product prefix (leading letters) of a contract code."""
     match = re.match(r"[A-Za-z]+", contract)
@@ -123,27 +76,21 @@ def _product_of(contract: str) -> str:
     return match.group(0).lower()
 
 
-def derive_new_czce(bars_root: Path) -> list[dict[str, str]]:
-    """Return expired episode records for the new CZCE products ap/cj/pk."""
-    contract_dates: dict[str, list[dt.date]] = {}
-    calendar: set[dt.date] = set()
+def derive_new_czce(panel_contracts_root: Path) -> list[dict[str, str]]:
+    """Return observed episode records for the new CZCE products ap/cj/pk."""
+    contract_dates: dict[str, set[dt.date]] = {}
     for product in NEW_PRODUCTS:
-        product_dir = bars_root / product
-        for path in sorted(product_dir.glob("*.csv.gz")):
-            contract, dates = _contract_trade_dates(path)
-            if contract in contract_dates:
-                raise ValueError(f"duplicate CZCE contract file for {contract}")
-            contract_dates[contract] = dates
-            calendar.update(dates)
+        path = panel_contracts_root / f"{product}.csv"
+        with path.open("r", encoding="utf-8", newline="") as handle:
+            for row in csv.DictReader(handle):
+                contract = row["contract"].strip().upper()
+                contract_dates.setdefault(contract, set()).add(
+                    dt.date.fromisoformat(row["date"])
+                )
 
-    panel_end = max(calendar)
     records: list[dict[str, str]] = []
     for contract, dates in contract_dates.items():
-        for episode in _episodes(dates):
-            year, month = _delivery_month(contract, episode[-1])
-            # A delivery month still in progress at the data cutoff is not expired.
-            if (year, month) >= (panel_end.year, panel_end.month):
-                continue
+        for episode in _episodes(sorted(dates)):
             records.append(
                 {
                     "exchange": "CZCE",
@@ -187,11 +134,13 @@ def _merge_episodes(episodes_csv: Path, new_records: list[dict[str, str]]) -> in
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--bars-root", type=Path, default=_DEFAULT_BARS_ROOT)
+    parser.add_argument(
+        "--panel-contracts-root", type=Path, default=_DEFAULT_PANEL_CONTRACTS_ROOT
+    )
     parser.add_argument("--episodes-csv", type=Path, default=_DEFAULT_EPISODES_CSV)
     args = parser.parse_args()
 
-    records = derive_new_czce(args.bars_root)
+    records = derive_new_czce(args.panel_contracts_root)
     _merge_episodes(args.episodes_csv, records)
     per_product: dict[str, int] = {}
     for record in records:
@@ -199,7 +148,7 @@ def main() -> None:
             per_product.get(_product_of(record["contract"]), 0) + 1
         )
     summary = ", ".join(f"{p.upper()} {per_product.get(p, 0)}" for p in NEW_PRODUCTS)
-    print(f"wrote {len(records)} expired CZCE ap/cj/pk episodes ({summary})")
+    print(f"wrote {len(records)} observed CZCE ap/cj/pk episodes ({summary})")
 
 
 if __name__ == "__main__":

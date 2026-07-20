@@ -1,7 +1,8 @@
 """CZCE ap/cj/pk empirical-episode falsifiers (panel-v5, FV3 round-3 backfill).
 
-Panel-v5 adds three CZCE products (ap/cj/pk) absent from p2_v4; their expired live
-contracts had no bundled episodes and so the strict episode clock REFUSED them with
+Panel-v5 adds three CZCE products (ap/cj/pk) absent from p2_v4; their observed contract
+episodes must be bundled because the strict episode clock REFUSES uncovered four-digit
+live identifiers with
 :class:`NotImplementedError` (CZCE is empirical-only; the defect-#10 pattern).  This
 module is the permanent falsifier for the add-only backfill of those episodes.
 
@@ -24,9 +25,7 @@ from __future__ import annotations
 
 import csv
 import datetime as dt
-import gzip
 import hashlib
-import os
 import re
 from importlib.resources import files
 from pathlib import Path
@@ -39,8 +38,11 @@ from echolon.markets.expiry import days_to_last_trade, last_trade_date
 from echolon.markets.shfe.trading_calendar import TradingCalendar
 
 NEW_PRODUCTS = ("ap", "cj", "pk")
-EXPECTED_COUNTS = {"AP": 57, "CJ": 40, "PK": 32}
-EXPECTED_TOTAL = 129
+EXPECTED_COUNTS = {"AP": 71, "CJ": 52, "PK": 46}
+EXPECTED_TOTAL = 169
+PRE_ALIVE_COMPLETION_SHA = "19689da54bc5439be7dd7dab291ea3c4a2021166225f954867fe97d7a5321774"
+ALIVE_COMPLETION_COUNTS = {"AP": 14, "CJ": 12, "PK": 14}
+ALIVE_COMPLETION_TOTAL = 40
 
 # sha of echolon/markets/data/empirical_last_trades.csv at the parent commit (post-GFEX,
 # pre-ap/cj/pk) — the exact bytes the ap/cj/pk backfill must leave untouched.
@@ -92,6 +94,21 @@ def _strip_new_czce(raw: bytes) -> bytes:
     return b"\n".join(kept)
 
 
+def _strip_alive_completion(raw: bytes) -> bytes:
+    """Remove only the panel-end ap/cj/pk completion layered onto the 129-row backfill."""
+    kept: list[bytes] = []
+    for segment in raw.split(b"\n"):
+        fields = segment.split(b",")
+        is_completion = (
+            len(fields) == 4
+            and re.match(rb"^(AP|CJ|PK)[0-9]", fields[1]) is not None
+            and fields[2] >= b"2025-07-15"
+        )
+        if not is_completion:
+            kept.append(segment)
+    return b"\n".join(kept)
+
+
 def test_pinned_anchors_are_bundled_exactly() -> None:
     bundled = _bundled_new_czce()
     for contract, (first, last) in PINNED_ANCHORS.items():
@@ -126,6 +143,20 @@ def test_backfill_is_add_only_nonnew_subset_matches_pre_backfill_pin() -> None:
     pre-backfill file.  Proves the backfill added ap/cj/pk rows and touched nothing else
     — no incumbent CZCE, GFEX, or other-exchange byte moved."""
     assert _sha(_strip_new_czce(_csv_bytes())) == PRE_BACKFILL_SHA
+
+
+def test_alive_completion_is_add_only_over_129_row_backfill() -> None:
+    """Strip only the 40 panel-end rows and recover the prior authorized whole file."""
+    live = _csv_bytes()
+    stripped = _strip_alive_completion(live)
+    assert _sha(stripped) == PRE_ALIVE_COMPLETION_SHA
+    added = [row for row in live.split(b"\n") if row and row not in set(stripped.split(b"\n"))]
+    per_product = {product: 0 for product in ALIVE_COMPLETION_COUNTS}
+    for row in added:
+        product = _product_of(row.decode().split(",")[1]).upper()
+        per_product[product] += 1
+    assert per_product == ALIVE_COMPLETION_COUNTS
+    assert len(added) == ALIVE_COMPLETION_TOTAL
 
 
 def test_add_only_falsifier_has_teeth_nonnew_edit_is_caught() -> None:
@@ -170,22 +201,18 @@ def test_days_to_last_trade_uses_bundled_episode() -> None:
     assert days_to_last_trade("AP1810", "CZCE", dt.date(2018, 10, 22), calendar) < 0
 
 
-def test_independent_raw_rederivation_matches_bundled() -> None:
-    bars_root = _bars_root()
-    if not bars_root.exists():
-        pytest.skip(f"raw CZCE bars unavailable: {bars_root}")
-    derived = _raw_new_czce_episodes(bars_root)
+def test_independent_panel_rederivation_matches_bundled() -> None:
+    contracts_root = _panel_contracts_root()
+    if not contracts_root.exists():
+        pytest.skip(f"panel-v5 contracts unavailable: {contracts_root}")
+    derived = _panel_new_czce_episodes(contracts_root)
     assert derived == _bundled_new_czce()
     assert len(derived) == EXPECTED_TOTAL
 
 
 # --------------------------------------------------------------------------- #
-# Independent raw derivation (deliberately NOT importing the builder module).
+# Independent panel derivation (deliberately NOT importing the builder module).
 # --------------------------------------------------------------------------- #
-def _beijing_date(epoch_ms: int) -> dt.date:
-    return (dt.datetime(1970, 1, 1) + dt.timedelta(milliseconds=epoch_ms, hours=8)).date()
-
-
 def _episodes(dates: list[dt.date]) -> list[list[dt.date]]:
     episodes: list[list[dt.date]] = []
     start = 0
@@ -197,47 +224,24 @@ def _episodes(dates: list[dt.date]) -> list[list[dt.date]]:
     return episodes
 
 
-def _delivery_month(contract: str, empirical: dt.date) -> tuple[int, int]:
-    four = re.fullmatch(r"[A-Z]+(\d{2})(\d{2})", contract)
-    if four is not None:
-        yd = int(four.group(1))
-        return (2000 + yd if yd <= 50 else 1900 + yd), int(four.group(2))
-    three = re.fullmatch(r"[A-Z]+(\d)(\d{2})", contract)
-    assert three is not None, contract
-    yd = int(three.group(1))
-    cands = [y for y in range(empirical.year - 2, empirical.year + 3) if y % 10 == yd]
-    return min(cands, key=lambda y: abs(y - empirical.year)), int(three.group(2))
-
-
-def _raw_new_czce_episodes(bars_root: Path) -> set[tuple[str, dt.date, dt.date]]:
+def _panel_new_czce_episodes(contracts_root: Path) -> set[tuple[str, dt.date, dt.date]]:
     contract_dates: dict[str, set[dt.date]] = {}
-    calendar: set[dt.date] = set()
     for product in NEW_PRODUCTS:
-        for path in sorted((bars_root / product).glob("*.csv.gz")):
-            with gzip.open(path, "rt", encoding="utf-8-sig", newline="") as handle:
-                for row in csv.DictReader(handle):
-                    contract = row["symbol"].strip().split(".")[0].upper()
-                    day = _beijing_date(int(row["time"]))
-                    contract_dates.setdefault(contract, set()).add(day)
-                    calendar.add(day)
-    panel_end = max(calendar)
+        with (contracts_root / f"{product}.csv").open(encoding="utf-8", newline="") as handle:
+            for row in csv.DictReader(handle):
+                contract = row["contract"].strip().upper()
+                contract_dates.setdefault(contract, set()).add(dt.date.fromisoformat(row["date"]))
     records: set[tuple[str, dt.date, dt.date]] = set()
     for contract, days in contract_dates.items():
         for episode in _episodes(sorted(days)):
-            year, month = _delivery_month(contract, episode[-1])
-            if (year, month) >= (panel_end.year, panel_end.month):
-                continue
             records.add((contract, episode[0], episode[-1]))
     return records
 
 
-def _bars_root() -> Path:
-    configured = os.environ.get("DOLPHINQUANT_CZCE_BARS")
-    if configured:
-        return Path(configured)
+def _panel_contracts_root() -> Path:
     return (
         Path(__file__).resolve().parents[4]
-        / "output_bank/datasets/xtdata_expansion_20260711/raw/bars/CZCE"
+        / "output_bank/market/panels/p2_v5_shfe_czce_dce_gfex/contracts"
     )
 
 
