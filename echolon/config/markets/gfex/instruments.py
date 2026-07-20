@@ -9,13 +9,18 @@ Authoritative fields:
     ``futures_contract_info_gfex`` and cross-checked against
     ``futures_fees_info`` (合约乘数/最小跳动).
 
+Commission fields:
+    ``commission`` and ``close_today_commission`` are the exchange-standard rate
+    (万分之1 开仓/平昨, free 平今), reconciled 2026-07-20 to the ratified
+    full-panel commission authority; the akshare +0.000001 offset is excluded.
+
 Non-authoritative fields:
-    ``margin_rate`` and ``commission`` are broker-observed snapshots (akshare
-    ``futures_fees_info``, updated 2026-07-18) and change over time. Session
-    windows are NOT authored here (GFEX has no night session, and no intraday
-    session/phase model is consumed by the panel-v5 pipeline); ``sessions`` is
-    left empty and ``has_night_session`` unset by design. Consumers needing
-    session data must not rely on this module yet.
+    ``margin_rate`` is a broker-observed snapshot (akshare ``futures_fees_info``,
+    updated 2026-07-18) and changes over time. Session windows are NOT authored
+    here (GFEX has no night session, and no intraday session/phase model is
+    consumed by the panel-v5 pipeline); ``sessions`` is left empty and
+    ``has_night_session`` unset by design. Consumers needing session data must
+    not rely on this module yet.
 """
 
 from typing import Dict
@@ -31,8 +36,9 @@ INSTRUMENTS: Dict[str, InstrumentSpec] = {
         multiplier=5.0,           # 5吨/手 (5 tons per lot) — verified
         tick_size=5.0,            # 5元/吨 — verified
         margin_rate=0.10,         # akshare futures_fees_info snapshot 2026-07-18
-        commission=0.000101,      # akshare snapshot; broker-observed, time-varying
+        commission=0.0001,        # 万分之1 (开仓/平昨); exchange-standard, akshare +0.000001 offset excluded (2026-07-20)
         commission_type='percentage',
+        close_today_commission=0.0,  # 平今 free
         currency='CNY',
         trading_unit='lots',
         min_order_size=1.0,

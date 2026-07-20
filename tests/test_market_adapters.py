@@ -120,11 +120,12 @@ class TestSHFEAdapterCalculations:
 
     def test_calculate_commission(self, adapter):
         comm = adapter.calculate_commission("al", 1, 20000.0)
-        # al uses fixed commission of 3.01 CNY per lot
-        assert comm == pytest.approx(3.01)
+        # al uses the exchange-standard 3.0 CNY per lot (akshare +0.01 broker offset
+        # stripped per the ratified full-panel commission authority, 2026-07-20)
+        assert comm == pytest.approx(3.0)
 
     def test_side_keyword_is_accepted_but_ignored_for_futures(self, adapter):
-        assert adapter.calculate_commission("al", 1, 20000.0, side="SELL") == pytest.approx(3.01)
+        assert adapter.calculate_commission("al", 1, 20000.0, side="SELL") == pytest.approx(3.0)
 
     def test_calculate_margin(self, adapter):
         margin = adapter.calculate_margin("al", 1, 20000.0)
