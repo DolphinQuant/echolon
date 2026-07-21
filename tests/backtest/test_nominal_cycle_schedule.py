@@ -12,6 +12,7 @@ from pydantic import ValidationError
 
 from echolon.backtest.book import (
     BookBacktestConfig,
+    BookLifecycleContract,
     DailyBookBacktester,
     ExecutionContractSchedule,
     NominalCycleSchedule,
@@ -669,3 +670,60 @@ def test_mode_mismatch_fails_and_legacy_dump_shape_is_unchanged():
         "panel_snapshot": "legacy-panel",
         "slippage_bps_by_instrument": {},
     }
+
+
+def test_strict_lifecycle_requires_every_complete_in_window_cycle(tmp_path: Path):
+    dates = _AUTHORITY
+    panel = _Panel(dates)
+    schedule = _schedule(
+        panel_dates=dates,
+        nominal_end=dt.date(2024, 3, 1),
+    )
+    start = dates[0]
+    end = dt.date(2024, 3, 4)
+    strategy = _TargetsByDecision(
+        {dt.date(2024, 1, 8): 1.0, dt.date(2024, 2, 2): 2.0}
+    )
+    execution_schedule = _execution_schedule(
+        panel, {date: "S1" for date in dates}
+    )
+
+    complete_ids = (schedule.rows[0].cycle_id, schedule.rows[1].cycle_id)
+    config = BookBacktestConfig(
+        start=start,
+        end=end,
+        initial_equity_rmb=1_000_000.0,
+        panel_snapshot=panel.snapshot_version,
+        panel_manifest_sha256=_MANIFEST_SHA,
+        rebalance_mode="nominal_cycle_schedule",
+        nominal_cycle_schedule=schedule,
+        execution_contract_schedule=execution_schedule,
+        lifecycle_contract=BookLifecycleContract(
+            expected_nominal_cycle_ids=complete_ids
+        ),
+    )
+    result = DailyBookBacktester(
+        output_dir=tmp_path / "complete",
+        slippage_bps=0.0,
+        rebalance_weekday=None,
+    ).run(strategy, panel, config)
+
+    assert result.outcome.status == "VALID_COMPLETE"
+    assert result.outcome.expected_nominal_cycle_ids == complete_ids
+    assert result.outcome.executed_nominal_cycle_ids == complete_ids
+    assert result.outcome.terminal_date == end
+    assert strategy.calls == [dt.date(2024, 1, 8), dt.date(2024, 2, 2)]
+
+    omitted = config.model_copy(
+        update={
+            "lifecycle_contract": BookLifecycleContract(
+                expected_nominal_cycle_ids=(schedule.rows[0].cycle_id,)
+            )
+        }
+    )
+    with pytest.raises(ValueError, match="exactly equal all complete in-window cycles"):
+        DailyBookBacktester(
+            output_dir=tmp_path / "omitted",
+            slippage_bps=0.0,
+            rebalance_weekday=None,
+        ).run(_TargetsByDecision({}), panel, omitted)
