@@ -20,6 +20,17 @@ V1_ORACLE_SHA256 = "0e9d44c507ec0446ee960ad492e6c1e01e16fbccd1e1cc747485742bc7d1
 V1_BUNDLE_SHA256 = "34f25ad2d2e35f5a6b78ace89d76e1926bb64432190e973543facc6aed7fee57"
 
 
+def _require_v1_code_pins(bundle: CertificationBundle) -> CertificationBundle:
+    """Reject a self-consistent substitute for the committed v1 artifacts."""
+    if bundle.fixture.sha256 != V1_FIXTURE_SHA256:
+        raise ValueError("v1 certification fixture does not match its code pin")
+    if bundle.oracle.sha256 != V1_ORACLE_SHA256:
+        raise ValueError("v1 certification oracle does not match its code pin")
+    if certification_bundle_sha256(bundle) != V1_BUNDLE_SHA256:
+        raise ValueError("v1 certification bundle does not match its code pin")
+    return bundle
+
+
 class _FixtureStrategy:
     def __init__(self, targets_by_date: dict[dt.date, dict[str, float]]) -> None:
         self._targets_by_date = targets_by_date
@@ -48,14 +59,9 @@ def load_certification_bundle(version: str = "v1") -> CertificationBundle:
     oracle = CertificationOracle.model_validate_json(
         root.joinpath("oracle.json").read_text(encoding="utf-8")
     )
-    bundle = CertificationBundle(fixture=fixture, oracle=oracle)
-    if fixture.sha256 != V1_FIXTURE_SHA256:
-        raise ValueError("packaged v1 certification fixture does not match its code pin")
-    if oracle.sha256 != V1_ORACLE_SHA256:
-        raise ValueError("packaged v1 certification oracle does not match its code pin")
-    if certification_bundle_sha256(bundle) != V1_BUNDLE_SHA256:
-        raise ValueError("packaged v1 certification bundle does not match its code pin")
-    return bundle
+    return _require_v1_code_pins(
+        CertificationBundle(fixture=fixture, oracle=oracle)
+    )
 
 
 def certification_bundle_sha256(bundle: CertificationBundle | None = None) -> str:
@@ -81,7 +87,11 @@ def run_certification_scenario(
     bundle: CertificationBundle | None = None,
 ) -> BookResult:
     """Execute one frozen scenario through the production daily book engine."""
-    loaded = bundle or load_certification_bundle()
+    loaded = (
+        load_certification_bundle()
+        if bundle is None
+        else _require_v1_code_pins(bundle)
+    )
     matches = [row for row in loaded.fixture.scenarios if row.name == name]
     if len(matches) != 1:
         raise KeyError(f"unknown certification fixture scenario: {name}")

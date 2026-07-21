@@ -23,6 +23,7 @@ from echolon.backtest.book.certification import (
     canonical_artifact_sha256,
 )
 from echolon.backtest.book.certification.models import (
+    CertificationBundle,
     CertificationFixture,
     CertificationOracle,
 )
@@ -80,6 +81,18 @@ def test_fully_rehashed_substitute_bundle_still_fails_code_pin(
 
     with pytest.raises(ValueError, match="does not match its code pin"):
         load_certification_bundle()
+
+    substituted_bundle = CertificationBundle(
+        fixture=substituted_fixture,
+        oracle=substituted_oracle,
+    )
+    with pytest.raises(ValueError, match="does not match its code pin"):
+        run_certification_scenario(
+            "normal_scheduled",
+            output_dir=tmp_path / "substitute-run",
+            bundle=substituted_bundle,
+        )
+    assert not (tmp_path / "substitute-run").exists()
 
 
 @pytest.mark.parametrize(
