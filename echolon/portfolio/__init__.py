@@ -1,6 +1,6 @@
 """Public portfolio construction and book-risk primitives."""
 from .combiner import Combiner
-from .constructor import Constructor, ConstructorConfig
+from .constructor import Constructor, ConstructorConfig, round_toward_zero_lot
 from .models import (
     BookRiskSnapshot,
     BookState,
@@ -18,6 +18,7 @@ __all__ = [
     "Combiner",
     "Constructor",
     "ConstructorConfig",
+    "round_toward_zero_lot",
     "InstrumentRebalance",
     "PortfolioStrategy",
     "PositionState",
@@ -25,4 +26,3 @@ __all__ = [
     "TargetBook",
     "TwoSleeveStrategy",
 ]
-

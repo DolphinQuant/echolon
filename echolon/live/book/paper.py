@@ -14,9 +14,9 @@ from __future__ import annotations
 import datetime as dt
 from dataclasses import dataclass
 
-from echolon.backtest.book.engine import (  # single source of truth for cost arithmetic
+from echolon.backtest.book.accounting import commission_rmb
+from echolon.backtest.book.engine import (  # single source of truth for position arithmetic
     _Position,
-    _commission_rmb,
     _realized_pnl,
     _slipped_price,
     _updated_position,
@@ -66,7 +66,9 @@ def simulate_paper_fill(
         lots=float(position.lots), avg_price=position.avg_price, contract=position.contract
     )
     fill_price = _slipped_price(float(open_price), lots_delta, float(slippage_bps), float(meta.tick))
-    commission = _commission_rmb(meta, fill_price, abs(lots_delta), close_today=close_today)
+    commission = commission_rmb(
+        meta, fill_price, abs(lots_delta), close_today=close_today
+    )
     realized = _realized_pnl(engine_position, lots_delta, fill_price, float(meta.multiplier))
     updated = _updated_position(engine_position, lots_delta, fill_price, contract, date=fill_date)
     return PaperFill(
