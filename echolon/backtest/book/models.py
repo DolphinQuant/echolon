@@ -7,6 +7,7 @@ from typing import Literal
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 from .nominal_schedule import NominalCycleSchedule
+from .risk_policy import RiskPolicyBinding
 from .schedule import ExecutionContractSchedule
 
 
@@ -31,6 +32,10 @@ class BookBacktestConfig(BaseModel):
         exclude_if=lambda value: value == "legacy",
     )
     nominal_cycle_schedule: NominalCycleSchedule | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
+    risk_policy_binding: RiskPolicyBinding | None = Field(
         default=None,
         exclude_if=lambda value: value is None,
     )

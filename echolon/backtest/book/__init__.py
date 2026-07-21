@@ -11,6 +11,7 @@ from .nominal_schedule import (
     nominal_cycle_id,
     write_nominal_cycle_schedule,
 )
+from .risk_policy import RiskPolicyBinding
 from .schedule import (
     ExecutionContractSchedule,
     ExecutionContractScheduleRow,
@@ -29,6 +30,7 @@ __all__ = [
     "IBookBacktester",
     "NominalCycleSchedule",
     "NominalCycleScheduleRow",
+    "RiskPolicyBinding",
     "Summary",
     "TradeRecord",
     "canonical_schedule_sha256",

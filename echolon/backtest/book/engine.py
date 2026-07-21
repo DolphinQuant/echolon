@@ -7,14 +7,15 @@ import hashlib
 import json
 import math
 from dataclasses import dataclass
-from decimal import ROUND_CEILING, Decimal
+from decimal import ROUND_CEILING, Decimal, InvalidOperation
 from pathlib import Path
 from typing import Any, Mapping, Sequence
 
 import pandas as pd
+from pydantic import ValidationError
 
 from echolon.panel import PanelData
-from echolon.portfolio import BookState, PortfolioStrategy
+from echolon.portfolio import BookState, Constructor, ConstructorConfig, PortfolioStrategy
 
 from .interface import IBookBacktester
 from .models import BookBacktestConfig, BookResult, EquityPoint, Summary, TradeRecord
@@ -23,6 +24,7 @@ from .nominal_schedule import (
     NominalCycleSchedule,
     NominalCycleScheduleRow,
 )
+from .risk_policy import RiskPolicyBinding
 from .schedule import (
     EXECUTABLE_STATUS,
     ExecutionContractSchedule,
@@ -113,6 +115,7 @@ class DailyBookBacktester(IBookBacktester):
         panel: PanelData,
         config: BookBacktestConfig,
     ) -> BookResult:
+        risk_policy_binding = _bind_risk_policy(strategy, config)
         self._last_buy_fill_dates = {}
         dates = [date for date in panel.calendar if config.start <= date <= config.end]
         if len(dates) < 2:
@@ -129,6 +132,8 @@ class DailyBookBacktester(IBookBacktester):
         rebalance_records: list[dict] = []
         events: list[dict] = []
         pending_targets: dict[str, _PendingTarget] = {}
+        if risk_policy_binding is not None:
+            events.append(_risk_policy_bound_event(risk_policy_binding, dates[0]))
         if execution_contract_binding is not None:
             events.append(
                 _execution_contract_schedule_bound_event(
@@ -287,6 +292,10 @@ class DailyBookBacktester(IBookBacktester):
                     ),
                 )
                 record_payload = record.model_dump(mode="json")
+                if risk_policy_binding is not None:
+                    record_payload["risk_policy_binding"] = (
+                        _risk_policy_provenance(risk_policy_binding)
+                    )
                 if nominal_cycle_binding is not None:
                     assert nominal_cycle_row is not None
                     record_payload["nominal_cycle_schedule"] = (
@@ -883,6 +892,89 @@ def _nominal_cycle_provenance(
             if row.exit_fill_date is not None
             else None
         ),
+    }
+
+
+def _bind_risk_policy(
+    strategy: PortfolioStrategy,
+    config: BookBacktestConfig,
+) -> RiskPolicyBinding | None:
+    """Revalidate and bind an opaque policy before simulation state can change."""
+    configured = config.risk_policy_binding
+    if configured is None:
+        return None
+    if not isinstance(configured, RiskPolicyBinding):
+        raise ValueError("risk_policy_binding is not a RiskPolicyBinding model")
+    try:
+        binding = RiskPolicyBinding.model_validate(
+            configured.model_dump(mode="python")
+        )
+    except ValidationError as exc:
+        raise ValueError("risk_policy_binding failed revalidation") from exc
+
+    if not isinstance(strategy, PortfolioStrategy):
+        raise ValueError("risk policy binding requires a PortfolioStrategy")
+    constructor = getattr(strategy, "constructor", None)
+    if not isinstance(constructor, Constructor):
+        raise ValueError(
+            "risk policy binding requires PortfolioStrategy.constructor"
+        )
+    constructor_config = getattr(constructor, "config", None)
+    if not isinstance(constructor_config, ConstructorConfig):
+        raise ValueError(
+            "risk policy binding requires PortfolioStrategy.constructor.config"
+        )
+    configured_target = getattr(
+        constructor_config, "vol_target_ann_pct", None
+    )
+    if isinstance(configured_target, bool) or not isinstance(
+        configured_target, (int, float)
+    ):
+        raise ValueError(
+            "PortfolioStrategy constructor volatility target must be numeric"
+        )
+    try:
+        actual_target = Decimal(str(configured_target))
+    except (InvalidOperation, ValueError) as exc:
+        raise ValueError(
+            "PortfolioStrategy constructor volatility target is invalid"
+        ) from exc
+    if not actual_target.is_finite() or actual_target <= 0:
+        raise ValueError(
+            "PortfolioStrategy constructor volatility target must be finite and positive"
+        )
+    expected_target = Decimal(
+        binding.effective_constructor_vol_target_ann_pct
+    )
+    if actual_target != expected_target:
+        raise ValueError(
+            "PortfolioStrategy constructor volatility target does not match the "
+            "bound risk policy: "
+            f"strategy={configured_target!r}, "
+            "binding="
+            f"{binding.effective_constructor_vol_target_ann_pct!r}"
+        )
+    return binding
+
+
+def _risk_policy_provenance(binding: RiskPolicyBinding) -> dict[str, str]:
+    return {
+        "schema": binding.schema,
+        "policy_sha256": binding.policy_sha256,
+        "effective_constructor_vol_target_ann_pct": (
+            binding.effective_constructor_vol_target_ann_pct
+        ),
+    }
+
+
+def _risk_policy_bound_event(
+    binding: RiskPolicyBinding,
+    first_panel_date: dt.date,
+) -> dict:
+    return {
+        "date": first_panel_date.isoformat(),
+        "type": "risk_policy_bound",
+        "detail": _risk_policy_provenance(binding),
     }
 
 
