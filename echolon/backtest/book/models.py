@@ -2,9 +2,11 @@
 from __future__ import annotations
 
 import datetime as dt
+from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, Field, model_validator
 
+from .nominal_schedule import NominalCycleSchedule
 from .schedule import ExecutionContractSchedule
 
 
@@ -24,10 +26,50 @@ class BookBacktestConfig(BaseModel):
         default=None,
         exclude_if=lambda value: value is None,
     )
+    rebalance_mode: Literal["legacy", "nominal_cycle_schedule"] = Field(
+        default="legacy",
+        exclude_if=lambda value: value == "legacy",
+    )
+    nominal_cycle_schedule: NominalCycleSchedule | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
     slippage_bps_by_instrument: dict[str, float] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _validate_execution_contract_schedule(self) -> "BookBacktestConfig":
+        if self.rebalance_mode == "legacy" and self.nominal_cycle_schedule is not None:
+            raise ValueError(
+                "nominal_cycle_schedule requires "
+                "rebalance_mode='nominal_cycle_schedule'"
+            )
+        if (
+            self.rebalance_mode == "nominal_cycle_schedule"
+            and self.nominal_cycle_schedule is None
+        ):
+            raise ValueError(
+                "rebalance_mode='nominal_cycle_schedule' requires "
+                "nominal_cycle_schedule"
+            )
+        nominal_schedule = self.nominal_cycle_schedule
+        if nominal_schedule is not None:
+            if self.panel_manifest_sha256 is None:
+                raise ValueError(
+                    "panel_manifest_sha256 is required with a nominal-cycle schedule"
+                )
+            if self.panel_snapshot != nominal_schedule.source_panel_snapshot:
+                raise ValueError(
+                    "nominal-cycle schedule source_panel_snapshot does not match "
+                    "BookBacktestConfig.panel_snapshot"
+                )
+            if (
+                self.panel_manifest_sha256
+                != nominal_schedule.source_panel_manifest_sha256
+            ):
+                raise ValueError(
+                    "nominal-cycle schedule source_panel_manifest_sha256 does not "
+                    "match BookBacktestConfig.panel_manifest_sha256"
+                )
         schedule = self.execution_contract_schedule
         if schedule is None:
             return self
