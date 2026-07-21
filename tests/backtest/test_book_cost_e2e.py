@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 
 from echolon.backtest.book import BookBacktestConfig, DailyBookBacktester
+from echolon.live.book import DiffOrder, TargetExecutor
 from echolon.panel.models import InstrumentMeta
 from echolon.portfolio import BookState, RebalanceRecord, TargetBook
 
@@ -66,6 +67,11 @@ class _View:
         frame = self._bars[instrument]
         return frame.loc[frame.index <= self.date].tail(lookback).copy()
 
+    def current_bar(self, instrument: str):
+        frame = self._bars[instrument]
+        rows = frame.loc[frame.index == self.date]
+        return None if rows.empty else rows.iloc[0].copy()
+
     def contract_bar(self, instrument: str, contract: str):
         frame = self._contracts[instrument]
         rows = frame.loc[frame.index == self.date]
@@ -73,6 +79,16 @@ class _View:
         if rows.empty:
             return None
         return rows.iloc[0].copy()
+
+    def contract_bar_asof(self, instrument: str, contract: str):
+        frame = self._contracts[instrument]
+        rows = frame.loc[frame.index <= self.date]
+        rows = rows[rows["contract"].astype(str) == str(contract)]
+        if rows.empty:
+            fallback = self._bars[instrument]
+            rows = fallback.loc[fallback.index <= self.date]
+            rows = rows[rows["contract"].astype(str) == str(contract)]
+        return None if rows.empty else rows.iloc[-1].copy()
 
     def meta(self, instrument: str) -> InstrumentMeta:
         return self._meta[instrument]
@@ -251,12 +267,21 @@ def test_fill_refusal_is_auditable_and_does_not_block_other_names(tmp_path: Path
         ),
     )
 
-    assert not any(trade.instrument == "al" for trade in result.trades)
+    al_trades = [trade for trade in result.trades if trade.instrument == "al"]
+    assert [(trade.date, trade.lots) for trade in al_trades] == [(new_dates[2], 1.0)]
     assert any(trade.instrument == "cu" for trade in result.trades)
     assert result.events == [{
         "date": new_dates[1].isoformat(),
         "type": "fill_refused",
-        "detail": {"instrument": "al", "side": "BUY", "lots": 1.0, "reason": "suspended"},
+        "detail": {
+            "instrument": "al",
+            "side": "BUY",
+            "lots": 1.0,
+            "target_lots": 1.0,
+            "decision_date": new_dates[0].isoformat(),
+            "reason": "suspended",
+            "pending_action": "retained",
+        },
     }]
 
 
@@ -286,8 +311,22 @@ def test_locked_limit_open_refuses_fill(
                            panel_snapshot="synthetic_book"),
     )
 
-    assert not result.trades
-    assert result.events[0]["detail"]["reason"] == expected_reason
+    assert [(trade.date, trade.lots) for trade in result.trades] == [
+        (new_dates[2], 1.0)
+    ]
+    assert result.events == [{
+        "date": new_dates[1].isoformat(),
+        "type": "fill_refused",
+        "detail": {
+            "instrument": "al",
+            "side": "BUY" if target > 0 else "SELL",
+            "lots": 1.0,
+            "target_lots": float(target),
+            "decision_date": new_dates[0].isoformat(),
+            "reason": expected_reason,
+            "pending_action": "retained",
+        },
+    }]
 
 
 def test_buy_one_tick_below_limit_up_fills(tmp_path: Path):
@@ -469,3 +508,148 @@ def test_book_backtester_closes_held_contract_when_flattening_on_roll_date(tmp_p
     assert [trade.position_after for trade in result.trades] == [1, 0]
     assert result.trades[1].realized_pnl_rmb == pytest.approx(50.0)
     assert result.equity_curve[-1].equity_rmb == pytest.approx(100_050.0)
+
+
+@pytest.mark.parametrize(
+    ("pending_target", "expected_contracts", "expected_sides", "expected_after"),
+    [
+        (0, ["AL2401", "AL2401"], ["BUY", "SELL"], [1.0, 0.0]),
+        (
+            -1,
+            ["AL2401", "AL2401", "AL2402"],
+            ["BUY", "SELL", "SELL"],
+            [1.0, 0.0, -1.0],
+        ),
+    ],
+)
+def test_roll_with_pending_absolute_target_executes_once(
+    tmp_path: Path,
+    pending_target: int,
+    expected_contracts: list[str],
+    expected_sides: list[str],
+    expected_after: list[float],
+):
+    panel = _Panel()
+    dates = panel.calendar
+    main = _bars([100.0, 100.0, 200.0, 200.0, 200.0], "AL2401")
+    main["contract"] = ["AL2401", "AL2401", "AL2402", "AL2402", "AL2402"]
+    held = _bars([100.0, 100.0, 110.0], "AL2401")
+    new = _bars([200.0, 200.0, 200.0], "AL2402")
+    new.index = dates[2:]
+    panel._bars["al"] = main
+    panel._contracts["al"] = pd.concat([held, new]).assign(
+        symbol=lambda frame: frame["contract"]
+    ).sort_index()
+
+    result = DailyBookBacktester(
+        output_dir=tmp_path, slippage_bps=0.0, rebalance_weekday=None
+    ).run(
+        _DatedStrategy(
+            {dates[0]: {"al": 1}, dates[1]: {"al": pending_target}}
+        ),
+        panel,
+        BookBacktestConfig(
+            start=dates[0], end=dates[2], initial_equity_rmb=100_000.0,
+            panel_snapshot="pending_roll_target",
+        ),
+    )
+    al_trades = [trade for trade in result.trades if trade.instrument == "al"]
+
+    assert [trade.contract for trade in al_trades] == expected_contracts
+    assert [trade.side for trade in al_trades] == expected_sides
+    assert [trade.position_after for trade in al_trades] == expected_after
+
+
+def test_target_book_public_contract_defines_omission_as_absolute_zero():
+    description = TargetBook.model_fields["targets"].description
+    assert description is not None
+    assert "Absolute target lots" in description
+    assert "omitted" in description and "zero" in description
+
+
+def test_new_absolute_book_omission_cancels_flat_deferred_open_with_live_parity(
+    tmp_path: Path,
+):
+    panel = _Panel()
+    dates = panel.calendar
+    panel._bars["al"] = panel._bars["al"].drop(index=dates[1])
+    panel._contracts["al"] = panel._contracts["al"].drop(index=dates[1])
+    strategy = _DatedStrategy(
+        {dates[0]: {"al": 1}, dates[1]: {}}
+    )
+
+    result = DailyBookBacktester(
+        output_dir=tmp_path, slippage_bps=0.0, rebalance_weekday=None
+    ).run(
+        strategy,
+        panel,
+        BookBacktestConfig(
+            start=dates[0], end=dates[-1], initial_equity_rmb=700_000.0,
+            panel_snapshot="absolute_target_flat",
+        ),
+    )
+    live_plan = TargetExecutor(
+        router=None, book_id="generic", symbol_map={"al": "AL"}
+    ).plan(TargetBook(date=dates[1], targets={}), current_lots={})
+
+    assert live_plan == []
+    assert not any(trade.instrument == "al" for trade in result.trades)
+    assert result.events == [
+        {
+            "date": dates[1].isoformat(),
+            "type": "target_deferred",
+            "detail": {
+                "instrument": "al",
+                "target_lots": 1.0,
+                "decision_date": dates[0].isoformat(),
+                "reason": "missing_exact_main_bar",
+            },
+        },
+        {
+            "date": dates[1].isoformat(),
+            "type": "target_cancelled",
+            "detail": {
+                "instrument": "al",
+                "target_lots": 1.0,
+                "decision_date": dates[0].isoformat(),
+                "superseding_decision_date": dates[1].isoformat(),
+                "reason": "omitted_by_new_target_book",
+            },
+        },
+    ]
+
+
+def test_new_absolute_book_omission_flattens_held_name_with_live_parity(
+    tmp_path: Path,
+):
+    panel = _Panel()
+    dates = panel.calendar
+    strategy = _DatedStrategy(
+        {dates[0]: {"al": 1}, dates[1]: {}}
+    )
+
+    result = DailyBookBacktester(
+        output_dir=tmp_path, slippage_bps=0.0, rebalance_weekday=None
+    ).run(
+        strategy,
+        panel,
+        BookBacktestConfig(
+            start=dates[0], end=dates[-1], initial_equity_rmb=700_000.0,
+            panel_snapshot="absolute_target_held",
+        ),
+    )
+    live_plan = TargetExecutor(
+        router=None, book_id="generic", symbol_map={"al": "AL"}
+    ).plan(TargetBook(date=dates[1], targets={}), current_lots={"al": 1})
+
+    assert live_plan == [
+        DiffOrder(instrument="al", symbol="AL", intent="EXIT_LONG", volume=1)
+    ]
+    assert [
+        (trade.date, trade.side, trade.lots)
+        for trade in result.trades
+        if trade.instrument == "al"
+    ] == [
+        (dates[1], "BUY", 1.0),
+        (dates[2], "SELL", 1.0),
+    ]
