@@ -17,6 +17,7 @@ from echolon.backtest.book import (
 from echolon.panel.models import InstrumentMeta
 from echolon.portfolio import (
     BookState,
+    Constructor,
     ConstructorConfig,
     PortfolioStrategy,
     RebalanceRecord,
@@ -116,6 +117,27 @@ class _ConstantSignal(SignalEngine):
         )
 
 
+class _MutatingSignal(_ConstantSignal):
+    def __init__(self) -> None:
+        super().__init__()
+        self.owner: PortfolioStrategy | None = None
+
+    def compute(self, view) -> ScoreVector:
+        assert self.owner is not None
+        self.owner.constructor.config.vol_target_ann_pct = 1200.0
+        return super().compute(view)
+
+
+class _StrategySubclass(PortfolioStrategy):
+    def rebalance(self, view, book):
+        raise AssertionError("bound execution must reject this override before work")
+
+
+class _ConstructorSubclass(Constructor):
+    def construct(self, **kwargs):
+        raise AssertionError("bound execution must reject this override before work")
+
+
 class _StaticStrategy:
     def __init__(self) -> None:
         self.calls = 0
@@ -149,6 +171,23 @@ def _strategy(target: float = 12.0) -> tuple[PortfolioStrategy, _ConstantSignal]
         ),
     )
     return strategy, signal
+
+
+def _strategy_with_signal(
+    signal: SignalEngine,
+    target: float = 12.0,
+) -> PortfolioStrategy:
+    return PortfolioStrategy(
+        [signal],
+        {signal.signal_id: 1.0},
+        ConstructorConfig(
+            vol_target_ann_pct=target,
+            sector_caps_pct={"generic": 100.0},
+            max_margin_utilization_pct=100.0,
+            min_abs_score_for_position=0.0,
+            sizing_mode="research",
+        ),
+    )
 
 
 def _config(
@@ -211,7 +250,7 @@ def test_missing_strategy_surface_and_target_mismatch_fail_before_work(
     panel = _Panel()
     malformed = _StaticStrategy()
     malformed_output = tmp_path / "malformed"
-    with pytest.raises(ValueError, match="requires a PortfolioStrategy"):
+    with pytest.raises(ValueError, match="exact built-in PortfolioStrategy"):
         DailyBookBacktester(
             output_dir=malformed_output,
             rebalance_weekday=None,
@@ -240,7 +279,7 @@ def test_malformed_portfolio_strategy_constructor_surface_fails_closed(
     strategy.constructor = object()  # type: ignore[assignment]
     output_dir = tmp_path / "malformed-constructor"
 
-    with pytest.raises(ValueError, match="PortfolioStrategy.constructor"):
+    with pytest.raises(ValueError, match="exact built-in Constructor"):
         DailyBookBacktester(
             output_dir=output_dir,
             rebalance_weekday=None,
@@ -249,6 +288,128 @@ def test_malformed_portfolio_strategy_constructor_surface_fails_closed(
     assert signal.calls == 0
     assert panel.view_calls == 0
     assert not output_dir.exists()
+
+
+def test_portfolio_strategy_subclass_override_is_rejected_before_work(tmp_path: Path):
+    panel = _Panel()
+    base, signal = _strategy()
+    strategy = _StrategySubclass(
+        base.engines,
+        base.combiner.weights,
+        base.constructor.config,
+    )
+    output_dir = tmp_path / "strategy-subclass"
+
+    with pytest.raises(ValueError, match="exact built-in PortfolioStrategy"):
+        DailyBookBacktester(
+            output_dir=output_dir,
+            rebalance_weekday=None,
+        ).run(strategy, panel, _config(panel, _binding()))
+
+    assert signal.calls == 0
+    assert panel.view_calls == 0
+    assert not output_dir.exists()
+
+
+def test_constructor_subclass_is_rejected_before_work(tmp_path: Path):
+    panel = _Panel()
+    strategy, signal = _strategy()
+    strategy.constructor = _ConstructorSubclass(strategy.constructor.config)
+    output_dir = tmp_path / "constructor-subclass"
+
+    with pytest.raises(ValueError, match="exact built-in Constructor"):
+        DailyBookBacktester(
+            output_dir=output_dir,
+            rebalance_weekday=None,
+        ).run(strategy, panel, _config(panel, _binding()))
+
+    assert signal.calls == 0
+    assert panel.view_calls == 0
+    assert not output_dir.exists()
+
+
+def test_mid_compute_target_mutation_cannot_reach_bound_sizing(tmp_path: Path):
+    baseline_panel = _Panel()
+    baseline_strategy, _ = _strategy()
+    baseline = DailyBookBacktester(
+        output_dir=tmp_path / "baseline",
+        slippage_bps=1.0,
+        rebalance_weekday=None,
+    ).run(
+        baseline_strategy,
+        baseline_panel,
+        _config(baseline_panel, _binding()),
+    )
+
+    mutating_signal = _MutatingSignal()
+    mutating_strategy = _strategy_with_signal(mutating_signal)
+    mutating_signal.owner = mutating_strategy
+    mutated_panel = _Panel()
+    mutated = DailyBookBacktester(
+        output_dir=tmp_path / "mutated",
+        slippage_bps=1.0,
+        rebalance_weekday=None,
+    ).run(
+        mutating_strategy,
+        mutated_panel,
+        _config(mutated_panel, _binding()),
+    )
+
+    assert mutating_signal.calls == len(mutated_panel.calendar) - 1
+    assert mutating_strategy.constructor.config.vol_target_ann_pct == 1200.0
+    assert mutated == baseline
+    assert all(
+        record["risk_policy_binding"][
+            "effective_constructor_vol_target_ann_pct"
+        ]
+        == "12"
+        for record in mutated.rebalance_records
+    )
+
+
+def test_mutation_and_restore_constructor_override_is_ignored_by_clone(
+    tmp_path: Path,
+):
+    baseline_panel = _Panel()
+    baseline_strategy, _ = _strategy()
+    baseline = DailyBookBacktester(
+        output_dir=tmp_path / "baseline-restore",
+        slippage_bps=1.0,
+        rebalance_weekday=None,
+    ).run(
+        baseline_strategy,
+        baseline_panel,
+        _config(baseline_panel, _binding()),
+    )
+
+    strategy, _ = _strategy()
+    original_construct = strategy.constructor.construct
+    override_calls = 0
+
+    def mutating_construct(**kwargs):
+        nonlocal override_calls
+        override_calls += 1
+        strategy.constructor.config.vol_target_ann_pct = 1200.0
+        try:
+            return original_construct(**kwargs)
+        finally:
+            strategy.constructor.config.vol_target_ann_pct = 12.0
+
+    def overridden_rebalance(view, book):
+        raise AssertionError("caller strategy override must not execute")
+
+    strategy.constructor.construct = mutating_construct  # type: ignore[method-assign]
+    strategy.rebalance = overridden_rebalance  # type: ignore[method-assign]
+    panel = _Panel()
+    result = DailyBookBacktester(
+        output_dir=tmp_path / "mutation-restore",
+        slippage_bps=1.0,
+        rebalance_weekday=None,
+    ).run(strategy, panel, _config(panel, _binding()))
+
+    assert override_calls == 0
+    assert strategy.constructor.config.vol_target_ann_pct == 12.0
+    assert result == baseline
 
 
 def test_success_binds_event_and_every_rebalance_record(tmp_path: Path):

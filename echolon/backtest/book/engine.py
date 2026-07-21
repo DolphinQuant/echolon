@@ -15,7 +15,13 @@ import pandas as pd
 from pydantic import ValidationError
 
 from echolon.panel import PanelData
-from echolon.portfolio import BookState, Constructor, ConstructorConfig, PortfolioStrategy
+from echolon.portfolio import (
+    BookState,
+    Combiner,
+    Constructor,
+    ConstructorConfig,
+    PortfolioStrategy,
+)
 
 from .interface import IBookBacktester
 from .models import BookBacktestConfig, BookResult, EquityPoint, Summary, TradeRecord
@@ -115,7 +121,7 @@ class DailyBookBacktester(IBookBacktester):
         panel: PanelData,
         config: BookBacktestConfig,
     ) -> BookResult:
-        risk_policy_binding = _bind_risk_policy(strategy, config)
+        risk_policy_binding, effective_strategy = _bind_risk_policy(strategy, config)
         self._last_buy_fill_dates = {}
         dates = [date for date in panel.calendar if config.start <= date <= config.end]
         if len(dates) < 2:
@@ -272,7 +278,7 @@ class DailyBookBacktester(IBookBacktester):
                         if position.lots
                     },
                 )
-                target, record = strategy.rebalance(view, book)
+                target, record = effective_strategy.rebalance(view, book)
                 if execution_contract_binding is not None:
                     _validate_target_schedule_scope(
                         target.targets,
@@ -898,11 +904,11 @@ def _nominal_cycle_provenance(
 def _bind_risk_policy(
     strategy: PortfolioStrategy,
     config: BookBacktestConfig,
-) -> RiskPolicyBinding | None:
-    """Revalidate and bind an opaque policy before simulation state can change."""
+) -> tuple[RiskPolicyBinding | None, Any]:
+    """Revalidate policy state and isolate the exact strategy that will size."""
     configured = config.risk_policy_binding
     if configured is None:
-        return None
+        return None, strategy
     if not isinstance(configured, RiskPolicyBinding):
         raise ValueError("risk_policy_binding is not a RiskPolicyBinding model")
     try:
@@ -912,21 +918,69 @@ def _bind_risk_policy(
     except ValidationError as exc:
         raise ValueError("risk_policy_binding failed revalidation") from exc
 
-    if not isinstance(strategy, PortfolioStrategy):
-        raise ValueError("risk policy binding requires a PortfolioStrategy")
-    constructor = getattr(strategy, "constructor", None)
-    if not isinstance(constructor, Constructor):
+    if type(strategy) is not PortfolioStrategy:
         raise ValueError(
-            "risk policy binding requires PortfolioStrategy.constructor"
+            "risk policy binding requires the exact built-in PortfolioStrategy type"
+        )
+    constructor = getattr(strategy, "constructor", None)
+    if type(constructor) is not Constructor:
+        raise ValueError(
+            "risk policy binding requires the exact built-in Constructor type"
         )
     constructor_config = getattr(constructor, "config", None)
-    if not isinstance(constructor_config, ConstructorConfig):
+    if type(constructor_config) is not ConstructorConfig:
         raise ValueError(
-            "risk policy binding requires PortfolioStrategy.constructor.config"
+            "risk policy binding requires the exact built-in ConstructorConfig type"
         )
-    configured_target = getattr(
-        constructor_config, "vol_target_ann_pct", None
+    try:
+        cloned_constructor_config = ConstructorConfig.model_validate(
+            constructor_config.model_dump(mode="python")
+        )
+    except ValidationError as exc:
+        raise ValueError(
+            "PortfolioStrategy constructor config failed revalidation"
+        ) from exc
+    _validate_bound_constructor_target(cloned_constructor_config, binding)
+
+    combiner = getattr(strategy, "combiner", None)
+    if type(combiner) is not Combiner:
+        raise ValueError(
+            "risk policy binding requires the exact built-in Combiner type"
+        )
+    weights = getattr(combiner, "weights", None)
+    if type(weights) is not dict:
+        raise ValueError("risk policy binding requires built-in combiner weights")
+    engines = getattr(strategy, "engines", None)
+    if type(engines) is not list:
+        raise ValueError("risk policy binding requires a built-in engine list")
+
+    # The engines are intentionally shared: they may own caches and call counters.
+    # Every mutable sizing/blending surface is rebuilt, so an engine backreference
+    # can mutate only the caller's strategy, never the strategy that reaches sizing.
+    effective_strategy = PortfolioStrategy(
+        list(engines),
+        dict(weights),
+        cloned_constructor_config,
     )
+    if (
+        type(effective_strategy) is not PortfolioStrategy
+        or type(effective_strategy.constructor) is not Constructor
+        or type(effective_strategy.constructor.config) is not ConstructorConfig
+        or type(effective_strategy.combiner) is not Combiner
+    ):
+        raise ValueError("failed to construct an exact built-in bound strategy")
+    _validate_bound_constructor_target(
+        effective_strategy.constructor.config,
+        binding,
+    )
+    return binding, effective_strategy
+
+
+def _validate_bound_constructor_target(
+    constructor_config: ConstructorConfig,
+    binding: RiskPolicyBinding,
+) -> None:
+    configured_target = getattr(constructor_config, "vol_target_ann_pct", None)
     if isinstance(configured_target, bool) or not isinstance(
         configured_target, (int, float)
     ):
@@ -954,7 +1008,6 @@ def _bind_risk_policy(
             "binding="
             f"{binding.effective_constructor_vol_target_ann_pct!r}"
         )
-    return binding
 
 
 def _risk_policy_provenance(binding: RiskPolicyBinding) -> dict[str, str]:
