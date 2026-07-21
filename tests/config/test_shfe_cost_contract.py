@@ -80,11 +80,25 @@ def test_cu_percentage_commission_includes_multiplier() -> None:
 
 
 def test_close_today_none_defaults_to_normal_commission() -> None:
-    cu = get_instrument("cu")
+    # A synthetic percentage spec with no explicit close-today falls back to the normal
+    # rate (mechanism test; kept synthetic so it is immune to real-instrument rate data
+    # — e.g. cu now carries an explicit doubled 平今 leg per the ratified 2026-07-20
+    # full-panel commission authority).
+    spec = InstrumentSpec(
+        code="xx",
+        name="synthetic",
+        market="SHFE",
+        multiplier=5.0,
+        tick_size=10.0,
+        margin_rate=0.09,
+        commission=0.00005,
+        commission_type="percentage",
+        close_today_commission=None,
+    )
 
-    assert cu.close_today_commission is None
-    assert cu.calculate_commission(
+    assert spec.close_today_commission is None
+    assert spec.calculate_commission(
         price=70000.0,
         size=1,
         close_today=True,
-    ) == pytest.approx(cu.calculate_commission(price=70000.0, size=1))
+    ) == pytest.approx(spec.calculate_commission(price=70000.0, size=1))

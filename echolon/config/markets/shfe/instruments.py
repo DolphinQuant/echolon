@@ -27,8 +27,9 @@ INSTRUMENTS: Dict[str, InstrumentSpec] = {
         multiplier=5.0,           # 5吨/手 (5 tons per lot)
         tick_size=5.0,            # 5元/吨 (5 CNY minimum price move per ton)
         margin_rate=0.09,         # 合约价值的5% (5% of contract value)
-        commission=3.01,          # Fixed commission per lot (broker-specific)
+        commission=3.0,           # 元/手 (开仓/平昨); exchange-standard, akshare +0.01 broker offset excluded (2026-07-20)
         commission_type='per_contract',
+        close_today_commission=3.0,  # 平今 flat (= 开仓)
         currency='CNY',
         trading_unit='lots',
         min_order_size=1.0,
@@ -42,8 +43,9 @@ INSTRUMENTS: Dict[str, InstrumentSpec] = {
         multiplier=5.0,           # 5 tons per contract
         tick_size=10.0,           # 10 CNY minimum price move
         margin_rate=0.09,         # 10% margin
-        commission=0.00005,       # 0.005% of trade value
+        commission=0.00005,       # 万分之0.5 of trade value (开仓/平昨); exchange-standard (2026-07-20)
         commission_type='percentage',
+        close_today_commission=0.0001,  # 平今 doubles the base (万分之1)
         currency='CNY',
         trading_unit='lots',
         min_order_size=1.0,
@@ -57,8 +59,9 @@ INSTRUMENTS: Dict[str, InstrumentSpec] = {
         multiplier=5.0,
         tick_size=5.0,
         margin_rate=0.10,
-        commission=3.0,
+        commission=3.0,           # 元/手 (开仓/平昨); exchange-standard (2026-07-20)
         commission_type='per_contract',
+        close_today_commission=0.0,  # 平今 free
         currency='CNY',
         trading_unit='lots',
         min_order_size=1.0,
@@ -72,8 +75,9 @@ INSTRUMENTS: Dict[str, InstrumentSpec] = {
         multiplier=5.0,
         tick_size=5.0,
         margin_rate=0.10,
-        commission=0.00004,       # 0.004% of trade value
+        commission=0.00004,       # 万分之0.4 of trade value (开仓/平昨); exchange-standard (2026-07-20)
         commission_type='percentage',
+        close_today_commission=0.0,  # 平今 free
         currency='CNY',
         trading_unit='lots',
         min_order_size=1.0,
@@ -110,6 +114,25 @@ INSTRUMENTS: Dict[str, InstrumentSpec] = {
         has_night_session=True,
         sessions=ALL_SESSIONS,
     ),
+    'ao': InstrumentSpec(
+        code='ao',
+        name='alumina',
+        market='SHFE',
+        # Contract spec (multiplier 20 吨/手, tick 1 元/吨) verified against
+        # akshare futures_fees_info (合约乘数/最小跳动) 2026-07-19; panel-v5 add.
+        multiplier=20.0,          # 20吨/手 (20 tons per lot)
+        tick_size=1.0,            # 1元/吨
+        # margin/commission are broker-observed snapshots (akshare
+        # futures_fees_info, updated 2026-07-18) and vary over time.
+        margin_rate=0.11,
+        commission=0.0001,        # 万分之1 flat (开仓/平昨/平今); exchange-standard, akshare +0.000001 offset excluded (2026-07-20)
+        commission_type='percentage',
+        currency='CNY',
+        trading_unit='lots',
+        min_order_size=1.0,
+        has_night_session=True,
+        sessions=ALL_SESSIONS,
+    ),
 
     # =========================================================================
     # Precious Metals
@@ -136,7 +159,7 @@ INSTRUMENTS: Dict[str, InstrumentSpec] = {
         multiplier=15.0,          # 15 kg per contract
         tick_size=1.0,
         margin_rate=0.11,
-        commission=0.00005,
+        commission=0.00001,       # 万分之0.1 flat (开仓/平昨/平今); 3-portal majority (akshare implies 5x, conflict disclosed in authority v3) (2026-07-20)
         commission_type='percentage',
         currency='CNY',
         trading_unit='lots',
@@ -155,7 +178,7 @@ INSTRUMENTS: Dict[str, InstrumentSpec] = {
         multiplier=10.0,          # 10 tons per contract
         tick_size=1.0,
         margin_rate=0.07,
-        commission=0.00001,
+        commission=0.0001,        # 万分之1 flat (开仓/平昨/平今); exchange-standard (2026-07-20)
         commission_type='percentage',
         currency='CNY',
         trading_unit='lots',
@@ -170,7 +193,7 @@ INSTRUMENTS: Dict[str, InstrumentSpec] = {
         multiplier=10.0,
         tick_size=1.0,
         margin_rate=0.09,
-        commission=0.00001,
+        commission=0.0001,        # 万分之1 flat (开仓/平昨/平今); exchange-standard (2026-07-20)
         commission_type='percentage',
         currency='CNY',
         trading_unit='lots',
@@ -185,8 +208,9 @@ INSTRUMENTS: Dict[str, InstrumentSpec] = {
         multiplier=5.0,
         tick_size=5.0,
         margin_rate=0.10,
-        commission=3.0,
+        commission=2.0,           # 元/手 (开仓/平昨); exchange-standard, level corrected (2026-07-20)
         commission_type='per_contract',
+        close_today_commission=0.0,  # 平今 free
         currency='CNY',
         trading_unit='lots',
         min_order_size=1.0,
@@ -204,8 +228,9 @@ INSTRUMENTS: Dict[str, InstrumentSpec] = {
         multiplier=10.0,
         tick_size=2.0,
         margin_rate=0.10,
-        commission=0.00001,
+        commission=0.00005,       # 万分之0.5 (开仓/平昨); exchange-standard, level corrected (2026-07-20)
         commission_type='percentage',
+        close_today_commission=0.0,  # 平今 free
         currency='CNY',
         trading_unit='lots',
         min_order_size=1.0,
@@ -219,8 +244,9 @@ INSTRUMENTS: Dict[str, InstrumentSpec] = {
         multiplier=10.0,
         tick_size=5.0,
         margin_rate=0.09,
-        commission=0.000045,
-        commission_type='percentage',
+        commission=3.0,           # 元/手 flat (开仓/平昨); TYPE corrected percentage->per_contract; exchange-standard (2026-07-20)
+        commission_type='per_contract',
+        close_today_commission=0.0,  # 平今 free
         currency='CNY',
         trading_unit='lots',
         min_order_size=1.0,
@@ -262,7 +288,7 @@ def get_by_category(category: str) -> Dict[str, InstrumentSpec]:
     Categories: 'base_metals', 'precious_metals', 'ferrous', 'energy'
     """
     categories = {
-        'base_metals': ['al', 'cu', 'zn', 'pb', 'ni', 'sn'],
+        'base_metals': ['al', 'cu', 'zn', 'pb', 'ni', 'sn', 'ao'],
         'precious_metals': ['au', 'ag'],
         'ferrous': ['rb', 'hc', 'ss'],
         'energy': ['bu', 'ru', 'sp'],

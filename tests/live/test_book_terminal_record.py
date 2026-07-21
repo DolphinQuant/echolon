@@ -106,7 +106,9 @@ def test_book_filled_writes_computed_commission_source_when_broker_missing(tmp_p
 
     rows = _trade_execution_rows(tmp_path)
     assert len(rows) == 1
-    assert float(rows[0]["commission"]) == pytest.approx(3.01)
+    # al exchange-standard per-lot commission (3.0; akshare +0.01 broker offset stripped
+    # per the ratified full-panel commission authority, 2026-07-20)
+    assert float(rows[0]["commission"]) == pytest.approx(3.0)
     assert rows[0]["commission_source"] == "computed"
 
 
