@@ -1,7 +1,18 @@
 """Purpose-built portfolio book backtester."""
 from .engine import DailyBookBacktester
 from .interface import IBookBacktester
-from .models import BookBacktestConfig, BookResult, EquityPoint, Summary, TradeRecord
+from .models import (
+    BookBacktestConfig,
+    BookLifecycleContract,
+    BookOutcome,
+    BookResult,
+    BookRuntimeManifest,
+    EndingPendingIntent,
+    EndingPosition,
+    EquityPoint,
+    Summary,
+    TradeRecord,
+)
 from .nominal_schedule import (
     NominalCycleSchedule,
     NominalCycleScheduleRow,
@@ -12,6 +23,11 @@ from .nominal_schedule import (
     write_nominal_cycle_schedule,
 )
 from .risk_policy import RiskPolicyBinding
+from .result_identity import (
+    full_result_manifest_payload,
+    full_result_manifest_sha256,
+    verify_full_result_manifest_sha256,
+)
 from .schedule import (
     ExecutionContractSchedule,
     ExecutionContractScheduleRow,
@@ -22,7 +38,12 @@ from .schedule import (
 
 __all__ = [
     "BookBacktestConfig",
+    "BookLifecycleContract",
+    "BookOutcome",
     "BookResult",
+    "BookRuntimeManifest",
+    "EndingPendingIntent",
+    "EndingPosition",
     "DailyBookBacktester",
     "EquityPoint",
     "ExecutionContractSchedule",
@@ -41,4 +62,7 @@ __all__ = [
     "nominal_cycle_id",
     "write_execution_contract_schedule",
     "write_nominal_cycle_schedule",
+    "full_result_manifest_payload",
+    "full_result_manifest_sha256",
+    "verify_full_result_manifest_sha256",
 ]

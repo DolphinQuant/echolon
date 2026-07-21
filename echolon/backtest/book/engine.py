@@ -24,13 +24,24 @@ from echolon.portfolio import (
 )
 
 from .interface import IBookBacktester
-from .models import BookBacktestConfig, BookResult, EquityPoint, Summary, TradeRecord
+from .models import (
+    BookBacktestConfig,
+    BookOutcome,
+    BookResult,
+    BookRuntimeManifest,
+    EndingPendingIntent,
+    EndingPosition,
+    EquityPoint,
+    Summary,
+    TradeRecord,
+)
 from .nominal_schedule import (
     SCHEDULED,
     NominalCycleSchedule,
     NominalCycleScheduleRow,
 )
 from .risk_policy import RiskPolicyBinding
+from .result_identity import full_result_manifest_sha256
 from .schedule import (
     EXECUTABLE_STATUS,
     ExecutionContractSchedule,
@@ -69,6 +80,12 @@ class _RollResult:
 
 
 @dataclass(frozen=True)
+class _ExactCloseResult:
+    cash_delta: float
+    deferred: frozenset[str]
+
+
+@dataclass(frozen=True)
 class _ExecutionContractBinding:
     schedule: ExecutionContractSchedule
     rows: Mapping[tuple[dt.date, str], ExecutionContractScheduleRow]
@@ -79,6 +96,8 @@ class _NominalCycleBinding:
     schedule: NominalCycleSchedule
     decisions: Mapping[dt.date, NominalCycleScheduleRow]
     skipped_events_by_emit_date: Mapping[dt.date, tuple[dict, ...]]
+    expected_rows: tuple[NominalCycleScheduleRow, ...] = ()
+    terminal_open_date: dt.date | None = None
 
 
 class DailyBookBacktester(IBookBacktester):
@@ -138,6 +157,32 @@ class DailyBookBacktester(IBookBacktester):
         rebalance_records: list[dict] = []
         events: list[dict] = []
         pending_targets: dict[str, _PendingTarget] = {}
+        strict_lifecycle = config.lifecycle_contract is not None
+        terminal_open_date = (
+            nominal_cycle_binding.terminal_open_date
+            if nominal_cycle_binding is not None
+            and nominal_cycle_binding.terminal_open_date is not None
+            else (
+                config.lifecycle_contract.terminal_open_date
+                if config.lifecycle_contract is not None
+                else None
+            )
+        )
+        expected_cycle_ids = (
+            config.lifecycle_contract.expected_nominal_cycle_ids
+            if config.lifecycle_contract is not None
+            else ()
+        )
+        executed_cycle_ids: list[str] = []
+        liquidation_trigger_date: dt.date | None = None
+        liquidation_completion_date: dt.date | None = None
+        trigger_cash: float | None = None
+        trigger_equity: float | None = None
+        trigger_margin: float | None = None
+        liquidation_status: str | None = None
+        direct_insolvency = False
+        normal_terminal_complete = False
+        terminal_reason = "legacy lifecycle is not certified"
         if risk_policy_binding is not None:
             events.append(_risk_policy_bound_event(risk_policy_binding, dates[0]))
         if execution_contract_binding is not None:
@@ -158,11 +203,119 @@ class DailyBookBacktester(IBookBacktester):
             )
 
         for index, date in enumerate(dates):
-            if nominal_cycle_binding is not None:
+            if nominal_cycle_binding is not None and liquidation_trigger_date is None:
                 events.extend(
                     nominal_cycle_binding.skipped_events_by_emit_date.get(date, ())
                 )
             view = panel.view(date)
+
+            if strict_lifecycle and liquidation_trigger_date is not None:
+                close_result = self._close_exact_positions(
+                    view,
+                    positions,
+                    trades,
+                    config,
+                    events,
+                    event_prefix="liquidation",
+                )
+                cash += close_result.cash_delta
+                margin = _margin_used(view, positions)
+                equity = cash + _unrealized_pnl(view, positions)
+                equity_curve.append(
+                    EquityPoint(
+                        date=date,
+                        equity_rmb=round(equity, 10),
+                        cash_rmb=round(cash, 10),
+                        margin_used_rmb=round(margin, 10),
+                    )
+                )
+                if not _open_positions(positions):
+                    liquidation_completion_date = date
+                    liquidation_status = (
+                        "INSOLVENT_HALT" if equity <= 0 else "LIQUIDATED_HALT"
+                    )
+                    terminal_reason = (
+                        "liquidation completed with non-positive equity"
+                        if liquidation_status == "INSOLVENT_HALT"
+                        else "liquidation completed on the next available exact session"
+                    )
+                    events.append(
+                        {
+                            "date": date.isoformat(),
+                            "type": "liquidation_completed",
+                            "detail": {
+                                "trigger_date": liquidation_trigger_date.isoformat(),
+                                "ending_equity_rmb": round(equity, 10),
+                                "status": liquidation_status,
+                            },
+                        }
+                    )
+                    break
+                if index == len(dates) - 1:
+                    liquidation_status = "LIQUIDATION_BLOCKED_HALT"
+                    terminal_reason = (
+                        "liquidation remained blocked at the end of the run"
+                    )
+                continue
+
+            if strict_lifecycle and date == terminal_open_date:
+                close_result = self._close_exact_positions(
+                    view,
+                    positions,
+                    trades,
+                    config,
+                    events,
+                    event_prefix="terminal",
+                )
+                cash += close_result.cash_delta
+                margin = _margin_used(view, positions)
+                equity = cash + _unrealized_pnl(view, positions)
+                equity_curve.append(
+                    EquityPoint(
+                        date=date,
+                        equity_rmb=round(equity, 10),
+                        cash_rmb=round(cash, 10),
+                        margin_used_rmb=round(margin, 10),
+                    )
+                )
+                normal_terminal_complete = (
+                    not _open_positions(positions)
+                    and not pending_targets
+                    and tuple(executed_cycle_ids) == expected_cycle_ids
+                    and equity > 0
+                )
+                direct_insolvency = (
+                    not _open_positions(positions)
+                    and not pending_targets
+                    and equity <= 0
+                )
+                terminal_reason = (
+                    "strict terminal exact-open flatten ended insolvent"
+                    if direct_insolvency
+                    else (
+                        "strict terminal exact-open flatten completed"
+                        if normal_terminal_complete
+                        else "strict terminal reconciliation was incomplete"
+                    )
+                )
+                events.append(
+                    {
+                        "date": date.isoformat(),
+                        "type": (
+                            "terminal_reconciliation_completed"
+                            if normal_terminal_complete
+                            else "terminal_reconciliation_incomplete"
+                        ),
+                        "detail": {
+                            "deferred_instruments": sorted(close_result.deferred),
+                            "ending_pending_intents": len(pending_targets),
+                            "expected_nominal_cycle_ids": list(expected_cycle_ids),
+                            "executed_nominal_cycle_ids": list(executed_cycle_ids),
+                        },
+                    }
+                )
+                break
+
             eligible_pending = {
                 instrument: pending
                 for instrument, pending in pending_targets.items()
@@ -219,27 +372,77 @@ class DailyBookBacktester(IBookBacktester):
 
             margin = _margin_used(view, positions)
             equity = cash + _unrealized_pnl(view, positions)
-            if margin > equity:
-                events.append({
-                    "date": date.isoformat(),
-                    "type": "forced_liquidation",
-                    "detail": {"margin_used_rmb": round(margin, 10), "equity_rmb": round(equity, 10)},
-                })
-                cash = equity
-                positions = {instrument: _Position() for instrument in panel.instruments}
-                margin = 0.0
+            if strict_lifecycle and equity <= 0 and not _open_positions(positions):
+                direct_insolvency = True
+                terminal_reason = "book equity became non-positive with no open positions"
                 for instrument, pending in pending_targets.items():
-                    events.append({
+                    events.append(
+                        {
+                            "date": date.isoformat(),
+                            "type": "target_cancelled",
+                            "detail": {
+                                "instrument": instrument,
+                                "target_lots": pending.target_lots,
+                                "decision_date": pending.decision_date.isoformat(),
+                                "reason": "insolvent_halt",
+                                **_pending_cycle_detail(pending),
+                            },
+                        }
+                    )
+                pending_targets = {}
+                events.append(
+                    {
                         "date": date.isoformat(),
-                        "type": "target_cancelled",
+                        "type": "insolvent_halt",
+                        "detail": {"ending_equity_rmb": round(equity, 10)},
+                    }
+                )
+            elif margin > equity:
+                events.append(
+                    {
+                        "date": date.isoformat(),
+                        "type": (
+                            "forced_liquidation_armed"
+                            if strict_lifecycle
+                            else "forced_liquidation"
+                        ),
                         "detail": {
-                            "instrument": instrument,
-                            "target_lots": pending.target_lots,
-                            "decision_date": pending.decision_date.isoformat(),
-                            "reason": "forced_liquidation",
-                            **_pending_cycle_detail(pending),
+                            "margin_used_rmb": round(margin, 10),
+                            "equity_rmb": round(equity, 10),
+                            **(
+                                {"next_action": "close exact held contracts on a later session"}
+                                if strict_lifecycle
+                                else {}
+                            ),
                         },
-                    })
+                    }
+                )
+                if strict_lifecycle:
+                    liquidation_trigger_date = date
+                    trigger_cash = cash
+                    trigger_equity = equity
+                    trigger_margin = margin
+                    terminal_reason = "liquidation armed but not completed"
+                else:
+                    cash = equity
+                    positions = {
+                        instrument: _Position() for instrument in panel.instruments
+                    }
+                    margin = 0.0
+                for instrument, pending in pending_targets.items():
+                    events.append(
+                        {
+                            "date": date.isoformat(),
+                            "type": "target_cancelled",
+                            "detail": {
+                                "instrument": instrument,
+                                "target_lots": pending.target_lots,
+                                "decision_date": pending.decision_date.isoformat(),
+                                "reason": "forced_liquidation",
+                                **_pending_cycle_detail(pending),
+                            },
+                        }
+                    )
                 pending_targets = {}
 
             equity_curve.append(
@@ -250,6 +453,15 @@ class DailyBookBacktester(IBookBacktester):
                     margin_used_rmb=round(margin, 10),
                 )
             )
+            if strict_lifecycle and liquidation_trigger_date is not None:
+                if index == len(dates) - 1:
+                    liquidation_status = "LIQUIDATION_BLOCKED_HALT"
+                    terminal_reason = (
+                        "liquidation was armed on the final session and could not execute"
+                    )
+                continue
+            if direct_insolvency:
+                break
             nominal_cycle_row = (
                 nominal_cycle_binding.decisions.get(date)
                 if nominal_cycle_binding is not None
@@ -311,6 +523,8 @@ class DailyBookBacktester(IBookBacktester):
                         )
                     )
                 rebalance_records.append(record_payload)
+                if strict_lifecycle and nominal_cycle_row is not None:
+                    executed_cycle_ids.append(nominal_cycle_row.cycle_id)
 
         for instrument, pending in pending_targets.items():
             events.append({
@@ -324,6 +538,46 @@ class DailyBookBacktester(IBookBacktester):
                 },
             })
 
+        final_view = panel.view(equity_curve[-1].date)
+        ending_margin = _margin_used(final_view, positions)
+        ending_equity = cash + _unrealized_pnl(final_view, positions)
+        if not strict_lifecycle:
+            outcome_status = "LEGACY_UNCERTIFIED"
+        elif liquidation_trigger_date is not None:
+            outcome_status = liquidation_status or "LIQUIDATION_BLOCKED_HALT"
+        elif direct_insolvency:
+            outcome_status = "INSOLVENT_HALT"
+        elif normal_terminal_complete:
+            outcome_status = "VALID_COMPLETE"
+        else:
+            outcome_status = "INVALID_INCOMPLETE"
+            if terminal_open_date not in dates:
+                terminal_reason = "strict terminal open was outside the resolved run dates"
+
+        outcome = BookOutcome(
+            status=outcome_status,
+            terminal_reason=terminal_reason,
+            terminal_date=equity_curve[-1].date,
+            liquidation_trigger_date=liquidation_trigger_date,
+            liquidation_completion_date=liquidation_completion_date,
+            trigger_cash_rmb=trigger_cash,
+            trigger_equity_rmb=trigger_equity,
+            trigger_margin_used_rmb=trigger_margin,
+            ending_cash_rmb=round(cash, 10),
+            ending_equity_rmb=round(ending_equity, 10),
+            ending_margin_used_rmb=round(ending_margin, 10),
+            ending_positions=_ending_positions(positions),
+            ending_pending_intents=_ending_pending_intents(pending_targets),
+            expected_nominal_cycle_ids=expected_cycle_ids,
+            executed_nominal_cycle_ids=tuple(executed_cycle_ids),
+        )
+        runtime_manifest = BookRuntimeManifest(
+            config=config.model_dump(mode="json"),
+            slippage_bps=self.slippage_bps,
+            rebalance_weekday=self.rebalance_weekday,
+            rebalance_interval_weeks=self.rebalance_interval_weeks,
+            stamp_duty_schedule=self._stamp_duty_schedule,
+        )
         daily_returns = _daily_returns(equity_curve)
         summary = _summary(equity_curve, trades, daily_returns)
         result = BookResult(
@@ -332,7 +586,20 @@ class DailyBookBacktester(IBookBacktester):
             rebalance_records=rebalance_records,
             daily_returns=daily_returns,
             events=events,
+            runtime_manifest=runtime_manifest,
+            outcome=outcome,
             summary=summary,
+        )
+        result = result.model_copy(
+            update={
+                "summary": result.summary.model_copy(
+                    update={
+                        "full_result_manifest_sha256": full_result_manifest_sha256(
+                            result
+                        )
+                    }
+                )
+            }
         )
         self._write_outputs(result)
         return result
@@ -518,6 +785,124 @@ class DailyBookBacktester(IBookBacktester):
                 )
             )
         return _ExecutionResult(
+            cash_delta=round(cash_delta, 10),
+            deferred=frozenset(deferred),
+        )
+
+    def _close_exact_positions(
+        self,
+        view: Any,
+        positions: dict[str, _Position],
+        trades: list[TradeRecord],
+        config: BookBacktestConfig,
+        events: list[dict],
+        *,
+        event_prefix: str,
+    ) -> _ExactCloseResult:
+        """Close held contracts at this exact open without rolling or substituting."""
+        cash_delta = 0.0
+        deferred: set[str] = set()
+        for instrument, position in list(positions.items()):
+            if abs(position.lots) <= 1e-12:
+                continue
+            bar = view.contract_bar(instrument, position.contract)
+            if bar is None:
+                deferred.add(instrument)
+                events.append(
+                    {
+                        "date": view.date.isoformat(),
+                        "type": f"{event_prefix}_close_deferred",
+                        "detail": {
+                            "instrument": instrument,
+                            "held_contract": position.contract,
+                            "lots": abs(position.lots),
+                            "reason": "missing_exact_held_contract_bar",
+                            "pending_action": "retained",
+                        },
+                    }
+                )
+                continue
+            _validate_returned_contract_bar(
+                bar, instrument, position.contract, view.date
+            )
+            meta = view.meta(instrument)
+            diff = -position.lots
+            side = "BUY" if diff > 0 else "SELL"
+            intended = _raw_price(bar, "open")
+            if (
+                side == "SELL"
+                and bool(meta.t_plus_one)
+                and self._last_buy_fill_dates.get(instrument) == view.date
+            ):
+                reason = "t_plus_one"
+            else:
+                reason = _fill_refusal_reason(
+                    bar, side, intended, float(meta.tick)
+                )
+            if reason is not None:
+                deferred.add(instrument)
+                events.append(
+                    {
+                        "date": view.date.isoformat(),
+                        "type": f"{event_prefix}_close_deferred",
+                        "detail": {
+                            "instrument": instrument,
+                            "held_contract": position.contract,
+                            "side": side,
+                            "lots": abs(diff),
+                            "reason": reason,
+                            "pending_action": "retained",
+                        },
+                    }
+                )
+                continue
+            fill = _slipped_price(
+                intended,
+                diff,
+                self._slippage_bps_for(instrument, config),
+                float(meta.tick),
+            )
+            close_today = _is_close_today(position, diff, view.date)
+            commission = _commission_rmb(
+                meta,
+                fill,
+                abs(diff),
+                close_today=close_today,
+                side=side,
+                stamp_duty_rate_override=self._stamp_duty_rate_for(view.date),
+            )
+            realized = _realized_pnl(
+                position, diff, fill, float(meta.multiplier)
+            )
+            cash_delta += realized - commission
+            new_position = _updated_position(
+                position, diff, fill, position.contract, view.date
+            )
+            if abs(new_position.lots) > 1e-12:
+                raise RuntimeError("exact close did not flatten the held position")
+            positions[instrument] = new_position
+            trades.append(
+                TradeRecord(
+                    date=view.date,
+                    instrument=instrument,
+                    contract=position.contract,
+                    side=side,
+                    lots=abs(diff),
+                    intended_price=round(intended, 10),
+                    fill_price=round(fill, 10),
+                    slippage_rmb=round(
+                        abs(fill - intended)
+                        * abs(diff)
+                        * float(meta.multiplier),
+                        10,
+                    ),
+                    commission_rmb=round(commission, 10),
+                    close_today=close_today,
+                    realized_pnl_rmb=round(realized, 10),
+                    position_after=0.0,
+                )
+            )
+        return _ExactCloseResult(
             cash_delta=round(cash_delta, 10),
             deferred=frozenset(deferred),
         )
@@ -840,6 +1225,17 @@ class DailyBookBacktester(IBookBacktester):
             json.dumps(result.summary.model_dump(mode="json"), sort_keys=True, indent=2) + "\n",
             encoding="utf-8",
         )
+        (self.output_dir / "outcome.json").write_text(
+            json.dumps(
+                result.outcome.model_dump(mode="json"), sort_keys=True, indent=2
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        (self.output_dir / "book_result.json").write_text(
+            json.dumps(result.model_dump(mode="json"), sort_keys=True, indent=2) + "\n",
+            encoding="utf-8",
+        )
 
 
 def _nominal_cycle_pending_fields(
@@ -879,6 +1275,48 @@ def _pending_cycle_detail(
         f"{prefix}nominal_date": pending.nominal_date.isoformat(),
         f"{prefix}eligible_fill_date": pending.eligible_fill_date.isoformat(),
     }
+
+
+def _open_positions(
+    positions: Mapping[str, _Position],
+) -> dict[str, _Position]:
+    return {
+        instrument: position
+        for instrument, position in positions.items()
+        if abs(position.lots) > 1e-12
+    }
+
+
+def _ending_positions(
+    positions: Mapping[str, _Position],
+) -> tuple[EndingPosition, ...]:
+    return tuple(
+        EndingPosition(
+            instrument=instrument,
+            contract=position.contract,
+            lots=position.lots,
+            average_price=position.avg_price,
+            opened_date=position.opened_date,
+        )
+        for instrument, position in sorted(_open_positions(positions).items())
+    )
+
+
+def _ending_pending_intents(
+    pending: Mapping[str, _PendingTarget],
+) -> tuple[EndingPendingIntent, ...]:
+    return tuple(
+        EndingPendingIntent(
+            instrument=instrument,
+            target_lots=intent.target_lots,
+            decision_date=intent.decision_date,
+            eligible_fill_date=intent.eligible_fill_date,
+            nominal_cycle_schedule_sha256=intent.nominal_cycle_schedule_sha256,
+            cycle_id=intent.cycle_id,
+            nominal_date=intent.nominal_date,
+        )
+        for instrument, intent in sorted(pending.items())
+    )
 
 
 def _nominal_cycle_provenance(
@@ -1134,9 +1572,20 @@ def _bind_nominal_cycle_schedule(
             "nominal cycles"
         )
 
+    expected_rows: tuple[NominalCycleScheduleRow, ...] = ()
+    expected_ids: frozenset[str] = frozenset()
+    terminal_open_date: dt.date | None = None
+    if config.lifecycle_contract is not None:
+        expected_rows = _bind_strict_nominal_lifecycle(schedule, config)
+        expected_ids = frozenset(row.cycle_id for row in expected_rows)
+        assert expected_rows[-1].exit_fill_date is not None
+        terminal_open_date = expected_rows[-1].exit_fill_date
+
     decisions: dict[dt.date, NominalCycleScheduleRow] = {}
     skipped_events: list[dict] = []
     for row in schedule.rows:
+        if expected_ids and row.cycle_id not in expected_ids:
+            continue
         relevant_date = row.decision_date or row.nominal_date
         if not (config.start <= relevant_date <= config.end):
             continue
@@ -1180,7 +1629,71 @@ def _bind_nominal_cycle_schedule(
         skipped_events_by_emit_date={
             date: tuple(items) for date, items in skipped_by_emit_date.items()
         },
+        expected_rows=expected_rows,
+        terminal_open_date=terminal_open_date,
     )
+
+
+def _bind_strict_nominal_lifecycle(
+    schedule: NominalCycleSchedule,
+    config: BookBacktestConfig,
+) -> tuple[NominalCycleScheduleRow, ...]:
+    """Prove the caller's expected cycle list is the complete in-window set."""
+    lifecycle = config.lifecycle_contract
+    if lifecycle is None:
+        raise ValueError("strict nominal binding requires a lifecycle contract")
+    expected_ids = lifecycle.expected_nominal_cycle_ids
+    rows_by_id = schedule.rows_by_cycle_id()
+    unknown = [cycle_id for cycle_id in expected_ids if cycle_id not in rows_by_id]
+    if unknown:
+        raise ValueError(f"strict nominal lifecycle contains unknown cycle IDs: {unknown}")
+    rows = tuple(rows_by_id[cycle_id] for cycle_id in expected_ids)
+    schedule_indexes = {row.cycle_id: index for index, row in enumerate(schedule.rows)}
+    indexes = tuple(schedule_indexes[row.cycle_id] for row in rows)
+    if indexes != tuple(sorted(indexes)):
+        raise ValueError("expected_nominal_cycle_ids must follow schedule chronology")
+    if any(later != earlier + 1 for earlier, later in zip(indexes, indexes[1:])):
+        raise ValueError("strict nominal lifecycle cannot omit an intervening cycle")
+    for row in rows:
+        if (
+            row.decision_status != SCHEDULED
+            or row.fill_status != SCHEDULED
+            or row.exit_fill_status != SCHEDULED
+            or row.decision_date is None
+            or row.fill_date is None
+            or row.exit_fill_date is None
+        ):
+            raise ValueError(
+                "strict nominal lifecycle requires complete decision/fill/exit cycles: "
+                f"{row.cycle_id}"
+            )
+        if row.decision_date < config.start or row.exit_fill_date > config.end:
+            raise ValueError(
+                "strict nominal lifecycle cycle lies outside the run window: "
+                f"{row.cycle_id}"
+            )
+
+    in_scope = tuple(
+        row
+        for row in schedule.rows
+        if row.decision_status == SCHEDULED
+        and row.fill_status == SCHEDULED
+        and row.exit_fill_status == SCHEDULED
+        and row.decision_date is not None
+        and row.exit_fill_date is not None
+        and config.start <= row.decision_date
+        and row.exit_fill_date <= config.end
+    )
+    if rows != in_scope:
+        raise ValueError(
+            "expected_nominal_cycle_ids must exactly equal all complete in-window cycles"
+        )
+    assert rows[-1].exit_fill_date is not None
+    if rows[-1].exit_fill_date != config.end:
+        raise ValueError(
+            "strict nominal run end must equal the last expected cycle exit fill"
+        )
+    return rows
 
 
 def _nominal_grid_floor(
@@ -1725,6 +2238,7 @@ def _summary(
         fees_total_rmb=round(fees, 10),
         slippage_total_rmb=round(slippage, 10),
         determinism_hash=digest,
+        full_result_manifest_sha256="0" * 64,
     )
 
 
