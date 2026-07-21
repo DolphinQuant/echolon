@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 
 from echolon.backtest.book import BookBacktestConfig, DailyBookBacktester
+from echolon.backtest.book.engine import _valuation_bar
 from echolon.panel.models import InstrumentMeta
 from echolon.portfolio import BookState, RebalanceRecord, TargetBook
 
@@ -262,6 +263,39 @@ def test_exact_held_rows_never_invoke_asof_valuation_scan(tmp_path: Path):
 
     assert panel.contract_bar_calls > 0
     assert panel.contract_bar_asof_calls == 0
+
+
+def test_bars_only_valuation_uses_exact_matching_main_before_asof_scan():
+    class BarsOnlyView:
+        date = dt.date(2024, 2, 20)
+
+        def __init__(self, current_contract: str | None) -> None:
+            self.current_contract = current_contract
+            self.asof_calls = 0
+
+        def contract_bar(self, instrument: str, contract: str):
+            return None
+
+        def current_bar(self, instrument: str):
+            if self.current_contract is None:
+                return None
+            return pd.Series({"contract": self.current_contract, "settle": 999.0})
+
+        def contract_bar_asof(self, instrument: str, contract: str):
+            self.asof_calls += 1
+            return pd.Series({"contract": contract, "settle": 100.0})
+
+    exact = BarsOnlyView("S1")
+    assert _valuation_bar(exact, "second", "S1")["settle"] == 999.0
+    assert exact.asof_calls == 0
+
+    closed = BarsOnlyView(None)
+    assert _valuation_bar(closed, "second", "S1")["settle"] == 100.0
+    assert closed.asof_calls == 1
+
+    different_main = BarsOnlyView("S2")
+    assert _valuation_bar(different_main, "second", "S1")["settle"] == 100.0
+    assert different_main.asof_calls == 1
 
 
 def test_roll_requires_exact_held_contract_row_not_new_main_fallback(tmp_path: Path):

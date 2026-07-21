@@ -727,6 +727,11 @@ def _valuation_bar(view: Any, instrument: str, contract: str) -> Any:
     exact = view.contract_bar(instrument, contract)
     if exact is not None:
         return exact
+    if not hasattr(view, "current_bar"):
+        raise TypeError("book view must implement current_bar for position valuation")
+    current_main = view.current_bar(instrument)
+    if current_main is not None and str(current_main["contract"]) == str(contract):
+        return current_main
     if not hasattr(view, "contract_bar_asof"):
         raise TypeError("book view must implement contract_bar_asof for position valuation")
     row = view.contract_bar_asof(instrument, contract)

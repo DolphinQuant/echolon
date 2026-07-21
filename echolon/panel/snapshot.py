@@ -170,9 +170,9 @@ class PanelView:
         if instrument_id not in self._panel._bars:
             raise KeyError(instrument)
         bars = self._panel._bars[instrument_id]
-        rows = bars.loc[bars.index == self.date, BAR_COLUMNS]
-        if rows.empty:
+        if self.date not in bars.index:
             return None
+        rows = bars.loc[[self.date], BAR_COLUMNS]
         if len(rows) != 1:
             raise ValueError(
                 f"expected one main bar for {instrument_id} on {self.date.isoformat()}, "
