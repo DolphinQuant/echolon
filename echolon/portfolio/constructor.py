@@ -132,7 +132,7 @@ class Constructor:
                     rows=rows,
                 )
             final_targets = {
-                instrument: _toward_zero_lot(
+                instrument: round_toward_zero_lot(
                     lots, float(view.meta(instrument).min_order_size)
                 )
                 for instrument, lots in lots_float.items()
@@ -168,7 +168,7 @@ class Constructor:
         }
         for _ in range(len(active)):
             tentative = {
-                instrument: _toward_zero_lot(
+                instrument: round_toward_zero_lot(
                     lots_float[instrument], float(view.meta(instrument).min_order_size)
                 )
                 for instrument in active
@@ -570,11 +570,16 @@ def _toward_zero(value: float) -> int:
     return math.ceil(value) if value < 0 else math.floor(value)
 
 
-def _toward_zero_lot(value: float, min_order_size: float) -> int:
+def round_toward_zero_lot(value: float, min_order_size: float) -> int:
+    """Round an exposure toward zero in exact exchange-order increments."""
     if min_order_size <= 0:
         raise ValueError("min_order_size must be positive")
     lots = _toward_zero(value / min_order_size)
     return int(lots * min_order_size)
+
+
+# Compatibility for callers that historically imported the private helper.
+_toward_zero_lot = round_toward_zero_lot
 
 
 def _sign(value: float) -> int:

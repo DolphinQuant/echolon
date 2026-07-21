@@ -23,6 +23,7 @@ from echolon.portfolio import (
     PortfolioStrategy,
 )
 
+from .accounting import commission_rmb
 from .interface import IBookBacktester
 from .models import (
     BookBacktestConfig,
@@ -47,6 +48,10 @@ from .schedule import (
     ExecutionContractSchedule,
     ExecutionContractScheduleRow,
 )
+
+
+# Compatibility for callers that historically imported the private helper.
+_commission_rmb = commission_rmb
 
 
 @dataclass
@@ -758,7 +763,7 @@ class DailyBookBacktester(IBookBacktester):
                 float(meta.tick),
             )
             close_today = _is_close_today(positions[instrument], diff, view.date)
-            commission = _commission_rmb(
+            commission = commission_rmb(
                 meta, fill, abs(diff), close_today=close_today, side=side,
                 stamp_duty_rate_override=self._stamp_duty_rate_for(view.date),
             )
@@ -863,7 +868,7 @@ class DailyBookBacktester(IBookBacktester):
                 float(meta.tick),
             )
             close_today = _is_close_today(position, diff, view.date)
-            commission = _commission_rmb(
+            commission = commission_rmb(
                 meta,
                 fill,
                 abs(diff),
@@ -1033,7 +1038,7 @@ class DailyBookBacktester(IBookBacktester):
             close_intended = _raw_price(close_bar, "open")
             close_fill = _slipped_price(close_intended, close_diff, slippage_bps, float(meta.tick))
             close_today = _is_close_today(position, close_diff, view.date)
-            commission_close = _commission_rmb(meta, close_fill, abs(close_diff), close_today=close_today)
+            commission_close = commission_rmb(meta, close_fill, abs(close_diff), close_today=close_today)
             realized = _realized_pnl(position, close_diff, close_fill, float(meta.multiplier))
             cash_delta += realized - commission_close
             target_lots = float(targets.get(instrument, position.lots)) if targets is not None else position.lots
@@ -1059,7 +1064,7 @@ class DailyBookBacktester(IBookBacktester):
             open_diff = target_lots
             open_intended = _raw_price(main_bar, "open")
             open_fill = _slipped_price(open_intended, open_diff, slippage_bps, float(meta.tick))
-            commission_open = _commission_rmb(meta, open_fill, abs(open_diff), close_today=False)
+            commission_open = commission_rmb(meta, open_fill, abs(open_diff), close_today=False)
             cash_delta -= commission_open
             positions[instrument] = _Position(
                 lots=target_lots,
@@ -2028,36 +2033,6 @@ def _fill_refusal_reason(bar: Any, side: str, open_raw: float, tick: float) -> s
     if side == "SELL" and pd.notna(limit_down) and open_raw <= float(limit_down) + epsilon:
         return "limit_down"
     return None
-
-
-def _commission_rmb(
-    meta: Any,
-    price: float,
-    lots_abs: float,
-    *,
-    close_today: bool = False,
-    side: str | None = None,
-    stamp_duty_rate_override: float | None = None,
-) -> float:
-    commission = (
-        float(meta.close_today_commission)
-        if close_today and meta.close_today_commission is not None
-        else float(meta.commission)
-    )
-    notional = price * float(meta.multiplier) * lots_abs
-    brokerage = commission * notional if meta.commission_type == "percentage" else commission * lots_abs
-    if side is None:
-        return brokerage
-    if side not in ("BUY", "SELL"):
-        raise ValueError("side must be BUY, SELL, or None")
-    brokerage = max(brokerage, float(meta.min_commission))
-    duty_rate = (
-        float(meta.stamp_duty_rate)
-        if stamp_duty_rate_override is None
-        else float(stamp_duty_rate_override)
-    )
-    stamp_duty = notional * duty_rate if side == "SELL" else 0.0
-    return brokerage + stamp_duty + notional * float(meta.transfer_fee_rate)
 
 
 def _normalize_stamp_duty_schedule(

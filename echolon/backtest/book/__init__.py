@@ -1,5 +1,11 @@
 """Purpose-built portfolio book backtester."""
+from .accounting import commission_rmb
 from .engine import DailyBookBacktester
+from .certification import (
+    certification_bundle_sha256,
+    load_certification_bundle,
+    run_certification_scenario,
+)
 from .interface import IBookBacktester
 from .models import (
     BookBacktestConfig,
@@ -55,6 +61,10 @@ __all__ = [
     "Summary",
     "TradeRecord",
     "canonical_schedule_sha256",
+    "certification_bundle_sha256",
+    "commission_rmb",
+    "load_certification_bundle",
+    "run_certification_scenario",
     "canonical_session_list_sha256",
     "create_nominal_cycle_schedule",
     "load_execution_contract_schedule",
