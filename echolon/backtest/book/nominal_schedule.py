@@ -198,6 +198,26 @@ class _NominalCycleSchedulePayload(BaseModel):
                 "nominal-cycle rows do not match recomputation from embedded sessions "
                 "and fixed policy"
             )
+
+        scheduled_decisions: set[dt.date] = set()
+        for row in self.rows:
+            if row.decision_status == SCHEDULED:
+                assert row.decision_date is not None
+                if row.decision_date in scheduled_decisions:
+                    raise ValueError(
+                        "duplicate scheduled decision date across nominal cycles: "
+                        f"{row.decision_date.isoformat()}"
+                    )
+                scheduled_decisions.add(row.decision_date)
+        for row in self.rows:
+            if row.fill_status == SCHEDULED and row.exit_fill_status == SCHEDULED:
+                assert row.fill_date is not None
+                assert row.exit_fill_date is not None
+                if row.exit_fill_date <= row.fill_date:
+                    raise ValueError(
+                        "scheduled nominal-cycle holding window must have "
+                        "exit_fill_date strictly after fill_date"
+                    )
         return self
 
 

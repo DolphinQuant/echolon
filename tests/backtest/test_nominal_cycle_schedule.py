@@ -333,6 +333,30 @@ def test_absolute_anchor_is_v1_genesis_and_rejects_pre_anchor_cycles():
         )
 
 
+def test_long_authority_gap_rejects_colliding_scheduled_cycles():
+    authority = (
+        dt.date(2024, 1, 1),
+        dt.date(2024, 3, 1),
+        dt.date(2024, 3, 4),
+    )
+    with pytest.raises(ValidationError, match="duplicate scheduled decision date"):
+        create_nominal_cycle_schedule(
+            source_panel_snapshot="synthetic-panel-v1",
+            source_panel_manifest_sha256=_MANIFEST_SHA,
+            authoritative_calendar_id="synthetic-long-gap-calendar",
+            authoritative_calendar_source_sha256=_AUTHORITY_SHA,
+            authoritative_coverage_basis="observed_open_session_bounds_only",
+            authoritative_sessions=authority,
+            coverage_start=authority[0],
+            coverage_end=authority[-1],
+            panel_union_sessions=authority,
+            cadence_id="synthetic-28d-friday-v1",
+            nominal_anchor=_ANCHOR,
+            nominal_start=_ANCHOR,
+            nominal_end=dt.date(2024, 2, 2),
+        )
+
+
 def test_hash_round_trip_exclusive_writer_and_independent_recipe(tmp_path: Path):
     schedule = _schedule()
     payload = schedule.model_dump(mode="json")
