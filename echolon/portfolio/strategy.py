@@ -26,7 +26,11 @@ class PortfolioStrategy:
 
     def rebalance(self, view: PanelView, book: BookState) -> tuple[TargetBook, RebalanceRecord]:
         vectors = [engine.compute(view) for engine in self.engines]
-        instruments = list(view._panel.instruments) if hasattr(view, "_panel") else _instruments_from_vectors(vectors)
+        instruments = (
+            list(view.instruments)
+            if hasattr(view, "instruments")
+            else _instruments_from_vectors(vectors)
+        )
         for vector in vectors:
             validate_score_vector(vector, expected_date=view.date, instruments=instruments)
         blended = self.combiner.combine(vectors, instruments=instruments)

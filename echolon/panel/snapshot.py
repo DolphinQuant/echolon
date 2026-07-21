@@ -112,6 +112,44 @@ class PanelView:
         self._panel = panel
         self.date = date
 
+    @property
+    def instruments(self) -> tuple[str, ...]:
+        """Normalized instruments in the panel's stable manifest order."""
+        instruments = tuple(self._panel.instruments)
+        normalized = tuple(str(instrument).strip().lower() for instrument in instruments)
+        if instruments != normalized or len(set(instruments)) != len(instruments):
+            raise ValueError("panel instruments must be unique normalized identifiers")
+        if set(instruments) != set(self._panel._bars):
+            raise ValueError("panel instruments and bar families are inconsistent")
+        return instruments
+
+    @property
+    def calendar(self) -> tuple[dt.date, ...]:
+        """Immutable union calendar in strictly increasing normalized order."""
+        calendar = tuple(self._panel.calendar)
+        if any(not isinstance(date, dt.date) for date in calendar):
+            raise ValueError("panel calendar must contain date values")
+        if tuple(sorted(set(calendar))) != calendar:
+            raise ValueError("panel calendar must be unique and strictly increasing")
+        if self.date not in calendar:
+            raise ValueError(f"view date {self.date.isoformat()} is absent from panel calendar")
+        return calendar
+
+    @property
+    def snapshot_version(self) -> str:
+        """Immutable snapshot identity shared with the underlying panel."""
+        version = self._panel.snapshot_version
+        if not isinstance(version, str) or not version:
+            raise ValueError("panel snapshot_version must be a non-empty string")
+        if self._panel.manifest.version != version:
+            raise ValueError("panel manifest and snapshot_version are inconsistent")
+        return version
+
+    @property
+    def date_index(self) -> int:
+        """Zero-based location of this view date in the union calendar."""
+        return self.calendar.index(self.date)
+
     def bars(self, instrument: str, lookback: int) -> pd.DataFrame:
         if lookback <= 0:
             raise ValueError("lookback must be positive")
@@ -121,6 +159,26 @@ class PanelView:
         bars = self._panel._bars[instrument_id]
         visible = bars.loc[bars.index <= self.date, BAR_COLUMNS]
         return visible.tail(lookback).copy()
+
+    def current_bar(self, instrument: str) -> pd.Series | None:
+        """Return the instrument's main bar on exactly the view date.
+
+        Unlike :meth:`bars`, this method never carries a prior session forward.
+        It is therefore the execution-grade API for union-calendar consumers.
+        """
+        instrument_id = instrument.lower()
+        if instrument_id not in self._panel._bars:
+            raise KeyError(instrument)
+        bars = self._panel._bars[instrument_id]
+        rows = bars.loc[bars.index == self.date, BAR_COLUMNS]
+        if rows.empty:
+            return None
+        if len(rows) != 1:
+            raise ValueError(
+                f"expected one main bar for {instrument_id} on {self.date.isoformat()}, "
+                f"found {len(rows)}"
+            )
+        return rows.iloc[0].copy()
 
     def contract_bar(self, instrument: str, contract: str) -> pd.Series | None:
         """Return the raw row for a specific listed contract on the view date."""
@@ -132,7 +190,45 @@ class PanelView:
         match = rows[rows["contract"].astype(str) == str(contract)]
         if match.empty:
             return None
+        if len(match) != 1:
+            raise ValueError(
+                f"expected one {contract} row for {instrument_id} on "
+                f"{self.date.isoformat()}, found {len(match)}"
+            )
         return match.iloc[0].copy()
+
+    def contract_bar_asof(self, instrument: str, contract: str) -> pd.Series | None:
+        """Return the latest visible row belonging to one exact contract.
+
+        This accessor supports valuation carry-forward only. Execution code
+        must use :meth:`contract_bar`, whose date contract is exact.
+        """
+        instrument_id = instrument.lower()
+        candidates: list[tuple[int, pd.DataFrame]] = []
+        contracts = self._panel._contracts.get(instrument_id)
+        if contracts is not None:
+            candidates.append((0, contracts.loc[contracts.index <= self.date]))
+        bars = self._panel._bars.get(instrument_id)
+        if bars is None:
+            raise KeyError(instrument)
+        candidates.append((1, bars.loc[bars.index <= self.date]))
+        resolved: list[tuple[dt.date, int, pd.Series]] = []
+        for source_rank, frame in candidates:
+            match = frame[frame["contract"].astype(str) == str(contract)]
+            if match.empty:
+                continue
+            latest_date = match.index.max()
+            latest = match.loc[match.index == latest_date]
+            if len(latest) != 1:
+                raise ValueError(
+                    f"expected one {contract} row for {instrument_id} on "
+                    f"{latest_date.isoformat()}, found {len(latest)}"
+                )
+            resolved.append((latest_date, source_rank, latest.iloc[0]))
+        if not resolved:
+            return None
+        _, _, row = max(resolved, key=lambda item: (item[0], -item[1]))
+        return row.copy()
 
     def contracts_history(self, instrument: str, lookback: int) -> pd.DataFrame:
         """Return complete listed-contract curves for recent visible dates.

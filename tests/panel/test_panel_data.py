@@ -190,6 +190,59 @@ def test_panel_view_bars_are_no_lookahead_and_lookback_limited(tmp_path):
     assert bars.iloc[-1]["close"] == 19020
 
 
+def test_panel_view_current_bar_requires_an_exact_instrument_session(tmp_path):
+    panel = PanelData.load(_build_snapshot(tmp_path))
+    view = panel.view("2024-01-04")
+
+    assert view.current_bar("al") is not None
+    assert view.current_bar("al").name.isoformat() == "2024-01-04"
+    assert view.current_bar("cu") is None
+    assert view.bars("cu", lookback=1).iloc[-1].name.isoformat() == "2024-01-03"
+
+
+def test_panel_view_contract_bar_asof_never_substitutes_another_contract(tmp_path):
+    panel = PanelData.load(_build_snapshot(tmp_path))
+    view = panel.view("2024-01-04")
+
+    held = view.contract_bar_asof("cu", "cu2402")
+    assert held is not None
+    assert held.name.isoformat() == "2024-01-03"
+    assert view.contract_bar_asof("cu", "cu9999") is None
+
+
+def test_panel_view_metadata_is_immutable_and_matches_panel(tmp_path):
+    panel = PanelData.load(_build_snapshot(tmp_path))
+    view = panel.view("2024-01-03")
+
+    assert view.instruments == tuple(panel.instruments) == ("al", "cu")
+    assert view.calendar == tuple(panel.calendar)
+    assert view.snapshot_version == panel.snapshot_version == "v-test"
+    assert view.date_index == 1
+    with pytest.raises(TypeError):
+        view.instruments[0] = "changed"
+    with pytest.raises(TypeError):
+        view.calendar[0] = view.calendar[-1]
+
+
+@pytest.mark.parametrize(
+    ("mutation", "attribute", "match"),
+    [
+        (lambda panel: panel.instruments.append("AL"), "instruments", "unique normalized"),
+        (lambda panel: panel.calendar.append(panel.calendar[-1]), "calendar", "strictly increasing"),
+        (lambda panel: setattr(panel, "snapshot_version", "other"), "snapshot_version", "inconsistent"),
+    ],
+)
+def test_panel_view_metadata_fails_loudly_on_inconsistent_panel(
+    tmp_path, mutation, attribute, match
+):
+    panel = PanelData.load(_build_snapshot(tmp_path))
+    view = panel.view("2024-01-03")
+    mutation(panel)
+
+    with pytest.raises(ValueError, match=match):
+        getattr(view, attribute)
+
+
 def test_panel_view_rejects_dates_outside_calendar(tmp_path):
     panel = PanelData.load(_build_snapshot(tmp_path))
 

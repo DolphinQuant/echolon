@@ -66,6 +66,11 @@ class _View:
         frame = self._bars[instrument]
         return frame.loc[frame.index <= self.date].tail(lookback).copy()
 
+    def current_bar(self, instrument: str):
+        frame = self._bars[instrument]
+        rows = frame.loc[frame.index == self.date]
+        return None if rows.empty else rows.iloc[0].copy()
+
     def contract_bar(self, instrument: str, contract: str):
         frame = self._contracts[instrument]
         rows = frame.loc[frame.index == self.date]
@@ -73,6 +78,16 @@ class _View:
         if rows.empty:
             return None
         return rows.iloc[0].copy()
+
+    def contract_bar_asof(self, instrument: str, contract: str):
+        frame = self._contracts[instrument]
+        rows = frame.loc[frame.index <= self.date]
+        rows = rows[rows["contract"].astype(str) == str(contract)]
+        if rows.empty:
+            fallback = self._bars[instrument]
+            rows = fallback.loc[fallback.index <= self.date]
+            rows = rows[rows["contract"].astype(str) == str(contract)]
+        return None if rows.empty else rows.iloc[-1].copy()
 
     def meta(self, instrument: str) -> InstrumentMeta:
         return self._meta[instrument]
@@ -251,12 +266,21 @@ def test_fill_refusal_is_auditable_and_does_not_block_other_names(tmp_path: Path
         ),
     )
 
-    assert not any(trade.instrument == "al" for trade in result.trades)
+    al_trades = [trade for trade in result.trades if trade.instrument == "al"]
+    assert [(trade.date, trade.lots) for trade in al_trades] == [(new_dates[2], 1.0)]
     assert any(trade.instrument == "cu" for trade in result.trades)
     assert result.events == [{
         "date": new_dates[1].isoformat(),
         "type": "fill_refused",
-        "detail": {"instrument": "al", "side": "BUY", "lots": 1.0, "reason": "suspended"},
+        "detail": {
+            "instrument": "al",
+            "side": "BUY",
+            "lots": 1.0,
+            "target_lots": 1.0,
+            "decision_date": new_dates[0].isoformat(),
+            "reason": "suspended",
+            "pending_action": "retained",
+        },
     }]
 
 
@@ -286,8 +310,22 @@ def test_locked_limit_open_refuses_fill(
                            panel_snapshot="synthetic_book"),
     )
 
-    assert not result.trades
-    assert result.events[0]["detail"]["reason"] == expected_reason
+    assert [(trade.date, trade.lots) for trade in result.trades] == [
+        (new_dates[2], 1.0)
+    ]
+    assert result.events == [{
+        "date": new_dates[1].isoformat(),
+        "type": "fill_refused",
+        "detail": {
+            "instrument": "al",
+            "side": "BUY" if target > 0 else "SELL",
+            "lots": 1.0,
+            "target_lots": float(target),
+            "decision_date": new_dates[0].isoformat(),
+            "reason": expected_reason,
+            "pending_action": "retained",
+        },
+    }]
 
 
 def test_buy_one_tick_below_limit_up_fills(tmp_path: Path):

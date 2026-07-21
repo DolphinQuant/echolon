@@ -27,6 +27,24 @@ class _Position:
     opened_date: dt.date | None = None
 
 
+@dataclass(frozen=True)
+class _PendingTarget:
+    target_lots: float
+    decision_date: dt.date
+
+
+@dataclass(frozen=True)
+class _ExecutionResult:
+    cash_delta: float
+    deferred: frozenset[str]
+
+
+@dataclass(frozen=True)
+class _RollResult:
+    cash_delta: float
+    deferred: frozenset[str]
+
+
 class DailyBookBacktester(IBookBacktester):
     """Daily book simulator with one cash account and futures margin."""
 
@@ -78,16 +96,43 @@ class DailyBookBacktester(IBookBacktester):
         trades: list[TradeRecord] = []
         rebalance_records: list[dict] = []
         events: list[dict] = []
-        pending_targets: dict[str, int] | None = None
+        pending_targets: dict[str, _PendingTarget] = {}
 
         for index, date in enumerate(dates):
             view = panel.view(date)
-            if pending_targets is not None:
-                cash += self._roll_changed_main_contracts(view, positions, trades, config, pending_targets)
-                cash += self._execute_targets(view, positions, pending_targets, trades, config, events)
-                pending_targets = None
-            else:
-                cash += self._roll_changed_main_contracts(view, positions, trades, config)
+            target_lots = {
+                instrument: pending.target_lots
+                for instrument, pending in pending_targets.items()
+            }
+            roll_result = self._roll_changed_main_contracts(
+                view,
+                positions,
+                trades,
+                config,
+                events,
+                target_lots if pending_targets else None,
+            )
+            cash += roll_result.cash_delta
+            if pending_targets:
+                execution_result = self._execute_targets(
+                    view,
+                    positions,
+                    target_lots,
+                    trades,
+                    config,
+                    events,
+                    blocked_instruments=roll_result.deferred,
+                    decision_dates={
+                        instrument: pending.decision_date
+                        for instrument, pending in pending_targets.items()
+                    },
+                )
+                cash += execution_result.cash_delta
+                pending_targets = {
+                    instrument: pending
+                    for instrument, pending in pending_targets.items()
+                    if instrument in execution_result.deferred
+                }
 
             margin = _margin_used(view, positions)
             equity = cash + _unrealized_pnl(view, positions)
@@ -100,6 +145,18 @@ class DailyBookBacktester(IBookBacktester):
                 cash = equity
                 positions = {instrument: _Position() for instrument in panel.instruments}
                 margin = 0.0
+                for instrument, pending in pending_targets.items():
+                    events.append({
+                        "date": date.isoformat(),
+                        "type": "target_cancelled",
+                        "detail": {
+                            "instrument": instrument,
+                            "target_lots": pending.target_lots,
+                            "decision_date": pending.decision_date.isoformat(),
+                            "reason": "forced_liquidation",
+                        },
+                    })
+                pending_targets = {}
 
             equity_curve.append(
                 EquityPoint(
@@ -127,8 +184,24 @@ class DailyBookBacktester(IBookBacktester):
                     },
                 )
                 target, record = strategy.rebalance(view, book)
-                pending_targets = dict(target.targets)
+                self._merge_pending_targets(
+                    pending_targets,
+                    target.targets,
+                    decision_date=view.date,
+                    events=events,
+                )
                 rebalance_records.append(record.model_dump(mode="json"))
+
+        for instrument, pending in pending_targets.items():
+            events.append({
+                "date": dates[-1].isoformat(),
+                "type": "target_unresolved_at_end",
+                "detail": {
+                    "instrument": instrument,
+                    "target_lots": pending.target_lots,
+                    "decision_date": pending.decision_date.isoformat(),
+                },
+            })
 
         daily_returns = _daily_returns(equity_curve)
         summary = _summary(equity_curve, trades, daily_returns)
@@ -155,18 +228,53 @@ class DailyBookBacktester(IBookBacktester):
         self,
         view: Any,
         positions: dict[str, _Position],
-        targets: Mapping[str, int],
+        targets: Mapping[str, float],
         trades: list[TradeRecord],
         config: BookBacktestConfig,
         events: list[dict],
-    ) -> float:
+        *,
+        blocked_instruments: frozenset[str] = frozenset(),
+        decision_dates: Mapping[str, dt.date] | None = None,
+    ) -> _ExecutionResult:
         cash_delta = 0.0
+        deferred: set[str] = set()
         for instrument, target in targets.items():
             current = positions[instrument].lots
             diff = float(target) - current
             if abs(diff) <= 1e-12:
                 continue
-            bar = view.bars(instrument, 1).iloc[-1]
+            decision_date = (
+                decision_dates[instrument]
+                if decision_dates is not None
+                else view.date
+            )
+            if instrument in blocked_instruments:
+                deferred.add(instrument)
+                events.append({
+                    "date": view.date.isoformat(),
+                    "type": "target_deferred",
+                    "detail": {
+                        "instrument": instrument,
+                        "target_lots": float(target),
+                        "decision_date": decision_date.isoformat(),
+                        "reason": "roll_deferred",
+                    },
+                })
+                continue
+            bar = view.current_bar(instrument)
+            if bar is None:
+                deferred.add(instrument)
+                events.append({
+                    "date": view.date.isoformat(),
+                    "type": "target_deferred",
+                    "detail": {
+                        "instrument": instrument,
+                        "target_lots": float(target),
+                        "decision_date": decision_date.isoformat(),
+                        "reason": "missing_exact_main_bar",
+                    },
+                })
+                continue
             meta = view.meta(instrument)
             intended = _raw_price(bar, "open")
             side = "BUY" if diff > 0 else "SELL"
@@ -180,10 +288,19 @@ class DailyBookBacktester(IBookBacktester):
                 )
             reason = _fill_refusal_reason(bar, side, intended, float(meta.tick))
             if reason is not None:
+                deferred.add(instrument)
                 events.append({
                     "date": view.date.isoformat(),
                     "type": "fill_refused",
-                    "detail": {"instrument": instrument, "side": side, "lots": abs(diff), "reason": reason},
+                    "detail": {
+                        "instrument": instrument,
+                        "side": side,
+                        "lots": abs(diff),
+                        "target_lots": float(target),
+                        "decision_date": decision_date.isoformat(),
+                        "reason": reason,
+                        "pending_action": "retained",
+                    },
                 })
                 continue
             fill = _slipped_price(
@@ -219,7 +336,10 @@ class DailyBookBacktester(IBookBacktester):
                     position_after=new_position.lots,
                 )
             )
-        return round(cash_delta, 10)
+        return _ExecutionResult(
+            cash_delta=round(cash_delta, 10),
+            deferred=frozenset(deferred),
+        )
 
     def _roll_changed_main_contracts(
         self,
@@ -227,8 +347,9 @@ class DailyBookBacktester(IBookBacktester):
         positions: dict[str, _Position],
         trades: list[TradeRecord],
         config: BookBacktestConfig,
-        targets: Mapping[str, int] | None = None,
-    ) -> float:
+        events: list[dict],
+        targets: Mapping[str, float] | None = None,
+    ) -> _RollResult:
         """Materialize contract rolls before mark-to-market can drift contracts.
 
         A position belongs to the contract that opened it. On the first session
@@ -237,16 +358,42 @@ class DailyBookBacktester(IBookBacktester):
         target lot count that should remain after the pending rebalance.
         """
         cash_delta = 0.0
+        deferred: set[str] = set()
         for instrument, position in list(positions.items()):
             if position.lots == 0:
                 continue
-            main_bar = view.bars(instrument, 1).iloc[-1]
+            main_bar = view.current_bar(instrument)
+            if main_bar is None:
+                deferred.add(instrument)
+                events.append({
+                    "date": view.date.isoformat(),
+                    "type": "roll_deferred",
+                    "detail": {
+                        "instrument": instrument,
+                        "held_contract": position.contract,
+                        "reason": "missing_exact_main_bar",
+                    },
+                })
+                continue
             today_contract = str(main_bar["contract"])
             if not position.contract or position.contract == today_contract:
                 continue
             meta = view.meta(instrument)
             slippage_bps = self._slippage_bps_for(instrument, config)
-            close_bar = _contract_or_main_bar(view, instrument, position.contract)
+            close_bar = view.contract_bar(instrument, position.contract)
+            if close_bar is None:
+                deferred.add(instrument)
+                events.append({
+                    "date": view.date.isoformat(),
+                    "type": "roll_deferred",
+                    "detail": {
+                        "instrument": instrument,
+                        "held_contract": position.contract,
+                        "next_contract": today_contract,
+                        "reason": "missing_exact_held_contract_bar",
+                    },
+                })
+                continue
             close_diff = -position.lots
             close_intended = _raw_price(close_bar, "open")
             close_fill = _slipped_price(close_intended, close_diff, slippage_bps, float(meta.tick))
@@ -301,7 +448,43 @@ class DailyBookBacktester(IBookBacktester):
                     position_after=target_lots,
                 )
             )
-        return round(cash_delta, 10)
+        return _RollResult(
+            cash_delta=round(cash_delta, 10),
+            deferred=frozenset(deferred),
+        )
+
+    @staticmethod
+    def _merge_pending_targets(
+        pending: dict[str, _PendingTarget],
+        newest: Mapping[str, float],
+        *,
+        decision_date: dt.date,
+        events: list[dict],
+    ) -> None:
+        """Merge a rebalance into pending intent, newest same-name target wins.
+
+        Instruments omitted by the newest target keep their prior deferred
+        intent. An explicitly supplied target replaces that instrument only and
+        is always auditable, even when its lot value is unchanged.
+        """
+        for instrument, target in newest.items():
+            previous = pending.get(instrument)
+            if previous is not None:
+                events.append({
+                    "date": decision_date.isoformat(),
+                    "type": "target_replaced",
+                    "detail": {
+                        "instrument": instrument,
+                        "previous_target_lots": previous.target_lots,
+                        "previous_decision_date": previous.decision_date.isoformat(),
+                        "new_target_lots": float(target),
+                        "new_decision_date": decision_date.isoformat(),
+                    },
+                })
+            pending[instrument] = _PendingTarget(
+                target_lots=float(target),
+                decision_date=decision_date,
+            )
 
     def _slippage_bps_for(self, instrument: str, config: BookBacktestConfig) -> float:
         """Return the configured transaction-cost charge for one instrument.
@@ -469,7 +652,7 @@ def _margin_used(view: Any, positions: Mapping[str, _Position]) -> float:
     for instrument, position in positions.items():
         if position.lots == 0:
             continue
-        bar = _contract_or_main_bar(view, instrument, position.contract)
+        bar = _valuation_bar(view, instrument, position.contract)
         meta = view.meta(instrument)
         total += abs(position.lots) * _raw_price(bar, "settle") * float(meta.multiplier) * float(meta.margin_rate)
     return round(total, 10)
@@ -480,18 +663,30 @@ def _unrealized_pnl(view: Any, positions: Mapping[str, _Position]) -> float:
     for instrument, position in positions.items():
         if position.lots == 0:
             continue
-        bar = _contract_or_main_bar(view, instrument, position.contract)
+        bar = _valuation_bar(view, instrument, position.contract)
         meta = view.meta(instrument)
         total += position.lots * (_raw_price(bar, "settle") - position.avg_price) * float(meta.multiplier)
     return round(total, 10)
 
 
-def _contract_or_main_bar(view: Any, instrument: str, contract: str) -> Any:
-    if contract and hasattr(view, "contract_bar"):
-        row = view.contract_bar(instrument, contract)
-        if row is not None:
-            return row
-    return view.bars(instrument, 1).iloc[-1]
+def _valuation_bar(view: Any, instrument: str, contract: str) -> Any:
+    """Return the held contract's latest as-of row; never use for execution.
+
+    Valuation may carry one contract's own settlement across its closed session.
+    It must never substitute a different main contract, which would manufacture
+    PnL while an executable roll is deferred.
+    """
+    if not contract:
+        raise ValueError(f"held position for {instrument} has no contract identity")
+    if not hasattr(view, "contract_bar_asof"):
+        raise TypeError("book view must implement contract_bar_asof for position valuation")
+    row = view.contract_bar_asof(instrument, contract)
+    if row is None:
+        raise ValueError(
+            f"no as-of valuation row for held contract {contract} ({instrument}) "
+            f"on {view.date.isoformat()}"
+        )
+    return row
 
 
 def _raw_price(row: Any, column: str) -> float:

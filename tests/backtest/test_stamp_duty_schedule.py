@@ -82,6 +82,9 @@ class _EquityView:
             index=[self.date],
         )
 
+    def current_bar(self, instrument: str):
+        return self.bars(instrument, 1).iloc[0].copy()
+
     def meta(self, instrument: str) -> InstrumentMeta:
         return self._meta
 
@@ -176,11 +179,22 @@ class _RollView:
         frame = self._panel._bars[instrument]
         return frame.loc[frame.index <= self.date].tail(lookback).copy()
 
+    def current_bar(self, instrument: str):
+        frame = self._panel._bars[instrument]
+        rows = frame.loc[frame.index == self.date]
+        return None if rows.empty else rows.iloc[0].copy()
+
     def contract_bar(self, instrument: str, contract: str):
         frame = self._panel._contracts[instrument]
         rows = frame.loc[frame.index == self.date]
         rows = rows[rows["contract"].astype(str) == str(contract)]
         return None if rows.empty else rows.iloc[0].copy()
+
+    def contract_bar_asof(self, instrument: str, contract: str):
+        frame = self._panel._contracts[instrument]
+        rows = frame.loc[frame.index <= self.date]
+        rows = rows[rows["contract"].astype(str) == str(contract)]
+        return None if rows.empty else rows.iloc[-1].copy()
 
     def meta(self, instrument: str) -> InstrumentMeta:
         return self._panel._meta[instrument]
