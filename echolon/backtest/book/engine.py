@@ -1,6 +1,7 @@
 """Purpose-built daily futures book backtester."""
 from __future__ import annotations
 
+import bisect
 import datetime as dt
 import hashlib
 import json
@@ -17,6 +18,11 @@ from echolon.portfolio import BookState, PortfolioStrategy
 
 from .interface import IBookBacktester
 from .models import BookBacktestConfig, BookResult, EquityPoint, Summary, TradeRecord
+from .nominal_schedule import (
+    SCHEDULED,
+    NominalCycleSchedule,
+    NominalCycleScheduleRow,
+)
 from .schedule import (
     EXECUTABLE_STATUS,
     ExecutionContractSchedule,
@@ -36,6 +42,10 @@ class _Position:
 class _PendingTarget:
     target_lots: float
     decision_date: dt.date
+    eligible_fill_date: dt.date | None = None
+    nominal_cycle_schedule_sha256: str | None = None
+    cycle_id: str | None = None
+    nominal_date: dt.date | None = None
 
 
 @dataclass(frozen=True)
@@ -54,6 +64,13 @@ class _RollResult:
 class _ExecutionContractBinding:
     schedule: ExecutionContractSchedule
     rows: Mapping[tuple[dt.date, str], ExecutionContractScheduleRow]
+
+
+@dataclass(frozen=True)
+class _NominalCycleBinding:
+    schedule: NominalCycleSchedule
+    decisions: Mapping[dt.date, NominalCycleScheduleRow]
+    skipped_events_by_emit_date: Mapping[dt.date, tuple[dict, ...]]
 
 
 class DailyBookBacktester(IBookBacktester):
@@ -103,6 +120,7 @@ class DailyBookBacktester(IBookBacktester):
         execution_contract_binding = _bind_execution_contract_schedule(
             panel, config, dates
         )
+        nominal_cycle_binding = _bind_nominal_cycle_schedule(panel, config, dates)
 
         cash = float(config.initial_equity_rmb)
         positions = {instrument: _Position() for instrument in panel.instruments}
@@ -119,12 +137,30 @@ class DailyBookBacktester(IBookBacktester):
                     dates[0],
                 )
             )
+        if nominal_cycle_binding is not None:
+            events.append(
+                _nominal_cycle_schedule_bound_event(
+                    nominal_cycle_binding.schedule,
+                    config,
+                    dates[0],
+                )
+            )
 
         for index, date in enumerate(dates):
+            if nominal_cycle_binding is not None:
+                events.extend(
+                    nominal_cycle_binding.skipped_events_by_emit_date.get(date, ())
+                )
             view = panel.view(date)
+            eligible_pending = {
+                instrument: pending
+                for instrument, pending in pending_targets.items()
+                if pending.eligible_fill_date is None
+                or date >= pending.eligible_fill_date
+            }
             target_lots = {
                 instrument: pending.target_lots
-                for instrument, pending in pending_targets.items()
+                for instrument, pending in eligible_pending.items()
             }
             roll_result = self._roll_changed_main_contracts(
                 view,
@@ -132,7 +168,8 @@ class DailyBookBacktester(IBookBacktester):
                 trades,
                 config,
                 events,
-                target_lots if pending_targets else None,
+                target_lots if eligible_pending else None,
+                pending_metadata=eligible_pending,
                 execution_contract_rows=(
                     execution_contract_binding.rows
                     if execution_contract_binding is not None
@@ -140,7 +177,7 @@ class DailyBookBacktester(IBookBacktester):
                 ),
             )
             cash += roll_result.cash_delta
-            if pending_targets:
+            if eligible_pending:
                 execution_result = self._execute_targets(
                     view,
                     positions,
@@ -151,8 +188,9 @@ class DailyBookBacktester(IBookBacktester):
                     blocked_instruments=roll_result.deferred,
                     decision_dates={
                         instrument: pending.decision_date
-                        for instrument, pending in pending_targets.items()
+                        for instrument, pending in eligible_pending.items()
                     },
+                    pending_metadata=eligible_pending,
                     execution_contract_rows=(
                         execution_contract_binding.rows
                         if execution_contract_binding is not None
@@ -160,10 +198,12 @@ class DailyBookBacktester(IBookBacktester):
                     ),
                 )
                 cash += execution_result.cash_delta
+                eligible_instruments = set(eligible_pending)
                 pending_targets = {
                     instrument: pending
                     for instrument, pending in pending_targets.items()
-                    if instrument in execution_result.deferred
+                    if instrument not in eligible_instruments
+                    or instrument in execution_result.deferred
                 }
 
             margin = _margin_used(view, positions)
@@ -186,6 +226,7 @@ class DailyBookBacktester(IBookBacktester):
                             "target_lots": pending.target_lots,
                             "decision_date": pending.decision_date.isoformat(),
                             "reason": "forced_liquidation",
+                            **_pending_cycle_detail(pending),
                         },
                     })
                 pending_targets = {}
@@ -198,7 +239,18 @@ class DailyBookBacktester(IBookBacktester):
                     margin_used_rmb=round(margin, 10),
                 )
             )
-            if index < len(dates) - 1 and self._is_rebalance_date(date, dates[0]):
+            nominal_cycle_row = (
+                nominal_cycle_binding.decisions.get(date)
+                if nominal_cycle_binding is not None
+                else None
+            )
+            if nominal_cycle_binding is not None:
+                is_rebalance = nominal_cycle_row is not None
+            else:
+                is_rebalance = index < len(dates) - 1 and self._is_rebalance_date(
+                    date, dates[0]
+                )
+            if is_rebalance:
                 book = BookState(
                     date=date,
                     equity_rmb=equity,
@@ -227,8 +279,23 @@ class DailyBookBacktester(IBookBacktester):
                     positions=positions,
                     decision_date=view.date,
                     events=events,
+                    nominal_cycle_row=nominal_cycle_row,
+                    nominal_cycle_schedule_sha256=(
+                        nominal_cycle_binding.schedule.sha256
+                        if nominal_cycle_binding is not None
+                        else None
+                    ),
                 )
-                rebalance_records.append(record.model_dump(mode="json"))
+                record_payload = record.model_dump(mode="json")
+                if nominal_cycle_binding is not None:
+                    assert nominal_cycle_row is not None
+                    record_payload["nominal_cycle_schedule"] = (
+                        _nominal_cycle_provenance(
+                            nominal_cycle_binding.schedule.sha256,
+                            nominal_cycle_row,
+                        )
+                    )
+                rebalance_records.append(record_payload)
 
         for instrument, pending in pending_targets.items():
             events.append({
@@ -238,6 +305,7 @@ class DailyBookBacktester(IBookBacktester):
                     "instrument": instrument,
                     "target_lots": pending.target_lots,
                     "decision_date": pending.decision_date.isoformat(),
+                    **_pending_cycle_detail(pending),
                 },
             })
 
@@ -273,6 +341,7 @@ class DailyBookBacktester(IBookBacktester):
         *,
         blocked_instruments: frozenset[str] = frozenset(),
         decision_dates: Mapping[str, dt.date] | None = None,
+        pending_metadata: Mapping[str, _PendingTarget] | None = None,
         execution_contract_rows: Mapping[
             tuple[dt.date, str], ExecutionContractScheduleRow
         ]
@@ -290,6 +359,11 @@ class DailyBookBacktester(IBookBacktester):
                 if decision_dates is not None
                 else view.date
             )
+            cycle_detail = (
+                _pending_cycle_detail(pending_metadata[instrument])
+                if pending_metadata is not None and instrument in pending_metadata
+                else {}
+            )
             if instrument in blocked_instruments:
                 deferred.add(instrument)
                 events.append({
@@ -300,6 +374,7 @@ class DailyBookBacktester(IBookBacktester):
                         "target_lots": float(target),
                         "decision_date": decision_date.isoformat(),
                         "reason": "roll_deferred",
+                        **cycle_detail,
                     },
                 })
                 continue
@@ -315,6 +390,7 @@ class DailyBookBacktester(IBookBacktester):
                             "target_lots": float(target),
                             "decision_date": decision_date.isoformat(),
                             "reason": "missing_exact_main_bar",
+                            **cycle_detail,
                         },
                     })
                     continue
@@ -339,6 +415,7 @@ class DailyBookBacktester(IBookBacktester):
                                 if schedule_row.source_date is not None
                                 else None
                             ),
+                            **cycle_detail,
                         },
                     })
                     continue
@@ -356,6 +433,7 @@ class DailyBookBacktester(IBookBacktester):
                             "reason": "missing_exact_scheduled_contract_bar",
                             "scheduled_contract": schedule_row.contract,
                             "source_date": schedule_row.source_date.isoformat(),
+                            **cycle_detail,
                         },
                     })
                     continue
@@ -387,6 +465,7 @@ class DailyBookBacktester(IBookBacktester):
                         "decision_date": decision_date.isoformat(),
                         "reason": reason,
                         "pending_action": "retained",
+                        **cycle_detail,
                     },
                 })
                 continue
@@ -437,6 +516,7 @@ class DailyBookBacktester(IBookBacktester):
         events: list[dict],
         targets: Mapping[str, float] | None = None,
         *,
+        pending_metadata: Mapping[str, _PendingTarget] | None = None,
         execution_contract_rows: Mapping[
             tuple[dt.date, str], ExecutionContractScheduleRow
         ]
@@ -454,6 +534,11 @@ class DailyBookBacktester(IBookBacktester):
         for instrument, position in list(positions.items()):
             if position.lots == 0:
                 continue
+            cycle_detail = (
+                _pending_cycle_detail(pending_metadata[instrument])
+                if pending_metadata is not None and instrument in pending_metadata
+                else {}
+            )
             if execution_contract_rows is None:
                 main_bar = view.current_bar(instrument)
                 if main_bar is None:
@@ -465,6 +550,7 @@ class DailyBookBacktester(IBookBacktester):
                             "instrument": instrument,
                             "held_contract": position.contract,
                             "reason": "missing_exact_main_bar",
+                            **cycle_detail,
                         },
                     })
                     continue
@@ -489,6 +575,7 @@ class DailyBookBacktester(IBookBacktester):
                                 if schedule_row.source_date is not None
                                 else None
                             ),
+                            **cycle_detail,
                         },
                     })
                     continue
@@ -512,6 +599,7 @@ class DailyBookBacktester(IBookBacktester):
                             "next_contract": today_contract,
                             "reason": "missing_exact_scheduled_contract_bar",
                             "source_date": schedule_row.source_date.isoformat(),
+                            **cycle_detail,
                         },
                     })
                     continue
@@ -533,6 +621,7 @@ class DailyBookBacktester(IBookBacktester):
                         "held_contract": position.contract,
                         "next_contract": today_contract,
                         "reason": "missing_exact_held_contract_bar",
+                        **cycle_detail,
                     },
                 })
                 continue
@@ -607,6 +696,8 @@ class DailyBookBacktester(IBookBacktester):
         positions: Mapping[str, _Position],
         decision_date: dt.date,
         events: list[dict],
+        nominal_cycle_row: NominalCycleScheduleRow | None = None,
+        nominal_cycle_schedule_sha256: str | None = None,
     ) -> None:
         """Normalize one absolute target book against positions and pending intent.
 
@@ -615,6 +706,10 @@ class DailyBookBacktester(IBookBacktester):
         a deferred opening, while an omitted held name schedules an exit to zero.
         Targets already equal to current lots are pruned.
         """
+        if (nominal_cycle_row is None) != (nominal_cycle_schedule_sha256 is None):
+            raise ValueError(
+                "nominal cycle row and schedule hash must be supplied together"
+            )
         normalized: dict[str, float] = {}
         for raw_instrument, target in newest.items():
             instrument = raw_instrument.lower()
@@ -648,6 +743,7 @@ class DailyBookBacktester(IBookBacktester):
                                 if is_explicit
                                 else "omitted_by_new_target_book"
                             ),
+                            **_pending_cycle_detail(previous),
                         },
                     })
                 continue
@@ -666,11 +762,38 @@ class DailyBookBacktester(IBookBacktester):
                             if is_explicit
                             else "omitted_by_new_target_book"
                         ),
+                        **_pending_cycle_detail(previous, prefix="previous_"),
+                        **(
+                            _nominal_cycle_pending_fields(
+                                nominal_cycle_schedule_sha256,
+                                nominal_cycle_row,
+                                prefix="new_",
+                            )
+                            if nominal_cycle_row is not None
+                            and nominal_cycle_schedule_sha256 is not None
+                            else {}
+                        ),
                     },
                 })
             next_pending[instrument] = _PendingTarget(
                 target_lots=float(target),
                 decision_date=decision_date,
+                eligible_fill_date=(
+                    nominal_cycle_row.fill_date
+                    if nominal_cycle_row is not None
+                    else None
+                ),
+                nominal_cycle_schedule_sha256=nominal_cycle_schedule_sha256,
+                cycle_id=(
+                    nominal_cycle_row.cycle_id
+                    if nominal_cycle_row is not None
+                    else None
+                ),
+                nominal_date=(
+                    nominal_cycle_row.nominal_date
+                    if nominal_cycle_row is not None
+                    else None
+                ),
             )
         pending.clear()
         pending.update(next_pending)
@@ -702,6 +825,278 @@ class DailyBookBacktester(IBookBacktester):
             json.dumps(result.summary.model_dump(mode="json"), sort_keys=True, indent=2) + "\n",
             encoding="utf-8",
         )
+
+
+def _nominal_cycle_pending_fields(
+    schedule_sha256: str,
+    row: NominalCycleScheduleRow,
+    *,
+    prefix: str = "",
+) -> dict[str, str]:
+    assert row.decision_date is not None
+    assert row.fill_date is not None
+    return {
+        f"{prefix}nominal_cycle_schedule_sha256": schedule_sha256,
+        f"{prefix}cycle_id": row.cycle_id,
+        f"{prefix}nominal_date": row.nominal_date.isoformat(),
+        f"{prefix}eligible_fill_date": row.fill_date.isoformat(),
+    }
+
+
+def _pending_cycle_detail(
+    pending: _PendingTarget,
+    *,
+    prefix: str = "",
+) -> dict[str, str]:
+    if pending.cycle_id is None:
+        return {}
+    if (
+        pending.nominal_cycle_schedule_sha256 is None
+        or pending.nominal_date is None
+        or pending.eligible_fill_date is None
+    ):
+        raise ValueError("pending nominal-cycle provenance is incomplete")
+    return {
+        f"{prefix}nominal_cycle_schedule_sha256": (
+            pending.nominal_cycle_schedule_sha256
+        ),
+        f"{prefix}cycle_id": pending.cycle_id,
+        f"{prefix}nominal_date": pending.nominal_date.isoformat(),
+        f"{prefix}eligible_fill_date": pending.eligible_fill_date.isoformat(),
+    }
+
+
+def _nominal_cycle_provenance(
+    schedule_sha256: str,
+    row: NominalCycleScheduleRow,
+) -> dict[str, str | None]:
+    return {
+        "sha256": schedule_sha256,
+        "cycle_id": row.cycle_id,
+        "nominal_date": row.nominal_date.isoformat(),
+        "decision_date": (
+            row.decision_date.isoformat() if row.decision_date is not None else None
+        ),
+        "fill_date": row.fill_date.isoformat() if row.fill_date is not None else None,
+        "exit_fill_date": (
+            row.exit_fill_date.isoformat()
+            if row.exit_fill_date is not None
+            else None
+        ),
+    }
+
+
+def _bind_nominal_cycle_schedule(
+    panel: PanelData,
+    config: BookBacktestConfig,
+    dates: Sequence[dt.date],
+) -> _NominalCycleBinding | None:
+    """Revalidate a strict schedule and bind it to the full panel calendar."""
+    configured = config.nominal_cycle_schedule
+    if config.rebalance_mode == "legacy":
+        if configured is not None:
+            raise ValueError("legacy rebalance mode cannot bind a nominal-cycle schedule")
+        return None
+    if configured is None:
+        raise ValueError("nominal-cycle rebalance mode requires a schedule")
+
+    schedule = NominalCycleSchedule.model_validate(
+        configured.model_dump(mode="python")
+    )
+    if config.panel_manifest_sha256 is None:
+        raise ValueError("panel_manifest_sha256 is required with a nominal-cycle schedule")
+    if config.panel_snapshot != schedule.source_panel_snapshot:
+        raise ValueError("nominal-cycle schedule snapshot does not match config")
+    if config.panel_manifest_sha256 != schedule.source_panel_manifest_sha256:
+        raise ValueError("nominal-cycle schedule manifest hash does not match config")
+
+    panel_calendar = tuple(panel.calendar)
+    if (
+        any(not isinstance(date, dt.date) for date in panel_calendar)
+        or tuple(sorted(set(panel_calendar))) != panel_calendar
+    ):
+        raise ValueError(
+            "book panel calendar must contain unique, strictly increasing dates"
+        )
+    if panel_calendar != schedule.panel_union_sessions:
+        raise ValueError(
+            "nominal-cycle schedule embedded panel union sessions do not match "
+            "the full panel calendar"
+        )
+    expected_run_dates = tuple(
+        date for date in panel_calendar if config.start <= date <= config.end
+    )
+    if tuple(dates) != expected_run_dates:
+        raise ValueError("book run dates are inconsistent with the panel union calendar")
+    if dates[0] != config.start or dates[-1] != config.end:
+        raise ValueError(
+            "strict nominal-cycle run bounds must be exact panel union sessions; "
+            f"requested={config.start.isoformat()}..{config.end.isoformat()}, "
+            f"resolved={dates[0].isoformat()}..{dates[-1].isoformat()}"
+        )
+
+    panel_snapshot = getattr(panel, "snapshot_version", None)
+    if panel_snapshot != schedule.source_panel_snapshot:
+        raise ValueError(
+            "book panel snapshot does not match the nominal-cycle schedule: "
+            f"panel={panel_snapshot!r}, schedule={schedule.source_panel_snapshot!r}"
+        )
+    panel_manifest = getattr(panel, "manifest", None)
+    if (
+        panel_manifest is not None
+        and getattr(panel_manifest, "version", None) != panel_snapshot
+    ):
+        raise ValueError("book panel manifest version and snapshot_version are inconsistent")
+    exposed_manifest_sha = getattr(panel, "manifest_sha256", None)
+    if (
+        exposed_manifest_sha is not None
+        and exposed_manifest_sha != schedule.source_panel_manifest_sha256
+    ):
+        raise ValueError("book panel exposed manifest hash does not match nominal schedule")
+    snapshot_dir = getattr(panel, "snapshot_dir", None)
+    if snapshot_dir is not None:
+        manifest_path = Path(snapshot_dir) / "manifest.json"
+        if not manifest_path.is_file():
+            raise ValueError(
+                f"book panel snapshot is missing manifest.json: {manifest_path}"
+            )
+        actual_manifest_sha256 = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+        if actual_manifest_sha256 != schedule.source_panel_manifest_sha256:
+            raise ValueError(
+                "book panel manifest bytes do not match the nominal-cycle schedule: "
+                f"expected {schedule.source_panel_manifest_sha256}, "
+                f"got {actual_manifest_sha256}"
+            )
+
+    required_nominal_start = max(
+        schedule.nominal_anchor,
+        _nominal_grid_floor(
+            schedule.nominal_anchor, config.start, schedule.interval_calendar_days
+        ),
+    )
+    required_nominal_end = max(
+        schedule.nominal_anchor,
+        _nominal_grid_floor(
+            schedule.nominal_anchor, config.end, schedule.interval_calendar_days
+        ),
+    )
+    if (
+        schedule.nominal_start > required_nominal_start
+        or schedule.nominal_end < required_nominal_end
+    ):
+        raise ValueError(
+            "nominal-cycle schedule does not cover the run's anchor-aligned "
+            "nominal cycles"
+        )
+
+    decisions: dict[dt.date, NominalCycleScheduleRow] = {}
+    skipped_events: list[dict] = []
+    for row in schedule.rows:
+        relevant_date = row.decision_date or row.nominal_date
+        if not (config.start <= relevant_date <= config.end):
+            continue
+        if row.decision_status != SCHEDULED:
+            skipped_events.append(
+                _nominal_cycle_skipped_event(schedule.sha256, row, row.decision_status)
+            )
+            continue
+        if row.fill_status != SCHEDULED:
+            skipped_events.append(
+                _nominal_cycle_skipped_event(schedule.sha256, row, row.fill_status)
+            )
+            continue
+        assert row.decision_date is not None
+        assert row.fill_date is not None
+        if row.fill_date > config.end:
+            skipped_events.append(
+                _nominal_cycle_skipped_event(
+                    schedule.sha256, row, "fill_outside_run_window"
+                )
+            )
+            continue
+        if row.decision_date in decisions:
+            raise ValueError(
+                "multiple nominal cycles resolve to the same scheduled decision date: "
+                f"{row.decision_date.isoformat()}"
+            )
+        decisions[row.decision_date] = row
+
+    skipped_by_emit_date: dict[dt.date, list[dict]] = {}
+    for event in skipped_events:
+        semantic_date = dt.date.fromisoformat(event["date"])
+        emit_index = bisect.bisect_left(dates, semantic_date)
+        if emit_index >= len(dates):
+            raise ValueError("nominal-cycle skip has no in-window emission date")
+        skipped_by_emit_date.setdefault(dates[emit_index], []).append(event)
+
+    return _NominalCycleBinding(
+        schedule=schedule,
+        decisions=decisions,
+        skipped_events_by_emit_date={
+            date: tuple(items) for date, items in skipped_by_emit_date.items()
+        },
+    )
+
+
+def _nominal_grid_floor(
+    anchor: dt.date,
+    date: dt.date,
+    interval_calendar_days: int,
+) -> dt.date:
+    intervals = (date - anchor).days // interval_calendar_days
+    return anchor + dt.timedelta(days=intervals * interval_calendar_days)
+
+
+def _nominal_cycle_schedule_bound_event(
+    schedule: NominalCycleSchedule,
+    config: BookBacktestConfig,
+    first_panel_date: dt.date,
+) -> dict:
+    return {
+        "date": first_panel_date.isoformat(),
+        "type": "nominal_cycle_schedule_bound",
+        "detail": {
+            "sha256": schedule.sha256,
+            "source_panel_snapshot": schedule.source_panel_snapshot,
+            "source_panel_manifest_sha256": schedule.source_panel_manifest_sha256,
+            "authoritative_calendar_id": schedule.authoritative_calendar_id,
+            "authoritative_calendar_source_sha256": (
+                schedule.authoritative_calendar_source_sha256
+            ),
+            "authoritative_coverage_basis": schedule.authoritative_coverage_basis,
+            "authoritative_sessions_sha256": schedule.authoritative_sessions_sha256,
+            "panel_union_sessions_sha256": schedule.panel_union_sessions_sha256,
+            "cadence_id": schedule.cadence_id,
+            "nominal_anchor": schedule.nominal_anchor.isoformat(),
+            "nominal_window": {
+                "start": schedule.nominal_start.isoformat(),
+                "end": schedule.nominal_end.isoformat(),
+            },
+            "run_window": {
+                "start": config.start.isoformat(),
+                "end": config.end.isoformat(),
+            },
+        },
+    }
+
+
+def _nominal_cycle_skipped_event(
+    schedule_sha256: str,
+    row: NominalCycleScheduleRow,
+    reason: str,
+) -> dict:
+    event_date = row.decision_date or row.nominal_date
+    return {
+        "date": event_date.isoformat(),
+        "type": "nominal_cycle_skipped",
+        "detail": {
+            **_nominal_cycle_provenance(schedule_sha256, row),
+            "decision_status": row.decision_status,
+            "fill_status": row.fill_status,
+            "exit_fill_status": row.exit_fill_status,
+            "reason": reason,
+        },
+    }
 
 
 def _bind_execution_contract_schedule(
