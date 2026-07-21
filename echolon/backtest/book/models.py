@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import datetime as dt
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, model_validator
+
+from .schedule import ExecutionContractSchedule
 
 
 class BookBacktestConfig(BaseModel):
@@ -13,7 +15,41 @@ class BookBacktestConfig(BaseModel):
     end: dt.date
     initial_equity_rmb: float
     panel_snapshot: str
+    panel_manifest_sha256: str | None = Field(
+        default=None,
+        pattern=r"^[0-9a-f]{64}$",
+        exclude_if=lambda value: value is None,
+    )
+    execution_contract_schedule: ExecutionContractSchedule | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
     slippage_bps_by_instrument: dict[str, float] = Field(default_factory=dict)
+
+    @model_validator(mode="after")
+    def _validate_execution_contract_schedule(self) -> "BookBacktestConfig":
+        schedule = self.execution_contract_schedule
+        if schedule is None:
+            return self
+        if self.panel_manifest_sha256 is None:
+            raise ValueError(
+                "panel_manifest_sha256 is required with an execution contract schedule"
+            )
+        if self.panel_snapshot != schedule.source_panel_snapshot:
+            raise ValueError(
+                "execution contract schedule source_panel_snapshot does not match "
+                "BookBacktestConfig.panel_snapshot"
+            )
+        if self.panel_manifest_sha256 != schedule.source_panel_manifest_sha256:
+            raise ValueError(
+                "execution contract schedule source_panel_manifest_sha256 does not "
+                "match BookBacktestConfig.panel_manifest_sha256"
+            )
+        if self.start < schedule.start or self.end > schedule.end:
+            raise ValueError(
+                "execution contract schedule does not cover the requested config window"
+            )
+        return self
 
 
 class EquityPoint(BaseModel):

@@ -17,6 +17,11 @@ from echolon.portfolio import BookState, PortfolioStrategy
 
 from .interface import IBookBacktester
 from .models import BookBacktestConfig, BookResult, EquityPoint, Summary, TradeRecord
+from .schedule import (
+    EXECUTABLE_STATUS,
+    ExecutionContractSchedule,
+    ExecutionContractScheduleRow,
+)
 
 
 @dataclass
@@ -43,6 +48,12 @@ class _ExecutionResult:
 class _RollResult:
     cash_delta: float
     deferred: frozenset[str]
+
+
+@dataclass(frozen=True)
+class _ExecutionContractBinding:
+    schedule: ExecutionContractSchedule
+    rows: Mapping[tuple[dt.date, str], ExecutionContractScheduleRow]
 
 
 class DailyBookBacktester(IBookBacktester):
@@ -89,6 +100,9 @@ class DailyBookBacktester(IBookBacktester):
         dates = [date for date in panel.calendar if config.start <= date <= config.end]
         if len(dates) < 2:
             raise ValueError("book backtest requires at least two panel dates")
+        execution_contract_binding = _bind_execution_contract_schedule(
+            panel, config, dates
+        )
 
         cash = float(config.initial_equity_rmb)
         positions = {instrument: _Position() for instrument in panel.instruments}
@@ -97,6 +111,14 @@ class DailyBookBacktester(IBookBacktester):
         rebalance_records: list[dict] = []
         events: list[dict] = []
         pending_targets: dict[str, _PendingTarget] = {}
+        if execution_contract_binding is not None:
+            events.append(
+                _execution_contract_schedule_bound_event(
+                    execution_contract_binding.schedule,
+                    config,
+                    dates[0],
+                )
+            )
 
         for index, date in enumerate(dates):
             view = panel.view(date)
@@ -111,6 +133,11 @@ class DailyBookBacktester(IBookBacktester):
                 config,
                 events,
                 target_lots if pending_targets else None,
+                execution_contract_rows=(
+                    execution_contract_binding.rows
+                    if execution_contract_binding is not None
+                    else None
+                ),
             )
             cash += roll_result.cash_delta
             if pending_targets:
@@ -126,6 +153,11 @@ class DailyBookBacktester(IBookBacktester):
                         instrument: pending.decision_date
                         for instrument, pending in pending_targets.items()
                     },
+                    execution_contract_rows=(
+                        execution_contract_binding.rows
+                        if execution_contract_binding is not None
+                        else None
+                    ),
                 )
                 cash += execution_result.cash_delta
                 pending_targets = {
@@ -184,6 +216,11 @@ class DailyBookBacktester(IBookBacktester):
                     },
                 )
                 target, record = strategy.rebalance(view, book)
+                if execution_contract_binding is not None:
+                    _validate_target_schedule_scope(
+                        target.targets,
+                        execution_contract_binding.schedule.instruments,
+                    )
                 self._merge_pending_targets(
                     pending_targets,
                     target.targets,
@@ -236,6 +273,10 @@ class DailyBookBacktester(IBookBacktester):
         *,
         blocked_instruments: frozenset[str] = frozenset(),
         decision_dates: Mapping[str, dt.date] | None = None,
+        execution_contract_rows: Mapping[
+            tuple[dt.date, str], ExecutionContractScheduleRow
+        ]
+        | None = None,
     ) -> _ExecutionResult:
         cash_delta = 0.0
         deferred: set[str] = set()
@@ -262,20 +303,65 @@ class DailyBookBacktester(IBookBacktester):
                     },
                 })
                 continue
-            bar = view.current_bar(instrument)
-            if bar is None:
-                deferred.add(instrument)
-                events.append({
-                    "date": view.date.isoformat(),
-                    "type": "target_deferred",
-                    "detail": {
-                        "instrument": instrument,
-                        "target_lots": float(target),
-                        "decision_date": decision_date.isoformat(),
-                        "reason": "missing_exact_main_bar",
-                    },
-                })
-                continue
+            if execution_contract_rows is None:
+                bar = view.current_bar(instrument)
+                if bar is None:
+                    deferred.add(instrument)
+                    events.append({
+                        "date": view.date.isoformat(),
+                        "type": "target_deferred",
+                        "detail": {
+                            "instrument": instrument,
+                            "target_lots": float(target),
+                            "decision_date": decision_date.isoformat(),
+                            "reason": "missing_exact_main_bar",
+                        },
+                    })
+                    continue
+            else:
+                schedule_row = _required_execution_contract_row(
+                    execution_contract_rows, view.date, instrument
+                )
+                if schedule_row.status != EXECUTABLE_STATUS:
+                    deferred.add(instrument)
+                    events.append({
+                        "date": view.date.isoformat(),
+                        "type": "target_deferred",
+                        "detail": {
+                            "instrument": instrument,
+                            "target_lots": float(target),
+                            "decision_date": decision_date.isoformat(),
+                            "reason": "scheduled_contract_non_executable",
+                            "schedule_status": schedule_row.status,
+                            "scheduled_contract": schedule_row.contract,
+                            "source_date": (
+                                schedule_row.source_date.isoformat()
+                                if schedule_row.source_date is not None
+                                else None
+                            ),
+                        },
+                    })
+                    continue
+                assert schedule_row.contract is not None
+                bar = view.contract_bar(instrument, schedule_row.contract)
+                if bar is None:
+                    deferred.add(instrument)
+                    events.append({
+                        "date": view.date.isoformat(),
+                        "type": "target_deferred",
+                        "detail": {
+                            "instrument": instrument,
+                            "target_lots": float(target),
+                            "decision_date": decision_date.isoformat(),
+                            "reason": "missing_exact_scheduled_contract_bar",
+                            "scheduled_contract": schedule_row.contract,
+                            "source_date": schedule_row.source_date.isoformat(),
+                        },
+                    })
+                    continue
+                _validate_returned_contract_bar(
+                    bar, instrument, schedule_row.contract, view.date
+                )
             meta = view.meta(instrument)
             intended = _raw_price(bar, "open")
             side = "BUY" if diff > 0 else "SELL"
@@ -350,6 +436,11 @@ class DailyBookBacktester(IBookBacktester):
         config: BookBacktestConfig,
         events: list[dict],
         targets: Mapping[str, float] | None = None,
+        *,
+        execution_contract_rows: Mapping[
+            tuple[dt.date, str], ExecutionContractScheduleRow
+        ]
+        | None = None,
     ) -> _RollResult:
         """Materialize contract rolls before mark-to-market can drift contracts.
 
@@ -363,20 +454,70 @@ class DailyBookBacktester(IBookBacktester):
         for instrument, position in list(positions.items()):
             if position.lots == 0:
                 continue
-            main_bar = view.current_bar(instrument)
-            if main_bar is None:
-                deferred.add(instrument)
-                events.append({
-                    "date": view.date.isoformat(),
-                    "type": "roll_deferred",
-                    "detail": {
-                        "instrument": instrument,
-                        "held_contract": position.contract,
-                        "reason": "missing_exact_main_bar",
-                    },
-                })
-                continue
-            today_contract = str(main_bar["contract"])
+            if execution_contract_rows is None:
+                main_bar = view.current_bar(instrument)
+                if main_bar is None:
+                    deferred.add(instrument)
+                    events.append({
+                        "date": view.date.isoformat(),
+                        "type": "roll_deferred",
+                        "detail": {
+                            "instrument": instrument,
+                            "held_contract": position.contract,
+                            "reason": "missing_exact_main_bar",
+                        },
+                    })
+                    continue
+                today_contract = str(main_bar["contract"])
+            else:
+                schedule_row = _required_execution_contract_row(
+                    execution_contract_rows, view.date, instrument
+                )
+                if schedule_row.status != EXECUTABLE_STATUS:
+                    deferred.add(instrument)
+                    events.append({
+                        "date": view.date.isoformat(),
+                        "type": "roll_deferred",
+                        "detail": {
+                            "instrument": instrument,
+                            "held_contract": position.contract,
+                            "reason": "scheduled_contract_non_executable",
+                            "schedule_status": schedule_row.status,
+                            "scheduled_contract": schedule_row.contract,
+                            "source_date": (
+                                schedule_row.source_date.isoformat()
+                                if schedule_row.source_date is not None
+                                else None
+                            ),
+                        },
+                    })
+                    continue
+                assert schedule_row.contract is not None
+                today_contract = schedule_row.contract
+                if not position.contract:
+                    raise ValueError(
+                        f"held position for {instrument} has no contract identity"
+                    )
+                if position.contract == today_contract:
+                    continue
+                main_bar = view.contract_bar(instrument, today_contract)
+                if main_bar is None:
+                    deferred.add(instrument)
+                    events.append({
+                        "date": view.date.isoformat(),
+                        "type": "roll_deferred",
+                        "detail": {
+                            "instrument": instrument,
+                            "held_contract": position.contract,
+                            "next_contract": today_contract,
+                            "reason": "missing_exact_scheduled_contract_bar",
+                            "source_date": schedule_row.source_date.isoformat(),
+                        },
+                    })
+                    continue
+                _validate_returned_contract_bar(
+                    main_bar, instrument, today_contract, view.date
+                )
             if not position.contract or position.contract == today_contract:
                 continue
             meta = view.meta(instrument)
@@ -395,6 +536,10 @@ class DailyBookBacktester(IBookBacktester):
                     },
                 })
                 continue
+            if execution_contract_rows is not None:
+                _validate_returned_contract_bar(
+                    close_bar, instrument, position.contract, view.date
+                )
             close_diff = -position.lots
             close_intended = _raw_price(close_bar, "open")
             close_fill = _slipped_price(close_intended, close_diff, slippage_bps, float(meta.tick))
@@ -556,6 +701,246 @@ class DailyBookBacktester(IBookBacktester):
         (self.output_dir / "summary.json").write_text(
             json.dumps(result.summary.model_dump(mode="json"), sort_keys=True, indent=2) + "\n",
             encoding="utf-8",
+        )
+
+
+def _bind_execution_contract_schedule(
+    panel: PanelData,
+    config: BookBacktestConfig,
+    dates: Sequence[dt.date],
+) -> _ExecutionContractBinding | None:
+    """Fail closed on schedule identity and union-calendar coverage.
+
+    A missing row is an invalid artifact, not a runtime trading-day skip. Every
+    panel union date in the requested run window must therefore have one
+    explicit row (executable or not) for every declared schedule instrument.
+    """
+    configured = config.execution_contract_schedule
+    if configured is None:
+        return None
+
+    # Revalidate from primitives so Pydantic ``model_copy(update=...)`` cannot
+    # bypass structural or hash validation on a run-critical artifact.
+    schedule = ExecutionContractSchedule.model_validate(
+        configured.model_dump(mode="python")
+    )
+    if config.panel_manifest_sha256 is None:
+        raise ValueError(
+            "panel_manifest_sha256 is required with an execution contract schedule"
+        )
+    if config.panel_snapshot != schedule.source_panel_snapshot:
+        raise ValueError(
+            "execution contract schedule snapshot does not match config panel snapshot"
+        )
+    if config.panel_manifest_sha256 != schedule.source_panel_manifest_sha256:
+        raise ValueError(
+            "execution contract schedule manifest hash does not match config pin"
+        )
+    if config.start < schedule.start or config.end > schedule.end:
+        raise ValueError("execution contract schedule does not cover the run window")
+
+    panel_calendar = tuple(panel.calendar)
+    if (
+        any(not isinstance(date, dt.date) for date in panel_calendar)
+        or tuple(sorted(set(panel_calendar))) != panel_calendar
+    ):
+        raise ValueError(
+            "book panel calendar must contain unique, strictly increasing dates"
+        )
+    expected_run_dates = tuple(
+        date for date in panel_calendar if config.start <= date <= config.end
+    )
+    if tuple(dates) != expected_run_dates:
+        raise ValueError("book run dates are inconsistent with the panel union calendar")
+    if dates[0] != config.start or dates[-1] != config.end:
+        raise ValueError(
+            "strict execution contract schedule run bounds must be exact panel "
+            "union sessions; "
+            f"requested={config.start.isoformat()}..{config.end.isoformat()}, "
+            f"resolved={dates[0].isoformat()}..{dates[-1].isoformat()}"
+        )
+
+    panel_snapshot = getattr(panel, "snapshot_version", None)
+    if panel_snapshot != config.panel_snapshot:
+        raise ValueError(
+            "book panel snapshot does not match the execution contract schedule: "
+            f"panel={panel_snapshot!r}, schedule={schedule.source_panel_snapshot!r}"
+        )
+    panel_manifest = getattr(panel, "manifest", None)
+    if (
+        panel_manifest is not None
+        and getattr(panel_manifest, "version", None) != panel_snapshot
+    ):
+        raise ValueError("book panel manifest version and snapshot_version are inconsistent")
+
+    snapshot_dir = getattr(panel, "snapshot_dir", None)
+    if snapshot_dir is not None:
+        manifest_path = Path(snapshot_dir) / "manifest.json"
+        if not manifest_path.is_file():
+            raise ValueError(
+                f"book panel snapshot is missing manifest.json: {manifest_path}"
+            )
+        actual_manifest_sha256 = hashlib.sha256(manifest_path.read_bytes()).hexdigest()
+        if actual_manifest_sha256 != schedule.source_panel_manifest_sha256:
+            raise ValueError(
+                "book panel manifest bytes do not match the execution contract "
+                f"schedule: expected {schedule.source_panel_manifest_sha256}, "
+                f"got {actual_manifest_sha256}"
+            )
+
+    panel_instruments = tuple(panel.instruments)
+    normalized_panel_instruments = tuple(
+        str(instrument).strip().lower() for instrument in panel_instruments
+    )
+    if (
+        panel_instruments != normalized_panel_instruments
+        or len(set(panel_instruments)) != len(panel_instruments)
+    ):
+        raise ValueError("book panel instruments must be unique normalized identifiers")
+    unknown_instruments = sorted(set(schedule.instruments).difference(panel_instruments))
+    if unknown_instruments:
+        raise ValueError(
+            "execution contract schedule declares instruments absent from the panel: "
+            f"{unknown_instruments}"
+        )
+
+    rows = schedule.row_map()
+    expected_keys = {
+        (date, instrument)
+        for date in dates
+        for instrument in schedule.instruments
+    }
+    actual_keys = {
+        key
+        for key in rows
+        if config.start <= key[0] <= config.end
+    }
+    missing = sorted(expected_keys.difference(actual_keys))
+    extra = sorted(actual_keys.difference(expected_keys))
+    if missing or extra:
+        raise ValueError(
+            "execution contract schedule row coverage does not match panel union "
+            f"calendar; missing={_format_schedule_keys(missing)}, "
+            f"extra={_format_schedule_keys(extra)}"
+        )
+    return _ExecutionContractBinding(schedule=schedule, rows=rows)
+
+
+def _format_schedule_keys(keys: Sequence[tuple[dt.date, str]]) -> str:
+    rendered = [f"{date.isoformat()}:{instrument}" for date, instrument in keys[:5]]
+    if len(keys) > 5:
+        rendered.append(f"...+{len(keys) - 5}")
+    return repr(rendered)
+
+
+def _execution_contract_schedule_bound_event(
+    schedule: ExecutionContractSchedule,
+    config: BookBacktestConfig,
+    first_panel_date: dt.date,
+) -> dict:
+    return {
+        "date": first_panel_date.isoformat(),
+        "type": "execution_contract_schedule_bound",
+        "detail": {
+            "sha256": schedule.sha256,
+            "source_panel_snapshot": schedule.source_panel_snapshot,
+            "source_panel_manifest_sha256": schedule.source_panel_manifest_sha256,
+            "selection_rule": schedule.selection_rule,
+            "availability_assumption": schedule.availability_assumption,
+            "schedule_window": {
+                "start": schedule.start.isoformat(),
+                "end": schedule.end.isoformat(),
+            },
+            "run_window": {
+                "start": config.start.isoformat(),
+                "end": config.end.isoformat(),
+            },
+            "instruments": list(schedule.instruments),
+        },
+    }
+
+
+def _required_execution_contract_row(
+    rows: Mapping[tuple[dt.date, str], ExecutionContractScheduleRow],
+    fill_date: dt.date,
+    instrument: str,
+) -> ExecutionContractScheduleRow:
+    try:
+        return rows[(fill_date, instrument)]
+    except KeyError as exc:
+        raise ValueError(
+            "execution contract schedule preflight invariant violated: missing row "
+            f"for {fill_date.isoformat()} {instrument}"
+        ) from exc
+
+
+def _validate_target_schedule_scope(
+    targets: Mapping[str, float], declared_instruments: Sequence[str]
+) -> None:
+    declared = set(declared_instruments)
+    outside: list[str] = []
+    for raw_instrument, raw_target in targets.items():
+        instrument = str(raw_instrument).lower()
+        target = float(raw_target)
+        if instrument not in declared and (
+            not math.isfinite(target) or abs(target) > 1e-12
+        ):
+            outside.append(str(raw_instrument))
+    if outside:
+        raise ValueError(
+            "nonzero targets fall outside execution contract schedule instruments: "
+            f"{sorted(outside)}"
+        )
+
+
+def _validate_returned_contract_bar(
+    bar: Any,
+    instrument: str,
+    expected_contract: str,
+    fill_date: dt.date,
+) -> None:
+    try:
+        actual_contract = str(bar["contract"])
+    except (KeyError, TypeError) as exc:
+        raise ValueError(
+            f"contract_bar returned a row without contract identity for {instrument} "
+            f"on {fill_date.isoformat()}"
+        ) from exc
+    if actual_contract != expected_contract:
+        raise ValueError(
+            "contract_bar returned the wrong contract for strict execution: "
+            f"expected {expected_contract}, got {actual_contract} ({instrument}, "
+            f"{fill_date.isoformat()})"
+        )
+    raw_date = None
+    if hasattr(bar, "get"):
+        raw_date = bar.get("date")
+    if raw_date is None:
+        raw_date = getattr(bar, "name", None)
+    if isinstance(raw_date, pd.Timestamp):
+        actual_date = raw_date.date()
+    elif isinstance(raw_date, dt.datetime):
+        actual_date = raw_date.date()
+    elif isinstance(raw_date, dt.date):
+        actual_date = raw_date
+    elif isinstance(raw_date, str):
+        try:
+            actual_date = dt.date.fromisoformat(raw_date)
+        except ValueError as exc:
+            raise ValueError(
+                "contract_bar returned a row with an invalid date identity for "
+                f"{instrument}: {raw_date!r}"
+            ) from exc
+    else:
+        raise ValueError(
+            "contract_bar returned a row without exact date identity for "
+            f"{instrument} on {fill_date.isoformat()}"
+        )
+    if actual_date != fill_date:
+        raise ValueError(
+            "contract_bar returned a stale or future row for strict execution: "
+            f"expected {fill_date.isoformat()}, got {actual_date.isoformat()} "
+            f"({instrument}, {expected_contract})"
         )
 
 
