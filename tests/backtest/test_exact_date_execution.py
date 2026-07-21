@@ -26,6 +26,8 @@ class _UnionPanel:
         self.calendar = dates
         self._bars = bars
         self._contracts = contracts
+        self.contract_bar_calls = 0
+        self.contract_bar_asof_calls = 0
         self._meta = {
             instrument: InstrumentMeta(
                 instrument_id=instrument,
@@ -60,12 +62,14 @@ class _UnionView:
         return None if rows.empty else rows.iloc[0].copy()
 
     def contract_bar(self, instrument: str, contract: str):
+        self._panel.contract_bar_calls += 1
         frame = self._panel._contracts[instrument]
         rows = frame.loc[frame.index == self.date]
         rows = rows[rows["contract"].astype(str) == str(contract)]
         return None if rows.empty else rows.iloc[0].copy()
 
     def contract_bar_asof(self, instrument: str, contract: str):
+        self._panel.contract_bar_asof_calls += 1
         frame = self._panel._contracts[instrument]
         rows = frame.loc[frame.index <= self.date]
         rows = rows[rows["contract"].astype(str) == str(contract)]
@@ -197,6 +201,7 @@ def test_closed_instrument_target_defers_while_exact_peer_fills_and_newest_wins(
         "previous_decision_date": dates[0].isoformat(),
         "new_target_lots": 3.0,
         "new_decision_date": dates[1].isoformat(),
+        "reason": "explicit_new_target",
     }
 
 
@@ -240,6 +245,25 @@ def test_closed_instrument_stale_main_cannot_materialize_roll(tmp_path: Path):
     )
 
 
+def test_exact_held_rows_never_invoke_asof_valuation_scan(tmp_path: Path):
+    dates = [dt.date(2024, 2, 10) + dt.timedelta(days=index) for index in range(4)]
+    first_rows = [(date, 10.0, "F1") for date in dates]
+    second_rows = [(date, 100.0 + index, "S1") for index, date in enumerate(dates)]
+    panel = _UnionPanel(
+        dates=dates,
+        bars={"first": _main_bars(first_rows), "second": _main_bars(second_rows)},
+        contracts={
+            "first": _contract_bars(first_rows),
+            "second": _contract_bars(second_rows),
+        },
+    )
+
+    _run(tmp_path, panel, _ConstantTargets({"second": 1}))
+
+    assert panel.contract_bar_calls > 0
+    assert panel.contract_bar_asof_calls == 0
+
+
 def test_roll_requires_exact_held_contract_row_not_new_main_fallback(tmp_path: Path):
     dates = [dt.date(2024, 3, 1) + dt.timedelta(days=index) for index in range(5)]
     first_rows = [(date, 10.0, "F1") for date in dates]
@@ -275,6 +299,7 @@ def test_roll_requires_exact_held_contract_row_not_new_main_fallback(tmp_path: P
     ]
     assert not any(trade.date == dates[2] for trade in result.trades)
     assert result.equity_curve[2].equity_rmb == result.equity_curve[1].equity_rmb
+    assert panel.contract_bar_asof_calls == 2
     assert any(
         event["date"] == dates[2].isoformat()
         and event["type"] == "roll_deferred"

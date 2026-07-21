@@ -187,6 +187,7 @@ class DailyBookBacktester(IBookBacktester):
                 self._merge_pending_targets(
                     pending_targets,
                     target.targets,
+                    positions=positions,
                     decision_date=view.date,
                     events=events,
                 )
@@ -458,17 +459,53 @@ class DailyBookBacktester(IBookBacktester):
         pending: dict[str, _PendingTarget],
         newest: Mapping[str, float],
         *,
+        positions: Mapping[str, _Position],
         decision_date: dt.date,
         events: list[dict],
     ) -> None:
-        """Merge a rebalance into pending intent, newest same-name target wins.
+        """Normalize one absolute target book against positions and pending intent.
 
-        Instruments omitted by the newest target keep their prior deferred
-        intent. An explicitly supplied target replaces that instrument only and
-        is always auditable, even when its lot value is unchanged.
+        Live target books define omitted instruments as zero. A newest explicit
+        target replaces prior intent for that name; an omitted flat name cancels
+        a deferred opening, while an omitted held name schedules an exit to zero.
+        Targets already equal to current lots are pruned.
         """
-        for instrument, target in newest.items():
+        normalized: dict[str, float] = {}
+        for raw_instrument, target in newest.items():
+            instrument = raw_instrument.lower()
+            if instrument in normalized:
+                raise ValueError(f"duplicate normalized target instrument {instrument}")
+            normalized[instrument] = float(target)
+        unknown = sorted(set(normalized).difference(positions))
+        if unknown:
+            raise KeyError(f"targets contain instruments absent from the panel: {unknown}")
+        orphaned = sorted(set(pending).difference(positions))
+        if orphaned:
+            raise KeyError(f"pending targets contain instruments absent from the panel: {orphaned}")
+
+        next_pending: dict[str, _PendingTarget] = {}
+        for instrument, position in positions.items():
+            is_explicit = instrument in normalized
+            target = normalized.get(instrument, 0.0)
             previous = pending.get(instrument)
+            if abs(target - position.lots) <= 1e-12:
+                if previous is not None:
+                    events.append({
+                        "date": decision_date.isoformat(),
+                        "type": "target_cancelled",
+                        "detail": {
+                            "instrument": instrument,
+                            "target_lots": previous.target_lots,
+                            "decision_date": previous.decision_date.isoformat(),
+                            "superseding_decision_date": decision_date.isoformat(),
+                            "reason": (
+                                "superseded_target_already_satisfied"
+                                if is_explicit
+                                else "omitted_by_new_target_book"
+                            ),
+                        },
+                    })
+                continue
             if previous is not None:
                 events.append({
                     "date": decision_date.isoformat(),
@@ -479,12 +516,19 @@ class DailyBookBacktester(IBookBacktester):
                         "previous_decision_date": previous.decision_date.isoformat(),
                         "new_target_lots": float(target),
                         "new_decision_date": decision_date.isoformat(),
+                        "reason": (
+                            "explicit_new_target"
+                            if is_explicit
+                            else "omitted_by_new_target_book"
+                        ),
                     },
                 })
-            pending[instrument] = _PendingTarget(
+            next_pending[instrument] = _PendingTarget(
                 target_lots=float(target),
                 decision_date=decision_date,
             )
+        pending.clear()
+        pending.update(next_pending)
 
     def _slippage_bps_for(self, instrument: str, config: BookBacktestConfig) -> float:
         """Return the configured transaction-cost charge for one instrument.
@@ -678,6 +722,11 @@ def _valuation_bar(view: Any, instrument: str, contract: str) -> Any:
     """
     if not contract:
         raise ValueError(f"held position for {instrument} has no contract identity")
+    if not hasattr(view, "contract_bar"):
+        raise TypeError("book view must implement contract_bar for position valuation")
+    exact = view.contract_bar(instrument, contract)
+    if exact is not None:
+        return exact
     if not hasattr(view, "contract_bar_asof"):
         raise TypeError("book view must implement contract_bar_asof for position valuation")
     row = view.contract_bar_asof(instrument, contract)

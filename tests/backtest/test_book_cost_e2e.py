@@ -8,6 +8,7 @@ import pandas as pd
 import pytest
 
 from echolon.backtest.book import BookBacktestConfig, DailyBookBacktester
+from echolon.live.book import DiffOrder, TargetExecutor
 from echolon.panel.models import InstrumentMeta
 from echolon.portfolio import BookState, RebalanceRecord, TargetBook
 
@@ -507,3 +508,91 @@ def test_book_backtester_closes_held_contract_when_flattening_on_roll_date(tmp_p
     assert [trade.position_after for trade in result.trades] == [1, 0]
     assert result.trades[1].realized_pnl_rmb == pytest.approx(50.0)
     assert result.equity_curve[-1].equity_rmb == pytest.approx(100_050.0)
+
+
+def test_new_absolute_book_omission_cancels_flat_deferred_open_with_live_parity(
+    tmp_path: Path,
+):
+    panel = _Panel()
+    dates = panel.calendar
+    panel._bars["al"] = panel._bars["al"].drop(index=dates[1])
+    panel._contracts["al"] = panel._contracts["al"].drop(index=dates[1])
+    strategy = _DatedStrategy(
+        {dates[0]: {"al": 1}, dates[1]: {}}
+    )
+
+    result = DailyBookBacktester(
+        output_dir=tmp_path, slippage_bps=0.0, rebalance_weekday=None
+    ).run(
+        strategy,
+        panel,
+        BookBacktestConfig(
+            start=dates[0], end=dates[-1], initial_equity_rmb=700_000.0,
+            panel_snapshot="absolute_target_flat",
+        ),
+    )
+    live_plan = TargetExecutor(
+        router=None, book_id="generic", symbol_map={"al": "AL"}
+    ).plan(TargetBook(date=dates[1], targets={}), current_lots={})
+
+    assert live_plan == []
+    assert not any(trade.instrument == "al" for trade in result.trades)
+    assert result.events == [
+        {
+            "date": dates[1].isoformat(),
+            "type": "target_deferred",
+            "detail": {
+                "instrument": "al",
+                "target_lots": 1.0,
+                "decision_date": dates[0].isoformat(),
+                "reason": "missing_exact_main_bar",
+            },
+        },
+        {
+            "date": dates[1].isoformat(),
+            "type": "target_cancelled",
+            "detail": {
+                "instrument": "al",
+                "target_lots": 1.0,
+                "decision_date": dates[0].isoformat(),
+                "superseding_decision_date": dates[1].isoformat(),
+                "reason": "omitted_by_new_target_book",
+            },
+        },
+    ]
+
+
+def test_new_absolute_book_omission_flattens_held_name_with_live_parity(
+    tmp_path: Path,
+):
+    panel = _Panel()
+    dates = panel.calendar
+    strategy = _DatedStrategy(
+        {dates[0]: {"al": 1}, dates[1]: {}}
+    )
+
+    result = DailyBookBacktester(
+        output_dir=tmp_path, slippage_bps=0.0, rebalance_weekday=None
+    ).run(
+        strategy,
+        panel,
+        BookBacktestConfig(
+            start=dates[0], end=dates[-1], initial_equity_rmb=700_000.0,
+            panel_snapshot="absolute_target_held",
+        ),
+    )
+    live_plan = TargetExecutor(
+        router=None, book_id="generic", symbol_map={"al": "AL"}
+    ).plan(TargetBook(date=dates[1], targets={}), current_lots={"al": 1})
+
+    assert live_plan == [
+        DiffOrder(instrument="al", symbol="AL", intent="EXIT_LONG", volume=1)
+    ]
+    assert [
+        (trade.date, trade.side, trade.lots)
+        for trade in result.trades
+        if trade.instrument == "al"
+    ] == [
+        (dates[1], "BUY", 1.0),
+        (dates[2], "SELL", 1.0),
+    ]
