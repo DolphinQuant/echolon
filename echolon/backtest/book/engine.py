@@ -8,7 +8,7 @@ import math
 from dataclasses import dataclass
 from decimal import ROUND_CEILING, Decimal
 from pathlib import Path
-from typing import Any, Mapping
+from typing import Any, Mapping, Sequence
 
 import pandas as pd
 
@@ -37,6 +37,7 @@ class DailyBookBacktester(IBookBacktester):
         slippage_bps: float = 3.0,
         rebalance_weekday: int | None = 4,
         rebalance_interval_weeks: int = 1,
+        stamp_duty_schedule: Sequence[tuple[dt.date, float]] | None = None,
     ) -> None:
         self.output_dir = Path(output_dir)
         self.slippage_bps = float(slippage_bps)
@@ -44,7 +45,21 @@ class DailyBookBacktester(IBookBacktester):
         if rebalance_interval_weeks < 1:
             raise ValueError("rebalance_interval_weeks must be >= 1")
         self.rebalance_interval_weeks = int(rebalance_interval_weeks)
+        # Optional date-dependent sell-side stamp-duty schedule. ``None`` (the
+        # default) keeps the flat per-instrument ``meta.stamp_duty_rate`` and is
+        # byte-identical to the historical engine on every path.
+        self._stamp_duty_schedule = _normalize_stamp_duty_schedule(stamp_duty_schedule)
         self._last_buy_fill_dates: dict[str, dt.date] = {}
+
+    def _stamp_duty_rate_for(self, trade_date: dt.date) -> float | None:
+        """Scheduled sell-side rate for ``trade_date``, or ``None`` when unset.
+
+        ``None`` signals the fee path to keep the flat per-instrument rate, so an
+        engine constructed without a schedule behaves exactly as before.
+        """
+        if self._stamp_duty_schedule is None:
+            return None
+        return resolve_scheduled_stamp_duty_rate(self._stamp_duty_schedule, trade_date)
 
     def run(
         self,
@@ -179,7 +194,8 @@ class DailyBookBacktester(IBookBacktester):
             )
             close_today = _is_close_today(positions[instrument], diff, view.date)
             commission = _commission_rmb(
-                meta, fill, abs(diff), close_today=close_today, side=side
+                meta, fill, abs(diff), close_today=close_today, side=side,
+                stamp_duty_rate_override=self._stamp_duty_rate_for(view.date),
             )
             realized = _realized_pnl(positions[instrument], diff, fill, float(meta.multiplier))
             cash_delta += realized - commission
@@ -356,6 +372,7 @@ def _commission_rmb(
     *,
     close_today: bool = False,
     side: str | None = None,
+    stamp_duty_rate_override: float | None = None,
 ) -> float:
     commission = (
         float(meta.close_today_commission)
@@ -369,8 +386,60 @@ def _commission_rmb(
     if side not in ("BUY", "SELL"):
         raise ValueError("side must be BUY, SELL, or None")
     brokerage = max(brokerage, float(meta.min_commission))
-    stamp_duty = notional * float(meta.stamp_duty_rate) if side == "SELL" else 0.0
+    duty_rate = (
+        float(meta.stamp_duty_rate)
+        if stamp_duty_rate_override is None
+        else float(stamp_duty_rate_override)
+    )
+    stamp_duty = notional * duty_rate if side == "SELL" else 0.0
     return brokerage + stamp_duty + notional * float(meta.transfer_fee_rate)
+
+
+def _normalize_stamp_duty_schedule(
+    schedule: Sequence[tuple[dt.date, float]] | None,
+) -> tuple[tuple[dt.date, float], ...] | None:
+    """Validate and freeze an optional (effective_date, sell-side rate) schedule.
+
+    ``None`` is returned unchanged and preserves the flat-rate fee path. A
+    provided schedule must be non-empty, carry strictly ascending effective
+    dates, and non-negative rates. Malformed cost data is a hard failure, never a
+    silent zero.
+    """
+    if schedule is None:
+        return None
+    rows = tuple((date, float(rate)) for date, rate in schedule)
+    if not rows:
+        raise ValueError("stamp_duty_schedule must be non-empty when provided")
+    dates = [date for date, _ in rows]
+    if any(later <= earlier for earlier, later in zip(dates, dates[1:])):
+        raise ValueError("stamp_duty_schedule effective dates must be strictly ascending")
+    if any(rate < 0.0 for _, rate in rows):
+        raise ValueError("stamp_duty_schedule rates must be non-negative")
+    return rows
+
+
+def resolve_scheduled_stamp_duty_rate(
+    schedule: tuple[tuple[dt.date, float], ...], trade_date: dt.date
+) -> float:
+    """Sell-side stamp-duty rate in force on ``trade_date`` (boundary-INCLUSIVE).
+
+    The rate is the one carried by the latest effective date at or before the
+    trade date, so a trade ON an effective date already pays the NEW rate. This
+    matches China's 2023-08-28 halving, announced "自2023年8月28日起" (in effect
+    from that date on): a sale on 2023-08-28 pays the reduced rate. A trade before
+    the first effective date is a schedule-coverage failure, not a silent zero.
+    """
+    resolved: float | None = None
+    for effective_date, rate in schedule:
+        if effective_date <= trade_date:
+            resolved = rate
+        else:
+            break
+    if resolved is None:
+        raise ValueError(
+            f"stamp_duty_schedule does not cover trade date {trade_date.isoformat()}"
+        )
+    return resolved
 
 
 def _updated_position(position: _Position, diff: float, fill: float, contract: str, date: dt.date) -> _Position:
