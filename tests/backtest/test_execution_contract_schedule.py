@@ -597,17 +597,25 @@ def test_snapshot_directory_manifest_bytes_are_independently_bound(tmp_path: Pat
 def test_absent_schedule_preserves_legacy_main_contract_path(tmp_path: Path):
     panel = _SchedulePanel(main_contract="LEGACY_MAIN", main_price=321.0)
     strategy = _StaticTargets({"first": 1.0})
+    config = BookBacktestConfig(
+        start=panel.calendar[0],
+        end=panel.calendar[-1],
+        initial_equity_rmb=1_000_000.0,
+        panel_snapshot=panel.snapshot_version,
+    )
+    assert set(config.model_dump()) == {
+        "start",
+        "end",
+        "initial_equity_rmb",
+        "panel_snapshot",
+        "slippage_bps_by_instrument",
+    }
     result = DailyBookBacktester(
         output_dir=tmp_path, slippage_bps=0.0, rebalance_weekday=None
     ).run(
         strategy,
         panel,
-        BookBacktestConfig(
-            start=panel.calendar[0],
-            end=panel.calendar[-1],
-            initial_equity_rmb=1_000_000.0,
-            panel_snapshot=panel.snapshot_version,
-        ),
+        config,
     )
 
     assert panel.current_bar_calls > 0

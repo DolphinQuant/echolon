@@ -16,9 +16,14 @@ class BookBacktestConfig(BaseModel):
     initial_equity_rmb: float
     panel_snapshot: str
     panel_manifest_sha256: str | None = Field(
-        default=None, pattern=r"^[0-9a-f]{64}$"
+        default=None,
+        pattern=r"^[0-9a-f]{64}$",
+        exclude_if=lambda value: value is None,
     )
-    execution_contract_schedule: ExecutionContractSchedule | None = None
+    execution_contract_schedule: ExecutionContractSchedule | None = Field(
+        default=None,
+        exclude_if=lambda value: value is None,
+    )
     slippage_bps_by_instrument: dict[str, float] = Field(default_factory=dict)
 
     @model_validator(mode="after")
