@@ -26,10 +26,17 @@ class BookState(BaseModel):
 
 
 class TargetBook(BaseModel):
+    """Absolute portfolio lots; an omitted instrument has target zero."""
+
     model_config = ConfigDict(extra="forbid")
 
     date: dt.date
-    targets: dict[str, float]
+    targets: dict[str, float] = Field(
+        description=(
+            "Absolute target lots by instrument. Instruments omitted from this "
+            "mapping have an absolute target of zero."
+        )
+    )
 
 
 class InstrumentRebalance(BaseModel):

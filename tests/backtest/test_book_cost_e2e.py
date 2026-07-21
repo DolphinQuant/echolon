@@ -510,6 +510,63 @@ def test_book_backtester_closes_held_contract_when_flattening_on_roll_date(tmp_p
     assert result.equity_curve[-1].equity_rmb == pytest.approx(100_050.0)
 
 
+@pytest.mark.parametrize(
+    ("pending_target", "expected_contracts", "expected_sides", "expected_after"),
+    [
+        (0, ["AL2401", "AL2401"], ["BUY", "SELL"], [1.0, 0.0]),
+        (
+            -1,
+            ["AL2401", "AL2401", "AL2402"],
+            ["BUY", "SELL", "SELL"],
+            [1.0, 0.0, -1.0],
+        ),
+    ],
+)
+def test_roll_with_pending_absolute_target_executes_once(
+    tmp_path: Path,
+    pending_target: int,
+    expected_contracts: list[str],
+    expected_sides: list[str],
+    expected_after: list[float],
+):
+    panel = _Panel()
+    dates = panel.calendar
+    main = _bars([100.0, 100.0, 200.0, 200.0, 200.0], "AL2401")
+    main["contract"] = ["AL2401", "AL2401", "AL2402", "AL2402", "AL2402"]
+    held = _bars([100.0, 100.0, 110.0], "AL2401")
+    new = _bars([200.0, 200.0, 200.0], "AL2402")
+    new.index = dates[2:]
+    panel._bars["al"] = main
+    panel._contracts["al"] = pd.concat([held, new]).assign(
+        symbol=lambda frame: frame["contract"]
+    ).sort_index()
+
+    result = DailyBookBacktester(
+        output_dir=tmp_path, slippage_bps=0.0, rebalance_weekday=None
+    ).run(
+        _DatedStrategy(
+            {dates[0]: {"al": 1}, dates[1]: {"al": pending_target}}
+        ),
+        panel,
+        BookBacktestConfig(
+            start=dates[0], end=dates[2], initial_equity_rmb=100_000.0,
+            panel_snapshot="pending_roll_target",
+        ),
+    )
+    al_trades = [trade for trade in result.trades if trade.instrument == "al"]
+
+    assert [trade.contract for trade in al_trades] == expected_contracts
+    assert [trade.side for trade in al_trades] == expected_sides
+    assert [trade.position_after for trade in al_trades] == expected_after
+
+
+def test_target_book_public_contract_defines_omission_as_absolute_zero():
+    description = TargetBook.model_fields["targets"].description
+    assert description is not None
+    assert "Absolute target lots" in description
+    assert "omitted" in description and "zero" in description
+
+
 def test_new_absolute_book_omission_cancels_flat_deferred_open_with_live_parity(
     tmp_path: Path,
 ):
