@@ -766,7 +766,7 @@ class DailyBookBacktester(IBookBacktester):
             commission = commission_rmb(
                 meta, fill, abs(diff), close_today=close_today, side=side,
                 stamp_duty_rate_override=self._stamp_duty_rate_for(view.date),
-            )
+            ) * config.commission_multiplier
             realized = _realized_pnl(positions[instrument], diff, fill, float(meta.multiplier))
             cash_delta += realized - commission
             new_position = _updated_position(positions[instrument], diff, fill, str(bar["contract"]), view.date)
@@ -875,7 +875,7 @@ class DailyBookBacktester(IBookBacktester):
                 close_today=close_today,
                 side=side,
                 stamp_duty_rate_override=self._stamp_duty_rate_for(view.date),
-            )
+            ) * config.commission_multiplier
             realized = _realized_pnl(
                 position, diff, fill, float(meta.multiplier)
             )
@@ -1038,7 +1038,12 @@ class DailyBookBacktester(IBookBacktester):
             close_intended = _raw_price(close_bar, "open")
             close_fill = _slipped_price(close_intended, close_diff, slippage_bps, float(meta.tick))
             close_today = _is_close_today(position, close_diff, view.date)
-            commission_close = commission_rmb(meta, close_fill, abs(close_diff), close_today=close_today)
+            commission_close = (
+                commission_rmb(
+                    meta, close_fill, abs(close_diff), close_today=close_today
+                )
+                * config.commission_multiplier
+            )
             realized = _realized_pnl(position, close_diff, close_fill, float(meta.multiplier))
             cash_delta += realized - commission_close
             target_lots = float(targets.get(instrument, position.lots)) if targets is not None else position.lots
@@ -1064,7 +1069,10 @@ class DailyBookBacktester(IBookBacktester):
             open_diff = target_lots
             open_intended = _raw_price(main_bar, "open")
             open_fill = _slipped_price(open_intended, open_diff, slippage_bps, float(meta.tick))
-            commission_open = commission_rmb(meta, open_fill, abs(open_diff), close_today=False)
+            commission_open = (
+                commission_rmb(meta, open_fill, abs(open_diff), close_today=False)
+                * config.commission_multiplier
+            )
             cash_delta -= commission_open
             positions[instrument] = _Position(
                 lots=target_lots,

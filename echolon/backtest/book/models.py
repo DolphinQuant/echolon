@@ -71,10 +71,17 @@ class BookBacktestConfig(BaseModel):
         default=None,
         exclude_if=lambda value: value is None,
     )
+    commission_multiplier: float = Field(
+        default=1.0,
+        gt=0.0,
+        exclude_if=lambda value: value == 1.0,
+    )
     slippage_bps_by_instrument: dict[str, float] = Field(default_factory=dict)
 
     @model_validator(mode="after")
     def _validate_execution_contract_schedule(self) -> "BookBacktestConfig":
+        if not math.isfinite(self.commission_multiplier):
+            raise ValueError("commission_multiplier must be finite")
         lifecycle = self.lifecycle_contract
         if lifecycle is not None:
             if self.rebalance_mode == "nominal_cycle_schedule":
