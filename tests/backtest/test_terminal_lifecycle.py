@@ -241,6 +241,7 @@ def _strict_run(
     *,
     initial_equity: float,
     slippage_bps: float = 0.0,
+    commission_multiplier: float = 1.0,
 ):
     return DailyBookBacktester(
         output_dir=tmp_path,
@@ -254,6 +255,7 @@ def _strict_run(
             end=panel.calendar[-1],
             initial_equity_rmb=initial_equity,
             panel_snapshot=panel.snapshot_version,
+            commission_multiplier=commission_multiplier,
             lifecycle_contract=BookLifecycleContract(
                 terminal_open_date=panel.calendar[-1]
             ),
@@ -496,6 +498,28 @@ def test_terminal_exact_open_flatten_is_valid_and_costed(tmp_path: Path):
         (dates[1], 1.0),
         (dates[2], 0.0),
     ]
+
+
+def test_terminal_exact_close_helper_uses_stressed_commission(tmp_path: Path):
+    dates = tuple(dt.date(2025, 5, 12) + dt.timedelta(days=i) for i in range(3))
+    panel = _Panel(
+        dates=dates,
+        prices=(100.0,) * 3,
+        commission=2.0,
+        margin_rate=0.1,
+    )
+    result = _strict_run(
+        tmp_path,
+        panel,
+        _Strategy(1.0),
+        initial_equity=1_100.0,
+        commission_multiplier=3.0,
+    )
+
+    assert result.outcome.status == "VALID_COMPLETE"
+    assert result.outcome.ending_cash_rmb == 1_088.0
+    assert [trade.commission_rmb for trade in result.trades] == [6.0, 6.0]
+    assert result.trades[-1].position_after == 0.0
 
 
 def test_blocked_terminal_close_is_invalid_and_replayable(tmp_path: Path):

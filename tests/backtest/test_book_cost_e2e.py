@@ -7,7 +7,11 @@ from pathlib import Path
 import pandas as pd
 import pytest
 
-from echolon.backtest.book import BookBacktestConfig, DailyBookBacktester
+from echolon.backtest.book import (
+    BookBacktestConfig,
+    DailyBookBacktester,
+    verify_full_result_manifest_sha256,
+)
 from echolon.live.book import DiffOrder, TargetExecutor
 from echolon.panel.models import InstrumentMeta
 from echolon.portfolio import BookState, RebalanceRecord, TargetBook
@@ -173,6 +177,124 @@ def test_book_backtester_applies_s11_slippage_and_commission(tmp_path: Path):
     assert json.loads((tmp_path / "summary.json").read_text())["determinism_hash"] == result.summary.determinism_hash
 
 
+def test_book_backtester_applies_explicit_commission_stress_multiplier(
+    tmp_path: Path,
+) -> None:
+    panel = _Panel()
+    result = DailyBookBacktester(
+        output_dir=tmp_path / "stress", slippage_bps=0.0, rebalance_weekday=None
+    ).run(
+        _StaticStrategy({"al": 1, "cu": 1}),
+        panel,
+        BookBacktestConfig(
+            start=dt.date(2024, 1, 2),
+            end=dt.date(2024, 1, 6),
+            initial_equity_rmb=700_000.0,
+            panel_snapshot="synthetic_book",
+            commission_multiplier=2.0,
+        ),
+    )
+
+    al_trade = next(trade for trade in result.trades if trade.instrument == "al")
+    cu_trade = next(trade for trade in result.trades if trade.instrument == "cu")
+    assert al_trade.commission_rmb == pytest.approx(6.02, abs=0.01)
+    assert cu_trade.commission_rmb == pytest.approx(35.0, abs=0.01)
+    assert result.summary.fees_total_rmb == pytest.approx(
+        sum(trade.commission_rmb for trade in result.trades)
+    )
+    baseline = DailyBookBacktester(
+        output_dir=tmp_path / "baseline", slippage_bps=0.0, rebalance_weekday=None
+    ).run(
+        _StaticStrategy({"al": 1, "cu": 1}),
+        panel,
+        BookBacktestConfig(
+            start=dt.date(2024, 1, 2),
+            end=dt.date(2024, 1, 6),
+            initial_equity_rmb=700_000.0,
+            panel_snapshot="synthetic_book",
+        ),
+    )
+    assert result.runtime_manifest.config["commission_multiplier"] == 2.0
+    assert "commission_multiplier" not in baseline.runtime_manifest.config
+    assert (
+        result.summary.full_result_manifest_sha256
+        != baseline.summary.full_result_manifest_sha256
+    )
+    assert verify_full_result_manifest_sha256(result)
+
+
+def test_default_commission_multiplier_preserves_legacy_serialization() -> None:
+    payload = {
+        "start": dt.date(2024, 1, 2),
+        "end": dt.date(2024, 1, 6),
+        "initial_equity_rmb": 700_000.0,
+        "panel_snapshot": "synthetic_book",
+    }
+    implicit = BookBacktestConfig(**payload)
+    explicit = BookBacktestConfig(**payload, commission_multiplier=1.0)
+    assert implicit.model_dump(mode="json") == explicit.model_dump(mode="json")
+    assert "commission_multiplier" not in implicit.model_dump(mode="json")
+    assert (
+        BookBacktestConfig.model_validate(explicit.model_dump(mode="json"))
+        .commission_multiplier
+        == 1.0
+    )
+
+
+def test_target_close_today_uses_stressed_close_today_commission(tmp_path: Path):
+    from echolon.backtest.book.engine import _Position
+
+    panel = _Panel()
+    date = panel.calendar[1]
+    panel._meta["al"] = panel._meta["al"].model_copy(
+        update={"commission": 3.0, "close_today_commission": 11.0}
+    )
+    positions = {
+        "al": _Position(
+            lots=1.0,
+            avg_price=19_010.0,
+            contract="al2402",
+            opened_date=date,
+        )
+    }
+    trades = []
+    result = DailyBookBacktester(
+        output_dir=tmp_path, slippage_bps=0.0, rebalance_weekday=None
+    )._execute_targets(
+        panel.view(date),
+        positions,
+        {"al": 0.0},
+        trades,
+        BookBacktestConfig(
+            start=panel.calendar[0],
+            end=panel.calendar[-1],
+            initial_equity_rmb=700_000.0,
+            panel_snapshot="synthetic_book",
+            commission_multiplier=2.0,
+        ),
+        [],
+    )
+
+    assert result.cash_delta == -22.0
+    assert len(trades) == 1
+    assert trades[0].side == "SELL"
+    assert trades[0].close_today is True
+    assert trades[0].commission_rmb == 22.0
+    assert trades[0].position_after == 0.0
+
+
+@pytest.mark.parametrize("value", [0.0, -1.0, float("inf"), float("nan")])
+def test_book_config_rejects_invalid_commission_multiplier(value: float) -> None:
+    with pytest.raises(ValueError):
+        BookBacktestConfig(
+            start=dt.date(2024, 1, 2),
+            end=dt.date(2024, 1, 6),
+            initial_equity_rmb=700_000.0,
+            panel_snapshot="synthetic_book",
+            commission_multiplier=value,
+        )
+
+
 def test_book_backtester_uses_per_instrument_slippage_tiers(tmp_path: Path):
     panel = _Panel()
     backtester = DailyBookBacktester(output_dir=tmp_path, slippage_bps=3.0, rebalance_weekday=None)
@@ -198,6 +320,9 @@ def test_book_backtester_uses_per_instrument_slippage_tiers(tmp_path: Path):
 
 
 def test_book_backtester_forced_liquidation_event(tmp_path: Path):
+    # This is the explicitly uncertified legacy branch, which still synthetic-clears
+    # positions. Costed liquidation for the next trial uses strict lifecycle and the
+    # exact-close helper covered in test_terminal_lifecycle.py.
     panel = _Panel()
     backtester = DailyBookBacktester(output_dir=tmp_path, slippage_bps=0.0, rebalance_weekday=None)
 
@@ -453,6 +578,72 @@ def test_book_backtester_roll_preserves_accrued_contract_pnl(tmp_path: Path):
     assert [trade.contract for trade in result.trades] == ["AL2401", "AL2401", "AL2402"]
     assert result.trades[1].realized_pnl_rmb == pytest.approx(50.0)
     assert result.equity_curve[-1].equity_rmb == pytest.approx(100_050.0)
+
+
+def test_roll_close_and_open_both_use_stressed_commission(tmp_path: Path):
+    panel = _Panel()
+    dates = panel.calendar
+    panel._bars["al"] = pd.DataFrame(
+        {
+            "open": [100.0, 100.0, 200.0, 200.0, 200.0],
+            "high": [100.0, 100.0, 200.0, 200.0, 200.0],
+            "low": [100.0, 100.0, 200.0, 200.0, 200.0],
+            "close": [100.0, 100.0, 200.0, 200.0, 200.0],
+            "settle": [100.0, 100.0, 200.0, 200.0, 200.0],
+            "volume": [1000] * 5,
+            "open_interest": [5000] * 5,
+            "contract": ["AL2401", "AL2401", "AL2402", "AL2402", "AL2402"],
+        },
+        index=dates,
+    )
+    panel._contracts["al"] = pd.DataFrame(
+        [
+            {"contract": "AL2401", "open": 100.0},
+            {"contract": "AL2401", "open": 100.0},
+            {"contract": "AL2401", "open": 110.0},
+            {"contract": "AL2402", "open": 200.0},
+            {"contract": "AL2402", "open": 200.0},
+        ],
+        index=[dates[0], dates[1], dates[2], dates[2], dates[3]],
+    ).assign(
+        symbol=lambda frame: frame["contract"],
+        high=lambda frame: frame["open"],
+        low=lambda frame: frame["open"],
+        close=lambda frame: frame["open"],
+        settle=lambda frame: frame["open"],
+        volume=1000,
+        open_interest=5000,
+    )
+    panel._meta["al"] = panel._meta["al"].model_copy(
+        update={"commission": 3.01, "close_today_commission": 9.0}
+    )
+
+    result = DailyBookBacktester(
+        output_dir=tmp_path,
+        slippage_bps=0.0,
+        rebalance_weekday=None,
+    ).run(
+        _StaticStrategy({"al": 1}),
+        panel,
+        BookBacktestConfig(
+            start=dates[0],
+            end=dates[-1],
+            initial_equity_rmb=100_000.0,
+            panel_snapshot="rolling_stress_synthetic",
+            commission_multiplier=2.0,
+        ),
+    )
+
+    al_trades = [trade for trade in result.trades if trade.instrument == "al"]
+    assert [(trade.contract, trade.side) for trade in al_trades] == [
+        ("AL2401", "BUY"),
+        ("AL2401", "SELL"),
+        ("AL2402", "BUY"),
+    ]
+    assert [trade.commission_rmb for trade in al_trades] == pytest.approx(
+        [6.02, 6.02, 6.02]
+    )
+    assert al_trades[1].close_today is False
 
 
 def test_book_backtester_closes_held_contract_when_flattening_on_roll_date(tmp_path: Path):
