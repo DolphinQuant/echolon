@@ -1,6 +1,6 @@
 # echolon
 
-See `../CLAUDE.md` for all cross-repo operating law (pre-dispatch checklist, communication protocol, Fable-mode protocol, Codex dispatch incl. session-ID resume, compute/time discipline, instrument-consistency law).
+See `../CLAUDE.md` for all cross-repo operating law (pre-dispatch checklist, communication protocol, Fable-mode protocol, Codex dispatch incl. session-ID resume, compute/time discipline, instrument-consistency law, evidence law — same-data-twice & criteria freeze).
 
 ## Generic-mechanism-only boundary
 echolon is PUBLIC open-source: no instrument names, calibration dates/values, selection
